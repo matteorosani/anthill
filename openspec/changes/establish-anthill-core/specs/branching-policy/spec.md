@@ -41,7 +41,7 @@ Ant branches SHALL NOT be stacked on other unmerged ant branches. A dependency c
 - **THEN** #12 is not eligible
 
 ### Requirement: Worktree location
-Worktrees SHALL be created under a configurable Anthill worktree root (default `<anthill-home>/worktrees/<repo>/<branch-name>`), outside the developer's own working copy. Anthill SHALL never modify the developer's main working copy, its checked-out branch or its uncommitted changes.
+Worktrees SHALL be created at `<worktree-root>/<provider>-<org>-<name>/<branch-name>`, outside the developer's working copy. The worktree root is configurable and defaults to `<anthill-home>/worktrees`, where `<anthill-home>` is `~/.anthill`. Anthill SHALL never modify the developer's main working copy, its checked-out branch or its uncommitted changes. In the clone's own git configuration it SHALL set only `extensions.worktreeConfig = true`.
 
 #### Scenario: Developer has local changes
 - **WHEN** the developer's clone has uncommitted changes on `main`
@@ -73,12 +73,12 @@ Ant commits SHALL use the developer's configured git identity, with trailers nam
 - **THEN** the commit message ends with `Anthill-Item: gh-12`, `Anthill-Agent: claude-code` and `Anthill-Instance: mrosani@LAPTOP-42`
 
 ### Requirement: Worktree cleanup
-After an ant PR is merged or closed, or its ant is abandoned and the queen confirms cleanup, Anthill SHALL remove the worktree. It SHALL delete the local branch, and the remote branch only if the provider has not already deleted it and the PR is merged. Worktrees with unpushed commits SHALL NOT be removed without explicit confirmation.
+After an ant PR is merged or closed, or its ant is abandoned and the queen confirms cleanup, Anthill SHALL remove the worktree. It SHALL delete the local branch, and the remote branch only if the provider has not already deleted it and the PR is merged. Worktrees with unpushed commits or uncommitted changes SHALL NOT be removed without explicit confirmation.
 
 #### Scenario: PR merged
 - **WHEN** the PR for #12 is merged
 - **THEN** the worktree and local branch for #12 are removed at the next poll
 
 #### Scenario: Unpushed work
-- **WHEN** cleanup is requested for a worktree with unpushed commits
+- **WHEN** cleanup is requested for a worktree with unpushed commits or uncommitted changes
 - **THEN** Anthill asks the queen to confirm before deleting it

@@ -178,6 +178,12 @@ var settingChecks = []settingCheck{
 		}
 		return ""
 	}},
+	{KeyWorktreeRoot, func(s *SettingValues) string {
+		if v := s.WorktreeRoot; v != nil && !filepath.IsAbs(*v) {
+			return fmt.Sprintf("worktree root %q must be an absolute path", *v)
+		}
+		return ""
+	}},
 	{KeySecretPatterns, func(s *SettingValues) string {
 		for _, p := range s.SecretPatterns {
 			if _, err := regexp.Compile(p); err != nil {
