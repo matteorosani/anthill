@@ -27,8 +27,10 @@ const (
 
 // Comment is one comment on an item or a pull request.
 type Comment struct {
-	ID        string
-	Author    string
+	ID     string
+	Author string
+	// URL is the comment's web address, used to link to it in messages.
+	URL       string
 	Body      string
 	CreatedAt time.Time
 	UpdatedAt time.Time
@@ -38,15 +40,20 @@ type Comment struct {
 // item (spec work-item-sources). Dependencies, Parent and Children come
 // only from provider-native links.
 type WorkItem struct {
-	Ref          Ref
-	URL          string
-	Title        string
-	Body         string
-	Type         ItemType
-	State        ItemState
-	Labels       []string
-	Assignees    []string
-	Dependencies []Ref
+	Ref Ref
+	URL string
+	// Author is the login of the ticket author.
+	Author string
+	Title  string
+	Body   string
+	// AcceptanceCriteria is Azure DevOps' Acceptance Criteria field. It is
+	// empty on GitHub, where acceptance criteria are a section of Body.
+	AcceptanceCriteria string
+	Type               ItemType
+	State              ItemState
+	Labels             []string
+	Assignees          []string
+	Dependencies       []Ref
 	// Parent is nil when the item has no parent.
 	Parent    *Ref
 	Children  []Ref

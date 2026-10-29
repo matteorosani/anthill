@@ -97,3 +97,29 @@ func TestRefEqualityComparesRepository(t *testing.T) {
 		t.Errorf("gh-12 in %s and in %s must differ", ghRepo, other)
 	}
 }
+
+func TestRefDisplay(t *testing.T) {
+	otherRepo := domain.Repository{Provider: domain.GitHub, Org: "matteorosani", Name: "other"}
+	otherProject := domain.Repository{Provider: domain.AzureDevOps, Org: "contoso", Project: "hr"}
+	tests := []struct {
+		name string
+		ref  domain.Ref
+		from domain.Repository
+		want string
+	}{
+		{"github item", domain.Ref{Repo: ghRepo, Kind: domain.KindItem, Number: 10}, ghRepo, "#10"},
+		{"github pr", domain.Ref{Repo: ghRepo, Kind: domain.KindPR, Number: 34}, ghRepo, "#34"},
+		{"github item in another repository", domain.Ref{Repo: otherRepo, Kind: domain.KindItem, Number: 10}, ghRepo, "matteorosani/other#10"},
+		{"azure devops item", domain.Ref{Repo: adoProject, Kind: domain.KindItem, Number: 10}, adoProject, "AB#10"},
+		{"azure devops item seen from a code repository", domain.Ref{Repo: adoProject, Kind: domain.KindItem, Number: 10}, adoCodeRepo, "AB#10"},
+		{"azure devops item in another project", domain.Ref{Repo: otherProject, Kind: domain.KindItem, Number: 10}, adoProject, "contoso/hr AB#10"},
+		{"azure devops pr", domain.Ref{Repo: adoCodeRepo, Kind: domain.KindPR, Number: 34}, adoCodeRepo, "!34"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := tt.ref.Display(tt.from); got != tt.want {
+				t.Errorf("Display() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
