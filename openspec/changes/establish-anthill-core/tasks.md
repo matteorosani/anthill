@@ -41,8 +41,8 @@ Terms follow `openspec/glossary.md`. Every group lands its own tests and docs. U
 
 - [x] 5.1 Define the ports from D1 (`TrackerPort`, `CodeHostPort`, `ClaimStore`, `AgentRunner`, `SourceControl`, `StateStore`, `Clock`, `Notifier`, credential source), and verify they compile with no adapter imports in `internal/domain` or `internal/app` (enforced by a lint rule)
 - [x] 5.2 Add fakes for every port in `internal/testkit`, including a fake provider that can simulate races, rate limits and errors, and verify each fake has its own tests
-- [ ] 5.3 Implement the SQLite store (`modernc.org/sqlite`) with migrations for the session index, runs, usage, budgets, poll cursors and hashes, the outbox, stored changes, questions, extension requests, and declined or snoozed proposals, and verify migration and repository tests on a temporary database
-- [ ] 5.4 Implement the outbox: change events written in the same transaction as the new hashes, handlers marking them done, and restart replay, and verify a test that a crash between detection and handling handles the event exactly once
+- [x] 5.3 Implement the SQLite store (`modernc.org/sqlite`) with migrations for the session index, runs, usage, budgets, poll cursors and hashes, the outbox, stored changes, questions, extension requests, and declined or snoozed proposals, and verify migration and repository tests on a temporary database
+- [x] 5.4 Implement the outbox: change events written in the same transaction as the new hashes, handlers marking them done, and restart replay, and verify a test that a crash between detection and handling handles the event exactly once
 
 ## 6. Git and worktrees
 
