@@ -6,6 +6,8 @@ linters:
   # The "standard" set: errcheck, govet, ineffassign, staticcheck, unused.
   default: standard
   enable:
+    # Layering rules of design D1, see settings.depguard below.
+    - depguard
     # Errors compared with == or type-asserted instead of errors.Is/As,
     # which breaks as soon as an error is wrapped with %w.
     - errorlint
@@ -14,6 +16,39 @@ linters:
     # //nolint directives must name the linter and give a reason.
     - nolintlint
   settings:
+    depguard:
+      rules:
+        # The domain holds rules without I/O and depends on nothing else
+        # in the module (design D1). Its tests may read files.
+        domain:
+          list-mode: lax
+          files:
+            - "**/internal/domain/**"
+            - "!$test"
+          deny:
+            - pkg: github.com/matteorosani/anthill/internal
+              desc: the domain must not import other Anthill packages
+            - pkg: os
+              desc: the domain does no I/O
+            - pkg: net$
+              desc: the domain does no I/O
+            - pkg: net/http
+              desc: the domain does no I/O
+            - pkg: database/sql
+              desc: the domain does no I/O
+            - pkg: syscall
+              desc: the domain does no I/O
+            - pkg: io/ioutil
+              desc: the domain does no I/O
+        # Application services and ports never depend on an adapter.
+        no-adapters:
+          list-mode: lax
+          files:
+            - "**/internal/app/**"
+            - "**/internal/ports/**"
+          deny:
+            - pkg: github.com/matteorosani/anthill/internal/adapters
+              desc: application services and ports depend on ports, never on adapters
     nolintlint:
       require-explanation: true
       require-specific: true
