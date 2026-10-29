@@ -1,0 +1,30 @@
+# golangci-lint configuration, v2 format.
+# Run with `make lint` or `golangci-lint run`.
+version: "2"
+
+linters:
+  # The "standard" set: errcheck, govet, ineffassign, staticcheck, unused.
+  default: standard
+  enable:
+    # Errors compared with == or type-asserted instead of errors.Is/As,
+    # which breaks as soon as an error is wrapped with %w.
+    - errorlint
+    # Common English misspellings in comments and strings.
+    - misspell
+    # //nolint directives must name the linter and give a reason.
+    - nolintlint
+  settings:
+    nolintlint:
+      require-explanation: true
+      require-specific: true
+
+formatters:
+  enable:
+    # Standard Go formatting, as `gofmt -l .` checks.
+    - gofmt
+    # Imports grouped: standard library, third party, then this module.
+    - goimports
+  settings:
+    goimports:
+      local-prefixes:
+        - github.com/matteorosani/anthill
