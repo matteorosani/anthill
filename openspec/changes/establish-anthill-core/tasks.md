@@ -29,13 +29,13 @@ Terms follow `openspec/glossary.md`. Every group lands its own tests and docs. U
 
 ## 4. Configuration and credentials
 
-- [ ] 4.1 Implement configuration layers (item labels, `.anthill.yml`, local repository entry, global configuration, defaults) with the effective value and its source, and verify the "repository file overrides global default" test
-- [ ] 4.2 Implement the `.anthill.yml` schema with the allowed keys only, rejecting credentials, OTLP settings and secret patterns, and verify tests for the `token` key and an OTLP endpoint
-- [ ] 4.3 Implement the global configuration and local repository entries (clone path, runner, capacity, reviewing off per repository or machine, OTLP endpoint, added secret patterns), rejecting OTLP headers in files, and verify tests for each rejection message
-- [ ] 4.4 Implement the built-in defaults from anthill-configuration, and verify the "empty configuration" test lists every default
-- [ ] 4.5 Implement validation at startup and reload, where an invalid repository configuration disables only that repository, and verify the "warning threshold out of range" test and a test that one bad repository leaves the others running
-- [ ] 4.6 Implement credential sources (OS credential store through `go-keyring`, `gh` and `az` CLI sessions) behind a port, and verify with a fake store that no credential value reaches logs or errors
-- [ ] 4.7 Write `docs/configuration.md` with every setting, its layer and default, and verify it matches the defaults test by a test that reads the doc's settings table
+- [x] 4.1 Implement configuration layers (item labels, `.anthill.yml`, local repository entry, global configuration, defaults) with the effective value and its source, and verify the "repository file overrides global default" test
+- [x] 4.2 Implement the `.anthill.yml` schema with the allowed keys only, rejecting credentials, OTLP settings and secret patterns, and verify tests for the `token` key and an OTLP endpoint
+- [x] 4.3 Implement the global configuration and local repository entries (clone path, runner, capacity, reviewing off per repository or machine, OTLP endpoint, added secret patterns), rejecting OTLP headers in files, and verify tests for each rejection message
+- [x] 4.4 Implement the built-in defaults from anthill-configuration, and verify the "empty configuration" test lists every default
+- [x] 4.5 Implement validation at startup and reload, where an invalid repository configuration disables only that repository, and verify the "warning threshold out of range" test and a test that one bad repository leaves the others running
+- [x] 4.6 Implement credential sources (OS credential store through `go-keyring`, `gh` and `az` CLI sessions) behind a port, and verify with a fake store that no credential value reaches logs or errors
+- [x] 4.7 Write `docs/configuration.md` with every setting, its layer and default, and verify it matches the defaults test by a test that reads the doc's settings table
 
 ## 5. Ports, local store and testkit
 

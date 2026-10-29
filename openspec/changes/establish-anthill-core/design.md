@@ -137,6 +137,7 @@ Main libraries, chosen for being maintained and pure Go where possible:
 - `spf13/cobra` for the CLI;
 - `Microsoft/go-winio` for the Windows named pipe;
 - `zalando/go-keyring` for the OS credential store;
+- `go.yaml.in/yaml/v3` for the configuration files, because it is the maintained continuation of `gopkg.in/yaml.v3`, is pure Go, and gives a node tree to check keys before decoding;
 - the OpenTelemetry Go SDK and OTLP exporters;
 - `gen2brain/beeep` for desktop notifications.
 - `golang.org/x/text` for Unicode normalization, so branch slugs turn accented letters into ASCII.

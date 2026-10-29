@@ -5,7 +5,7 @@ Defines the lifecycle of an ant: the worker Anthill keeps for an accepted work i
 ## ADDED Requirements
 
 ### Requirement: Agent runners are interchangeable
-Anthill SHALL start ants through an agent runner abstraction. Claude Code, Codex and OpenCode SHALL be supported runners. The runner used SHALL be selected by repository configuration, then by an `agent:<name>` label on the item, then by the global default.
+Anthill SHALL start ants through an agent runner abstraction. Claude Code, Codex and OpenCode SHALL be supported runners. The runner used SHALL be selected by an `agent:<name>` label on the item, then by the repository's local configuration, then by the global configuration, then by the built-in default (anthill-configuration).
 
 #### Scenario: Label overrides repository default
 - **WHEN** a repository's default runner is Claude Code and the item has the label `agent:codex`

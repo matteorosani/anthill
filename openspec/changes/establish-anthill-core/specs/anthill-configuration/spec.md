@@ -5,14 +5,21 @@ Defines how Anthill is configured: which layers of configuration exist and how t
 ## ADDED Requirements
 
 ### Requirement: Configuration layers
-Configuration SHALL be resolved from these layers, highest precedence first: per-item labels or tags where a capability defines them, then the optional repository file `.anthill.yml` committed in the target repository, then the user's local repository entry, then the user's global configuration, then built-in defaults. The effective value and its source SHALL be inspectable.
+Configuration SHALL be resolved from these layers, highest precedence first: per-item labels or tags where a capability defines them, then the optional repository file `.anthill.yml` in the target repository, then the user's local repository entry, then the user's global configuration, then built-in defaults. The effective value and its source SHALL be inspectable.
 
 #### Scenario: Repository file overrides global default
 - **WHEN** the global budget is 60 minutes and the repository's `.anthill.yml` sets 45
 - **THEN** ants for that repository get 45 minutes, and inspecting the setting shows `.anthill.yml` as its source
 
+### Requirement: Repository file location
+Anthill SHALL read `.anthill.yml` from the root of the local clone's working folder, whatever branch is checked out there, including uncommitted edits. It SHALL NOT read the file from a commit or from the provider.
+
+#### Scenario: Uncommitted edit is used
+- **WHEN** the developer edits `.anthill.yml` in the local clone to set the budget to 30 and has not committed the change
+- **THEN** after the next reload, ants for that repository get 30 minutes, and inspecting the setting shows `.anthill.yml` as its source
+
 ### Requirement: Shared repository settings
-The committed `.anthill.yml` SHALL be able to set team-wide behaviour only: opt-in, hold and claim labels, budgets, maximum base budget and warning threshold, extension allowance and ceiling, branch prefix and base branch, protected branch patterns, shepherd scope, review runner, round limit, auto-follow-up, follow-up limit, auto-resume, verification command, acceptance-criteria requirement, and agent instructions file. It SHALL NOT contain credentials or machine paths.
+`.anthill.yml` SHALL be able to set team-wide behaviour only: opt-in, hold and claim labels, budgets, maximum base budget and warning threshold, extension allowance and ceiling, branch prefix and base branch, protected branch patterns, shepherd scope, review runner, round limit, auto-follow-up, follow-up limit, auto-resume, verification command, acceptance-criteria requirement, and agent instructions file. It SHALL NOT contain credentials or machine paths.
 
 #### Scenario: Credentials in repository file
 - **WHEN** `.anthill.yml` contains a `token` key
@@ -54,7 +61,7 @@ Anthill SHALL provide these defaults:
 Anthill SHALL provide these defaults:
 - telemetry export off; extension wait 5 min
 - capacity 2 active runs; review rounds 3; follow-up limit 5; question staleness 3 days
-- shepherd reviewing on; review runner same as ant runner; shepherd scope `ant-authored`; auto-fix only on human PRs that opt in per PR; auto-follow-up on; auto-resume off; branch prefix `ant`
+- runner `claude-code`; shepherd reviewing on; review runner same as ant runner; shepherd scope `ant-authored`; auto-fix only on human PRs that opt in per PR; auto-follow-up on; auto-resume off; branch prefix `ant`
 
 #### Scenario: Empty configuration
 - **WHEN** Anthill runs with only one repository entry and no other settings
