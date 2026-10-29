@@ -12,7 +12,7 @@ Development work is tracked across several issue trackers (mainly GitHub and Azu
 - Introduce **ants**: headless coding agents (Claude Code, Codex, OpenCode, …) behind one runner port. Each ant runs in its own git worktree and branch, and its session is kept so it can be resumed.
 - Introduce **time budgets** for ants: a default of 60 minutes, a warning at 80%, extension requests, and a defined outcome when time runs out.
 - Define **branching rules**: branch naming, base branch resolution, worktree placement, history rewriting limits, and which branches Anthill may push to.
-- Introduce the **PR Shepherd**: polls open PRs, runs a limited, configurable number of agent review rounds, posts review comments, auto-fixes trivial findings where allowed, and honours developer requests for more rounds. It never merges.
+- Introduce the **PR Shepherd**: polls open PRs, runs a limited, configurable number of agent review rounds, posts review comments, hands findings on ant PRs to the owning ant, auto-fixes trivial findings on human PRs that opt in, and honours developer requests for more rounds. It never merges.
 - Define **update reaction**: when a ticket or PR changes (edits, new comments, review feedback), Anthill decides whether an ant must act. It delivers the change to a running ant or resumes the previous session.
 - Define how agents and developers **talk through comments**: marker-tagged bot comments, questions that pause an ant, and `/anthill` commands.
 - Introduce the **queen console**: a long-running local daemon plus a CLI for reviewing proposals, accepting work, approving extensions and watching ants. A GUI can be added later as another adapter.

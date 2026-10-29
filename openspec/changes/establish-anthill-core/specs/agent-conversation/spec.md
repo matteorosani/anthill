@@ -12,7 +12,7 @@ Every comment Anthill posts SHALL begin with a visible 🐜 prefix naming the in
 - **THEN** the comment starts with "🐜 Ant (mrosani@LAPTOP-42)" and contains a hidden marker of kind `status` for `gh-12`
 
 ### Requirement: Ants ask questions through the ticket
-When an ant needs information it cannot find, it SHALL ask through the `ask_question` tool (ant-tools), which posts a `question` comment on the ticket, or on the PR for follow-up runs. All other ant-written comments SHALL also go through the ant tools. The ant SHALL then move to `awaiting-input`, its runner stopped with the session saved, and the queen SHALL be notified.
+When an ant needs information it cannot find, it SHALL ask through the `ask_question` tool (ant-tools), which posts a `question` comment on the ticket, or on the PR for follow-up runs. All other ant-written comments SHALL also go through the ant tools. Anthill SHALL then stop the runner with the session saved and move the ant to `awaiting-input`, and the queen SHALL be notified.
 
 #### Scenario: Ambiguous requirement
 - **WHEN** an ant cannot tell whether "timeout" means 30 or 60 seconds
@@ -85,5 +85,5 @@ A command comment SHALL be executed at most once across all instances. Anthill a
 Anthill comments SHALL NOT include secrets, environment variables, absolute local paths outside the worktree, or raw agent transcripts. Summaries SHALL be limited to the configured length (default 4,000 characters), and longer content SHALL be truncated with a note.
 
 #### Scenario: Agent output contains a token
-- **WHEN** an ant's final message contains a string matching a configured secret pattern
+- **WHEN** an ant's final message contains a string matching a secret pattern (anthill-configuration)
 - **THEN** the posted summary has the value redacted

@@ -65,7 +65,7 @@ GitHub has no compare-and-swap on labels, assignees or comments. A claim is ther
 
 ### D4. Agents decide, Anthill executes provider and push operations
 
-Ants edit files and commit inside their worktree. Everything that leaves the machine goes through an ant tool (D5) that Anthill executes: `push`, `open_pull_request`, `update_pull_request`, `comment`, `reply_to_thread`, `ask_question`, `submit_review`. The agent keeps the decisions (PR title, body, draft or ready, what to say and where), while Anthill enforces the branching policy, adds the closing reference, label and marker, and applies comment safety in one code path.
+Ants edit files and commit inside their worktree. Everything that leaves the machine goes through an ant tool (D5) that Anthill executes: `push`, `open_pull_request`, `update_pull_request`, `comment`, `reply_to_thread`, `ask_question`, `submit_review`. Each agent role (task ant, follow-up ant, review agent, fix agent) gets only its own subset (spec: ant-tools). The agent keeps the decisions (PR title, body, draft or ready, what to say and where), while Anthill enforces the branching policy, adds the closing reference, label and marker, and applies comment safety in one code path.
 
 Agents get no provider tokens: Anthill strips `GH_TOKEN`, `GITHUB_TOKEN`, `AZURE_DEVOPS_EXT_PAT` and similar from the environment, sets `GIT_TERMINAL_PROMPT=0` and disables the git credential helper for the worktree, so a direct `git push` fails. Where the runner supports hooks, a pre-tool hook refuses `git push`, `gh` and `az` with a pointer to the right tool.
 
@@ -104,7 +104,7 @@ A cheap, short agent call classifies human comments as actionable, informational
 
 ### D9. Shepherd reviews in a detached worktree with structured output
 
-A review round checks out the PR head in a temporary detached worktree. The review agent must return structured JSON findings: file, line range, severity, classification, message, suggested fix. Anthill de-duplicates findings against open threads by file, line-range proximity and a normalized message fingerprint, then posts them. Auto-fix runs a second agent pass on the PR branch worktree, then the configured verification command, and Anthill pushes only if verification passes.
+A review round checks out the PR head in a temporary detached worktree. The review agent must return structured JSON findings: file, line range, severity, classification, message, suggested fix. Anthill de-duplicates findings against open threads by file, line-range proximity and a normalized message fingerprint, then posts them. Auto-fix runs only on opted-in human PRs (D19): a fix agent commits in a temporary worktree of the PR branch, then Anthill runs the configured verification command and pushes only if it passes.
 
 ### D10. Daemon and control interface
 
@@ -160,6 +160,18 @@ Anthill uses the OpenTelemetry SDK for its own traces, metrics and logs, exporte
 
 *Alternative:* scrape agent transcripts into Anthill's own telemetry. Duplicates what the runners already export and risks leaking content. Rejected.
 
+### D19. Auto-fix only on opted-in human PRs; the fix agent never pushes
+
+On ant PRs, every shepherd finding worth acting on goes to the owning ant's single follow-up run (spec: change-reaction). A separate fix agent on the reviewing machine could otherwise push to the same branch at the same time as the owning ant. Auto-fix is therefore kept for human PRs that opt in.
+
+There, the fix agent only edits, commits and reports per finding through `finish_fixes`. Anthill runs the verification command, then pushes and replies with the commit links. A failed verification is discarded before anything reaches the branch, which matters because the branch belongs to a person and the `push` tool cannot force-push. A repository without a verification command gets suggested changes only.
+
+*Alternative:* give the fix agent `push` and `reply_to_thread`. Rejected: verification would depend on the agent, and a bad push could not be taken back.
+
+### D20. Run outcomes
+
+Every exit without `finish`, clean or crashed, is `failed`. Anthill pushes the branch so the work is safe but opens no PR, and turns an open PR into a draft so the shepherd does not review half-done work. The queen retries or abandons. When an ant finds that nothing needs changing, `finish(no-change)` posts its explanation, releases the claim and adds the exclusion marker, leaving the ticket to a human. An extension request pauses the budget only while the tool waits. After that the ant works on, and a late approval on a timed-out ant acts as "continue".
+
 ## Risks / Trade-offs
 
 - **Prompt injection through ticket and PR content** (anyone who can comment can write text an agent reads) → Only items opted in by a user with write/triage permission count, because adding labels needs it. Only answers and commands from write-access users are acted on. Agents are given no credentials (D4, with its limits), and all pushes go through the `push` tool and the branching policy.
@@ -173,7 +185,7 @@ Anthill uses the OpenTelemetry SDK for its own traces, metrics and logs, exporte
 - **Forged markers** (anyone who can comment can paste a marker) → Claims and acknowledgements count only when the comment's author has write access to the repository. A forged marker from an outside user is treated as a human comment.
 - **Broken PRs without local verification (D16)** → CI and the shepherd catch them, and follow-up runs fix them.
 - **Agents reaching the developer's credentials** (same OS user, D4) → Tokens stripped from the environment, credential helper disabled, hooks refusing `git push`/`gh`/`az`, and the brief tells the agent to use the tools. A hostile or injected agent could still read credential files. Running agents under a separate OS user or in a container is the later fix.
-- **Telemetry leaking content** → Export is off by default, Anthill exports no ticket, comment or code content, and the runners' content capture is forced off. Endpoint and headers live only in local configuration.
+- **Telemetry leaking content** → Export is off by default, Anthill exports no ticket, comment or code content, and the runners' content capture is forced off. The endpoint lives only in local configuration, and its headers in the OS credential store.
 
 ## Migration Plan
 

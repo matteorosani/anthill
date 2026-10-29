@@ -70,7 +70,7 @@ A task claim SHALL never be taken over by another instance, however long its hol
 - **THEN** the claim is released, and #12 is still not proposed, because `no-active-work` is unmet while the PR is open
 
 ### Requirement: Release
-An instance SHALL release a claim when its work ends: the ticket is closed, the PR is merged or closed, the queen abandons the task, or a review activity finishes. Releasing removes the claim label and marks the claim comment as released. It SHALL unassign the developer only if Anthill made that assignment.
+An instance SHALL release a claim when its work ends: the ticket is closed, the PR is merged or closed, the queen abandons the task, the ant finishes with `no-change`, or a review activity finishes. Releasing removes the claim label and marks the claim comment as released. It SHALL unassign the developer only if Anthill made that assignment.
 
 #### Scenario: Queen abandons a task
 - **WHEN** the queen abandons the ant working on #12

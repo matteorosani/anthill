@@ -83,8 +83,8 @@ Review agents SHALL report findings through `submit_review` (ant-tools). Each fi
 - **THEN** an inline comment on line 42 states the problem with severity `blocking`
 
 #### Scenario: Findings handed to the owning ant
-- **WHEN** a round on an ant-authored PR produces `blocking` or `suggestion` findings classified `needs-developer`
-- **THEN** the round summary lists them as handed to the owning ant (change-reaction), and lists `nit` findings as left to developers
+- **WHEN** a round on an ant-authored PR produces `blocking` or `suggestion` findings
+- **THEN** the round summary lists them as handed to the owning ant (change-reaction), whatever their classification, and lists `nit` findings classified `needs-developer` as left to developers
 
 #### Scenario: Clean round
 - **WHEN** a round finds nothing
@@ -98,10 +98,14 @@ A round SHALL NOT post a finding that matches an earlier, still unresolved findi
 - **THEN** no new inline comment is posted, and the round 2 summary links to the existing thread as still open
 
 ### Requirement: Automatic fixes
-The shepherd SHALL try to fix `auto-fixable` findings on ant PRs when the repository's `auto-fix` is enabled (default on). On human PRs it SHALL do so only after the PR opts in, by an `anthill:autofix` label or `/anthill fix` from the PR author or a write-access user. Each fix is pushed as a separate commit with a reply on its thread, and SHALL NOT trigger another automatic round.
+The shepherd SHALL auto-fix `auto-fixable` findings only on human PRs that opt in, by an `anthill:autofix` label or `/anthill fix` from the PR author or a write-access user, and only when the repository has a verification command. On ant-authored PRs, findings SHALL go to the owning ant instead (change-reaction). An auto-fix push SHALL NOT trigger another automatic round.
 
-#### Scenario: Auto-fix on an ant PR
+#### Scenario: Auto-fixable finding on an ant PR
 - **WHEN** a round on an ant-authored PR finds an unused import classified `auto-fixable`
+- **THEN** no fix agent runs, and the finding is handed to the owning ant's follow-up run
+
+#### Scenario: Auto-fix on an opted-in human PR
+- **WHEN** a round on a human PR with the `anthill:autofix` label finds an unused import classified `auto-fixable`
 - **THEN** a commit removing it is pushed to the PR branch, the thread is answered with the commit link and resolved, and no new round starts because of that commit
 
 #### Scenario: Human PR not opted in
@@ -116,12 +120,34 @@ The shepherd SHALL try to fix `auto-fixable` findings on ant PRs when the reposi
 - **WHEN** an opted-in human PR comes from a fork that does not allow maintainer edits
 - **THEN** the findings are posted as suggested changes and nothing is pushed
 
+#### Scenario: No verification command
+- **WHEN** an opted-in human PR is in a repository without a verification command
+- **THEN** the findings are posted as suggested changes, nothing is pushed, and the summary says auto-fix needs a verification command
+
+### Requirement: Fix agent pass
+An auto-fix SHALL run within the round's review claim, on the reviewing instance, in a temporary worktree of the PR branch at the reviewed head commit. The fix agent SHALL make one commit per fixed finding and end with `finish_fixes` (ant-tools). It SHALL NOT push or comment.
+
+#### Scenario: Fix agent makes two fixes
+- **WHEN** a round on an opted-in human PR has two `auto-fixable` findings
+- **THEN** the fix agent makes two commits, one per finding, and reports both through `finish_fixes`
+
+### Requirement: Anthill verifies, pushes and replies
+After the fix agent ends, Anthill SHALL run the verification command on the result. If it passes, Anthill SHALL push the commits, reply on each fixed finding's thread with its commit link, and resolve the thread. Findings the agent skipped SHALL be reclassified `needs-developer`, with the agent's reason on the thread.
+
+#### Scenario: Verified fixes
+- **WHEN** the verification command passes after the fix agent's two commits
+- **THEN** both commits are pushed, and each thread gets a reply with its commit link and is resolved
+
 ### Requirement: Failed auto-fix falls back to developer
-If an auto-fix does not apply cleanly or breaks the repository's configured verification command, the shepherd SHALL discard the fix, reclassify the finding as `needs-developer`, and say so on the thread.
+If the fixes do not apply cleanly, the verification command fails, or the push is rejected because the PR branch moved, Anthill SHALL discard all fix commits of the pass, push nothing, reclassify the findings as `needs-developer`, and say so on their threads.
 
 #### Scenario: Fix breaks the build
-- **WHEN** the auto-fix commit makes the verification command fail
-- **THEN** nothing is pushed, and the thread says the automatic fix failed and needs a developer
+- **WHEN** the auto-fix commits make the verification command fail
+- **THEN** nothing is pushed, and each thread says the automatic fix failed and needs a developer
+
+#### Scenario: Author pushed during the fix
+- **WHEN** the PR author pushes a commit while the fix agent is working
+- **THEN** Anthill's push is rejected, the fix commits are discarded, and the threads say the fix needs a developer
 
 ### Requirement: PR closure is human
 The shepherd SHALL stop all activity on a PR once it is merged or closed. It SHALL release any claims linked to it, and SHALL then trigger worktree cleanup as defined by branching-policy.

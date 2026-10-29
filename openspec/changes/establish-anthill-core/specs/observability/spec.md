@@ -5,7 +5,7 @@ Defines how Anthill exports its own traces, metrics and logs, and those of the a
 ## ADDED Requirements
 
 ### Requirement: Export is off until configured
-Telemetry export SHALL be off by default and SHALL start only when an OTLP endpoint is configured in the user's local configuration. When export is off, no telemetry SHALL leave the machine.
+Telemetry export SHALL be off by default and SHALL start only when an OTLP endpoint is configured in the user's local configuration. Headers for the endpoint, such as authentication tokens, SHALL be read from the OS credential store. When export is off, no telemetry SHALL leave the machine.
 
 #### Scenario: No endpoint configured
 - **WHEN** Anthill runs without an OTLP endpoint
@@ -14,6 +14,10 @@ Telemetry export SHALL be off by default and SHALL start only when an OTLP endpo
 #### Scenario: Endpoint configured
 - **WHEN** the local configuration sets an OTLP endpoint
 - **THEN** Anthill exports traces, metrics and logs to it
+
+#### Scenario: Endpoint needs an API key
+- **WHEN** the endpoint requires an authentication header stored in the OS credential store
+- **THEN** Anthill sends the header with each export, and the key never appears in a configuration file or log
 
 ### Requirement: Traces
 When export is on, Anthill SHALL emit spans for: each poll cycle and provider call, eligibility evaluation, each claim attempt, each ant run and its tool calls, and each shepherd round. Spans SHALL carry the item, PR, ant id, instance id and runner as attributes where they apply.

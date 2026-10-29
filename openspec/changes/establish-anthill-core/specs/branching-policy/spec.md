@@ -48,18 +48,22 @@ Worktrees SHALL be created under a configurable Anthill worktree root (default `
 - **THEN** starting an ant leaves that working copy exactly as it was
 
 ### Requirement: Push restrictions
-All pushes SHALL be executed by Anthill, either through the `push` tool (ant-tools) or for shepherd auto-fixes. Anthill SHALL push only to branches it created for a work item, and to a human PR's branch only when that PR has opted in to shepherd auto-fix (pr-shepherd). It SHALL never push to the base branch, the default branch, or any branch matching the repository's protected patterns.
+All pushes SHALL be executed by Anthill, either through the `push` tool (ant-tools) or after a verified shepherd auto-fix (pr-shepherd). Anthill SHALL push only to branches it created for a work item, and to a human PR's branch only when that PR has opted in to shepherd auto-fix (pr-shepherd). It SHALL never push to the base branch, the default branch, or any branch matching the repository's protected patterns.
 
 #### Scenario: Ant attempts to push to main
 - **WHEN** an ant checks out `main` in its worktree and calls `push`
 - **THEN** the `push` tool refuses with "push to main is not allowed", and nothing is pushed
 
 ### Requirement: History rewriting
-Before its PR is opened, Anthill SHALL allow an ant to rebase or amend its own branch. After the PR is opened, Anthill and its ants SHALL NOT rewrite published history. They SHALL integrate base-branch changes by merge and SHALL never force-push.
+Before its branch is first pushed, Anthill SHALL allow an ant to rebase or amend its own branch. After the first push, Anthill and its ants SHALL NOT rewrite published history. They SHALL integrate base-branch changes by merge and SHALL never force-push.
 
 #### Scenario: Base moved while PR is open
 - **WHEN** the base branch gets new commits that conflict with an open ant PR
 - **THEN** the conflict is resolved with a merge commit on the ant branch, not a rebase plus force-push
+
+#### Scenario: Amend after the first push
+- **WHEN** an ant amends a commit it has already pushed and calls `push`
+- **THEN** the push is rejected as non-fast-forward, and the ant is told to keep the published history and add a new commit
 
 ### Requirement: Commit identity and traceability
 Ant commits SHALL use the developer's configured git identity, with a trailer naming the ant and the item (for example `Anthill-Item: gh-12`), so automated commits are identifiable.

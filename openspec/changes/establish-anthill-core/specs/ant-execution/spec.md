@@ -70,11 +70,23 @@ If the local record for an item claimed by this instance is missing, Anthill SHA
 - **THEN** at startup the record for `gh-12` is rebuilt, the worktree is recreated from the pushed branch if missing, and the next follow-up starts a new session with a summary brief
 
 ### Requirement: Exit without finishing
-If the runner exits without the ant reporting that it finished, Anthill SHALL treat the run as `partial` when the branch has new commits, open or update a draft PR, and include the agent's last message. When the branch has no new commits, the ant SHALL become `failed`.
+If the runner exits or crashes without the ant calling `finish`, the ant SHALL become `failed`. Anthill SHALL push the branch when it has new commits, SHALL NOT open a PR, and SHALL post a failure summary with the agent's last message on the ticket. If an ant PR is already open, Anthill SHALL mark it as a draft. The worktree SHALL be kept, and the queen SHALL be able to retry, which resumes the session, or abandon.
 
 #### Scenario: Commits but no finish
-- **WHEN** an ant's process exits with two new commits and no finish report
-- **THEN** a draft PR is opened with the agent's last message as its open points, and the ant is `succeeded` with status partial
+- **WHEN** an ant's process exits cleanly with two new commits and no `finish` call
+- **THEN** the branch is pushed, no PR is opened, the ant is `failed` with reason "exited without finish", and the ticket gets the failure summary with the agent's last message
+
+#### Scenario: Crash before any commit
+- **WHEN** the runner crashes before the ant made any commit
+- **THEN** nothing is pushed, the ant is `failed`, and the failure summary is posted on the ticket
+
+#### Scenario: Follow-up run exits without finish
+- **WHEN** a follow-up run on the open ant PR for #12 crashes after one new commit
+- **THEN** the commit is pushed to the PR branch, the PR is marked as a draft so no review round starts, and the ant is `failed`
+
+#### Scenario: Retry after crash
+- **WHEN** the queen retries a failed ant
+- **THEN** the same worktree is reused and the session is resumed with a note about the failure
 
 ### Requirement: Agent process boundary
 Agents SHALL run as separate processes in their worktree, holding no provider tokens and no git push credentials. Anthill SHALL launch them with provider credentials removed from the environment and the git credential helper disabled, and SHALL install the redirect hooks from ant-tools where supported. This is a guard, not a sandbox: the agent still runs as the developer's OS user.
@@ -95,15 +107,22 @@ An ant SHALL finish successfully by pushing its branch and opening a PR against 
 - **THEN** Anthill pushes the branch and opens a PR whose title follows the ticket and whose body is the finish summary
 
 ### Requirement: The ant decides when work is done
-Anthill SHALL rely on the status the ant reports when it finishes (`complete` or `partial`). It SHALL NOT run a build, tests or a verification command before opening the PR. CI on the PR and the PR Shepherd are the checks.
+Anthill SHALL rely on the status the ant reports with `finish` (`complete`, `partial` or `no-change`). It SHALL NOT run a build, tests or a verification command before or after the PR is opened. CI on the PR and the PR Shepherd are the checks.
 
 #### Scenario: Complete without local verification
-- **WHEN** an ant reports `complete` for #12
-- **THEN** a ready-for-review PR is opened without Anthill running any build or tests
+- **WHEN** an ant opens a ready PR for #12 and calls `finish(complete)`
+- **THEN** Anthill runs no build or tests, and the PR stays ready for review
 
-#### Scenario: Ant exits without changes
-- **WHEN** the runner exits successfully but no commits exist on the branch
-- **THEN** no PR is opened, the ant is `failed` with reason "no changes produced", and the agent's final message is posted on the ticket
+### Requirement: No change needed
+When an ant concludes that its item needs no code change, it SHALL call `finish(no-change)` with an explanation and no new commits. On a task run, Anthill SHALL post the explanation on the ticket, add the exclusion marker (default `anthill:hold`), release the task claim, and set the ant to `succeeded` with outcome no-change. A human then closes the ticket or removes the marker.
+
+#### Scenario: Bug already fixed
+- **WHEN** the ant for #12 finds that the reported bug was already fixed on the base branch and calls `finish(no-change)` with the reason
+- **THEN** no PR is opened, the explanation is posted on #12, `anthill:hold` is added, the claim is released, and the ant is `succeeded` with outcome no-change
+
+#### Scenario: Follow-up needing no change
+- **WHEN** a follow-up run for a reviewer's question replies on the thread and calls `finish(no-change)`
+- **THEN** nothing is pushed, the PR is left as it is, no marker is added, and the claim stays parked
 
 ### Requirement: Draft PRs for incomplete work
 The agent's draft choice SHALL be honoured, except that when an ant reports partial completion, or its time budget runs out (ant-timebox), Anthill SHALL make the PR a draft regardless of the agent's choice and list the open points in the PR body. When a later run for the same item finishes with status `complete`, Anthill SHALL mark the draft PR ready for review.
@@ -115,13 +134,6 @@ The agent's draft choice SHALL be honoured, except that when an ant reports part
 #### Scenario: Draft completed by a later run
 - **WHEN** a resumed run for an item with a draft ant PR finishes with status `complete`
 - **THEN** its commits are pushed to the same PR, the PR is marked ready for review, and the shepherd picks it up
-
-### Requirement: Failure handling
-If the runner process crashes or exits with an error, the ant SHALL become `failed`. The worktree and branch SHALL be kept, a failure summary SHALL be posted on the ticket, and the queen SHALL be able to retry, which resumes the session, or abandon.
-
-#### Scenario: Retry after crash
-- **WHEN** the queen retries a failed ant
-- **THEN** the same worktree is reused and the session is resumed with a note about the failure
 
 ### Requirement: Abandoning an ant
 The queen SHALL be able to abandon an ant in any non-terminal state. Abandoning stops the runner process and releases the task claim. The worktree SHALL be kept until the queen explicitly cleans it up.
@@ -146,4 +158,4 @@ After the daemon restarts, Anthill SHALL reconcile ants that were not in a termi
 
 #### Scenario: Daemon restarted mid-run
 - **WHEN** the daemon restarts while an ant was `running`
-- **THEN** the ant is shown as `failed` with reason "interrupted by restart", or resumed automatically if the repository enables auto-resume, and its claim is kept
+- **THEN** the ant is handled as an exit without finishing with reason "interrupted by restart", or resumed automatically if the repository sets `auto-resume` (anthill-configuration), and its claim is kept

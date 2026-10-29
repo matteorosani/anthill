@@ -19,11 +19,15 @@ Change events flagged as Anthill-authored SHALL NOT trigger any reaction. This p
 - **THEN** no reaction is triggered
 
 ### Requirement: Shepherd findings on ant PRs
-On an ant-authored PR, shepherd findings with severity `blocking` or `suggestion` and classification `needs-developer` SHALL be actionable for the instance owning the ant. They SHALL start one follow-up run per review round, covering all such findings of that round. The run SHALL reply on each finding's thread, and its push starts the next round while rounds remain. `nit` findings SHALL be left to developers.
+On an ant-authored PR, shepherd findings with severity `blocking` or `suggestion`, of either classification, SHALL be actionable for the instance owning the ant. They SHALL start one follow-up run per round, covering those findings plus the round's `auto-fixable` nits. The run SHALL reply on each finding's thread, and its push starts the next round while rounds remain. Other nits SHALL be left to developers, and nits alone SHALL start no run.
 
 #### Scenario: Blocking finding fixed by the ant
-- **WHEN** round 1 on the ant PR for #12 posts a `blocking` finding classified `needs-developer`
+- **WHEN** round 1 on the ant PR for #12 posts a `blocking` finding
 - **THEN** the owning instance starts a follow-up run, the run pushes a fix and replies on the thread, and round 2 reviews the new head commit
+
+#### Scenario: Auto-fixable nit included in the run
+- **WHEN** a round on an ant PR posts a `suggestion` finding and an `auto-fixable` `nit`
+- **THEN** one follow-up run handles both, and no fix agent runs
 
 #### Scenario: Nit left alone
 - **WHEN** a round posts only `nit` findings on an ant PR

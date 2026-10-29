@@ -12,22 +12,29 @@ Configuration SHALL be resolved from these layers, highest precedence first: per
 - **THEN** ants for that repository get 45 minutes, and inspecting the setting shows `.anthill.yml` as its source
 
 ### Requirement: Shared repository settings
-The committed `.anthill.yml` SHALL be able to set team-wide behaviour only: opt-in, exclusion and claim labels, budgets, maximum base budget and warning threshold, extension allowance and ceiling, branch prefix and base branch, protected branch patterns, shepherd scope, review runner, round limit, auto-fix for ant PRs, auto-follow-up, follow-up limit, verification command, acceptance-criteria requirement, and agent instructions file. It SHALL NOT contain credentials or machine paths.
+The committed `.anthill.yml` SHALL be able to set team-wide behaviour only: opt-in, exclusion and claim labels, budgets, maximum base budget and warning threshold, extension allowance and ceiling, branch prefix and base branch, protected branch patterns, shepherd scope, review runner, round limit, auto-follow-up, follow-up limit, auto-resume, verification command, acceptance-criteria requirement, and agent instructions file. It SHALL NOT contain credentials or machine paths.
 
 #### Scenario: Credentials in repository file
 - **WHEN** `.anthill.yml` contains a `token` key
 - **THEN** the file is rejected with an error naming the forbidden key, and the repository is treated as misconfigured
 
 ### Requirement: Local repository entries
-The user's local configuration SHALL list the repositories this machine works on. Each entry holds the provider and remote identity, the path of the local clone, and optional local overrides such as the runner, maximum concurrency, and turning shepherd reviewing off for that repository. The global configuration SHALL also allow turning reviewing off for the whole machine. Telemetry settings (OTLP endpoint and headers) SHALL be accepted only in local configuration, never in `.anthill.yml`.
+The user's local configuration SHALL list the repositories this machine works on. Each entry holds the provider and remote identity, the path of the local clone, and optional local overrides such as the runner, maximum concurrency, and turning shepherd reviewing off for that repository. The global configuration SHALL also allow turning reviewing off for the whole machine.
+
+#### Scenario: Repository listed without a clone
+- **WHEN** a configured local path does not contain a git clone of the configured remote
+- **THEN** the daemon reports the repository as unavailable, and its items are not eligible on this machine
+
+### Requirement: Telemetry settings are local
+The OTLP endpoint SHALL be accepted only in local configuration, never in `.anthill.yml`. OTLP headers SHALL be read from the OS credential store, never from a configuration file.
 
 #### Scenario: Telemetry endpoint in repository file
 - **WHEN** `.anthill.yml` contains an OTLP endpoint
 - **THEN** the file is rejected with an error naming the forbidden key
 
-#### Scenario: Repository listed without a clone
-- **WHEN** a configured local path does not contain a git clone of the configured remote
-- **THEN** the daemon reports the repository as unavailable, and its items are not eligible on this machine
+#### Scenario: OTLP headers in a configuration file
+- **WHEN** the local configuration contains OTLP headers
+- **THEN** the configuration is rejected with an error saying that OTLP headers belong in the OS credential store
 
 ### Requirement: Built-in defaults for markers and timing
 Anthill SHALL provide these defaults:
@@ -43,11 +50,22 @@ Anthill SHALL provide these defaults:
 Anthill SHALL provide these defaults:
 - telemetry export off; extension wait 5 min
 - concurrency 2; review rounds 3; follow-up limit 5; question staleness 3 days
-- shepherd reviewing on; review runner same as ant runner; shepherd scope `ant-authored`; auto-fix on for ant PRs, human PRs only when opted in per PR; auto-follow-up on; branch prefix `ant`
+- shepherd reviewing on; review runner same as ant runner; shepherd scope `ant-authored`; auto-fix only on human PRs that opt in per PR; auto-follow-up on; auto-resume off; branch prefix `ant`
 
 #### Scenario: Empty configuration
 - **WHEN** Anthill runs with only one repository entry and no other settings
 - **THEN** all behaviour follows the listed defaults
+
+### Requirement: Secret patterns
+Anthill SHALL redact secrets with built-in patterns covering common credential formats: provider tokens, cloud access keys, private keys, bearer tokens and connection strings. The user's local configuration SHALL be able to add patterns. Built-in patterns SHALL NOT be removable, and `.anthill.yml` SHALL NOT set patterns.
+
+#### Scenario: Built-in pattern
+- **WHEN** a comment body contains a string shaped like a GitHub personal access token
+- **THEN** the value is redacted without any pattern being configured
+
+#### Scenario: Local pattern added
+- **WHEN** the local configuration adds a pattern for the team's internal API keys
+- **THEN** strings matching it are redacted along with the built-in patterns
 
 ### Requirement: Validation at startup and reload
 Configuration SHALL be validated when the daemon starts and when it reloads. An invalid global configuration SHALL prevent startup with a precise error. An invalid repository configuration SHALL disable only that repository.
@@ -57,7 +75,7 @@ Configuration SHALL be validated when the daemon starts and when it reloads. An 
 - **THEN** the daemon refuses to start with "warning threshold must be between 1 and 99 percent"
 
 ### Requirement: Credentials stay in secure storage
-Provider credentials SHALL come from the OS credential store or from the provider's own authenticated CLI session (for example `gh` or `az`). They SHALL NOT be written to configuration files, logs, comments or task briefs.
+Provider credentials SHALL come from the OS credential store or from the provider's own authenticated CLI session (for example `gh` or `az`). OTLP headers SHALL come from the OS credential store. Neither SHALL be written to configuration files, logs, comments, task briefs or telemetry.
 
 #### Scenario: Using an existing gh login
 - **WHEN** the user is logged in with the GitHub CLI and has configured no token
