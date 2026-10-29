@@ -11,11 +11,11 @@ Terms follow `openspec/glossary.md`. Every group lands its own tests and docs. U
 
 ## 2. Domain: items, labels and markers
 
-- [ ] 2.1 Add the normalized work item and pull request types, item references (`gh-12`, `ado-12`) and provider-independent states (`open`, `closed-completed`, `closed-not-planned`), and verify unit tests cover parsing and printing of references
-- [ ] 2.2 Parse per-item setting labels (`agent:`, `budget:`, `base:`, `repo:`), including invalid values that are ignored with a warning, and verify table tests cover the `budget:abc` and `budget:600` scenarios
-- [ ] 2.3 Implement the marker as a hidden HTML comment with JSON (instance id, comment kind, item or PR, lease fields for claims) and the visible 🐜 prefix, and verify round-trip tests and a test that text without a marker parses as human
-- [ ] 2.4 Implement secret redaction with the built-in patterns plus added local patterns, and summary truncation (default 4,000 characters), and verify tests for a GitHub token, a cloud key, a private key, a local pattern and truncation with a note
-- [ ] 2.5 Implement branch naming and the slug rules, and verify tests for the "Fix login timeout on Safari" scenario, non-ASCII titles and the 40-character limit
+- [x] 2.1 Add the normalized work item and pull request types, item references (`gh-12`, `ado-12`) and provider-independent states (`open`, `closed-completed`, `closed-not-planned`), and verify unit tests cover parsing and printing of references
+- [x] 2.2 Parse per-item setting labels (`agent:`, `budget:`, `base:`, `repo:`), including invalid values that are ignored with a warning, and verify table tests cover the `budget:abc` and `budget:600` scenarios
+- [x] 2.3 Implement the marker as a hidden HTML comment with JSON (instance id, comment kind, item or PR, lease fields for claims) and the visible 🐜 prefix, and verify round-trip tests and a test that text without a marker parses as human
+- [x] 2.4 Implement secret redaction with the built-in patterns plus added local patterns, and summary truncation (default 4,000 characters), and verify tests for a GitHub token, a cloud key, a private key, a local pattern and truncation with a note
+- [x] 2.5 Implement branch naming and the slug rules, and verify tests for the "Fix login timeout on Safari" scenario, non-ASCII titles and the 40-character limit
 
 ## 3. Domain: eligibility, claims, ants and budgets
 

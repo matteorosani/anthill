@@ -139,6 +139,7 @@ Main libraries, chosen for being maintained and pure Go where possible:
 - `zalando/go-keyring` for the OS credential store;
 - the OpenTelemetry Go SDK and OTLP exporters;
 - `gen2brain/beeep` for desktop notifications.
+- `golang.org/x/text` for Unicode normalization, so branch slugs turn accented letters into ASCII.
 
 The marker is a hidden HTML comment holding a JSON object (`<!-- anthill {…} -->`). Both providers keep HTML comments in Markdown bodies without showing them.
 
