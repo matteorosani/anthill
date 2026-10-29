@@ -259,6 +259,14 @@ func TestResolveReviewingOff(t *testing.T) {
 	}
 }
 
+// Setting labels ignore case like every label: Agent:Codex picks codex.
+func TestForItemLabelInAnotherCase(t *testing.T) {
+	item, warnings := domain.ConfigLayers{}.Resolve().ForItem([]string{"Anthill", "Agent:Codex", "BUDGET:30"})
+	if item.Runner != domain.RunnerCodex || item.Budget != 30*time.Minute || len(warnings) != 0 {
+		t.Errorf("runner %q, budget %v, warnings %+v; want codex, 30m, none", item.Runner, item.Budget, warnings)
+	}
+}
+
 // The runner order: agent: label, local entry, global, default (spec
 // ant-execution, "Label overrides repository default").
 func TestForItemLabelOverridesRepositoryDefault(t *testing.T) {

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"slices"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -502,7 +503,7 @@ func (p *Provider) addLabel(ref domain.Ref, label string) error {
 	if err != nil {
 		return err
 	}
-	if !slices.Contains(*labels, label) {
+	if !domain.HasLabel(*labels, label) {
 		*labels = append(*labels, label)
 		touch()
 	}
@@ -525,7 +526,7 @@ func (p *Provider) removeLabel(ref domain.Ref, label string) error {
 	if err != nil {
 		return err
 	}
-	if i := slices.Index(*labels, label); i >= 0 {
+	if i := slices.IndexFunc(*labels, func(l string) bool { return strings.EqualFold(l, label) }); i >= 0 {
 		*labels = slices.Delete(*labels, i, i+1)
 		touch()
 	}

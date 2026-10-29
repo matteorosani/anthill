@@ -307,10 +307,12 @@ func TestProviderCommentsAndLabels(t *testing.T) {
 		t.Fatal(err)
 	}
 	_ = alice.AddLabel(ctx, item12, "anthill:hold")
+	// Labels ignore case on both providers: Anthill:Hold is the same label.
+	_ = alice.AddLabel(ctx, item12, "Anthill:Hold")
 	if item, _ := p.Item(item12); !slices.Equal(item.Labels, []string{"anthill", "anthill:hold"}) {
 		t.Errorf("labels = %v", item.Labels)
 	}
-	_ = alice.RemoveLabel(ctx, item12, "anthill:hold")
+	_ = alice.RemoveLabel(ctx, item12, "ANTHILL:HOLD")
 	_ = alice.RemoveLabel(ctx, item12, "missing")
 	if item, _ := p.Item(item12); !slices.Equal(item.Labels, []string{"anthill"}) {
 		t.Errorf("labels = %v", item.Labels)

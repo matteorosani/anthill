@@ -261,7 +261,7 @@ func (e Effective) ForItem(labels []string) (Effective, []LabelWarning) {
 	e.shown = maps.Clone(e.shown)
 	r := resolver{e: &e}
 	if item.Agent != "" {
-		if runner := Runner(item.Agent); runner.Valid() {
+		if runner := Runner(strings.ToLower(item.Agent)); runner.Valid() {
 			e.Runner = runner
 			r.record(KeyRunner, LayerLabel, string(runner))
 		} else {
