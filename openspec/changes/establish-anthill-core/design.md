@@ -7,7 +7,7 @@ Greenfield repository with no code yet. See proposal.md for motivation and specs
 - Anthill runs on **developer machines** (Windows, macOS, Linux), often several at once against the same trackers. There is no shared server, and machines sleep, go offline and are not reachable from the internet.
 - Providers are GitHub and Azure DevOps, both reachable only by **polling** from a developer machine. Both have rate limits.
 - Agents (Claude Code, Codex, OpenCode) are third-party CLIs with different capabilities: session resume, live input, hooks, MCP support.
-- This is a personal/exploratory project. The implementation language is not decided yet (see Open Questions).
+- This is a personal/exploratory project, written in Go (D13).
 
 ## Goals / Non-Goals
 
@@ -122,13 +122,25 @@ Only leaf items (no open children) are eligible, and opt-in is per item. Ants wo
 
 *Alternative (deferred, needs analysis):* labelling a parent opts in its children. Children would be proposed in dependency or backlog order, and the parent closed when all are done. Not done now because it raises unresolved questions: ordering between siblings, whether siblings share a branch or PR, who closes the parent, and how partial opt-in interacts with explicit labels. To be analysed in a later change. The `is-leaf` prerequisite and the parent/child links in the normalized model are the hooks it will build on.
 
-### D13. Implementation language: pending, leaning Go
+### D13. Implementation language: Go
 
-The specs and this design are language-neutral, but the task breakdown depends on the choice, so it must be made before tasks are written.
+Anthill is written in Go (current stable release), as one module `github.com/matteorosani/anthill` that builds one `anthill` binary for Windows, macOS and Linux. Go fits the learning goal, has a good process and concurrency model for a supervisor daemon, and cross-compiles to static binaries.
 
-- **Go (recommended):** matches the learning goal; good process and concurrency model for a supervisor daemon; single static binary on all three OSes; mature `go-github`, and an official `azure-devops-go-api`.
-- **Rust:** also matches the learning goal, but the steeper curve slows down an exploratory project. Async process supervision on Windows takes more effort.
-- **C#:** the team's strongest language, with first-party Azure DevOps SDKs and Octokit. It does not serve the learning goal.
+Rust was rejected because its steeper curve slows down an exploratory project and async process supervision on Windows takes more effort. C# was rejected because it does not serve the learning goal.
+
+Layout follows D1: `cmd/anthill` (CLI, daemon and `anthill mcp` entry points), `internal/domain` (no I/O), `internal/app` (application services), `internal/ports` (interfaces), `internal/adapters/<name>` (one package per adapter), and `internal/testkit` (fakes for every port).
+
+Main libraries, chosen for being maintained and pure Go where possible:
+- `google/go-github` for GitHub, and `microsoft/azure-devops-go-api` for Azure DevOps;
+- `modernc.org/sqlite` for the local store, so no C compiler is needed;
+- the official `modelcontextprotocol/go-sdk` for the ant tools;
+- `spf13/cobra` for the CLI;
+- `Microsoft/go-winio` for the Windows named pipe;
+- `zalando/go-keyring` for the OS credential store;
+- the OpenTelemetry Go SDK and OTLP exporters;
+- `gen2brain/beeep` for desktop notifications.
+
+The marker is a hidden HTML comment holding a JSON object (`<!-- anthill {…} -->`). Both providers keep HTML comments in Markdown bodies without showing them.
 
 ### D14. Anthill acts as the developer
 
@@ -193,12 +205,10 @@ Not applicable (greenfield). Rollout: one developer first, with shepherd scope `
 
 ## Open Questions
 
-- **Implementation language (D13)** must be decided before tasks are written.
 - Hierarchy-aware execution (inherited opt-in, sibling ordering, parent closure). See D12. Needs its own analysis and change.
 - Claim takeover after holder inactivity. See D15.
 - Optional local verification before opening a PR. See D16.
 - GUI technology. Deferrable: the GUI is just another client of the control API.
 - Whether stacked ant branches (working on top of an unmerged dependency PR) should be supported later. The current specs forbid it.
-- Exact marker comment encoding (HTML comment with JSON vs key/value). An implementation detail, constrained only by the specs.
 - Per-runner details such as headless permission flags, which hooks are used, how session ids are captured (D17) and which OTel variables each runner honours (D18). Fixed when each runner adapter is built.
 - Stronger agent isolation (separate OS user or container) to close the credential gap in D4.

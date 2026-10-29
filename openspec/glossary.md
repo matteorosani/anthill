@@ -126,6 +126,16 @@ Every spec, design and task uses these terms with exactly one meaning. When a ne
 - **Local repository entry**: the user's setting for one repository on this machine, including its clone path.
 - **Repository file**: `.anthill.yml` committed in the target repository, holding team-wide settings.
 
+## Implementation
+
+- **Domain**: the Go packages that hold Anthill's rules and state machines without any I/O (design D1).
+- **Application service**: a component that carries out one capability by calling the domain and ports, such as `Claiming` or `Shepherd`.
+- **Port**: a Go interface the application services depend on, such as `TrackerPort` or `AgentRunner`.
+- **Adapter**: an implementation of a port for one technology, such as GitHub, git or Claude Code.
+- **Fake**: an in-memory adapter used in tests, with no network or external process.
+- **Outbox**: the local table of change events still to handle, which gives exactly-once handling across restarts (design D7).
+- **Fake agent**: a small test program that acts like a runner's CLI, used to test runner adapters and ant supervision without a real agent.
+
 ## Writing rules
 
 - "Start", "end", "resume" and "stop" apply to runs. Ants are created, are between runs, and become final.
