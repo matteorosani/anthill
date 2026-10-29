@@ -4,10 +4,10 @@ Terms follow `openspec/glossary.md`. Every group lands its own tests and docs. U
 
 ## 1. Project setup
 
-- [ ] 1.1 Create the Go module `github.com/matteorosani/anthill` with the D13 layout (`cmd/anthill`, `internal/domain`, `internal/app`, `internal/ports`, `internal/adapters`, `internal/testkit`), and verify `go build ./...` and `go vet ./...` pass
-- [ ] 1.2 Add a `golangci-lint` configuration and a `Makefile` (or `magefile`) with `build`, `test`, `lint` targets, and verify `make lint test` passes on the empty project
-- [ ] 1.3 Add a GitHub Actions workflow that builds, lints and runs `go test -race ./...` on Linux, macOS and Windows, and verify it is green on `main`
-- [ ] 1.4 Add a developer section to `README.md` (prerequisites, build, test), and verify the documented commands run as written
+- [x] 1.1 Create the Go module `github.com/matteorosani/anthill` with the D13 layout (`cmd/anthill`, `internal/domain`, `internal/app`, `internal/ports`, `internal/adapters`, `internal/testkit`), and verify `go build ./...` and `go vet ./...` pass
+- [x] 1.2 Add a `golangci-lint` configuration and a `Makefile` (or `magefile`) with `build`, `test`, `lint` targets, and verify `make lint test` passes on the empty project
+- [x] 1.3 Add a GitHub Actions workflow that builds, lints and runs `go test -race ./...` on Linux, macOS and Windows, and verify it is green on `main`
+- [x] 1.4 Add a developer section to `README.md` (prerequisites, build, test), and verify the documented commands run as written
 
 ## 2. Domain: items, labels and markers
 

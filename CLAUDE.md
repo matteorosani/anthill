@@ -39,4 +39,15 @@ If the specs, design or tasks are unclear, contradict each other, or leave a cho
 
 ## Commits and PRs
 
+Commit messages and PR titles follow [Conventional Commits](https://www.conventionalcommits.org): `<type>: <description>`, for example `feat: add Go module and project layout`. Use these types:
+
+- `feat`: a new capability;
+- `fix`: a bug fix;
+- `refactor`: a code change that neither adds a capability nor fixes a bug;
+- `test`: tests only;
+- `docs`: documentation, specs and `tasks.md` only;
+- `build`: the module, the `Makefile` and tool configuration such as `.golangci.yml`;
+- `ci`: the GitHub Actions workflows;
+- `chore`: anything else, such as `.gitignore`.
+
 Never put a model name or model identifier in commits, PR titles, PR descriptions or code.
