@@ -51,7 +51,7 @@ The queen SHALL be able, from the console, to: list and answer pending questions
 - **THEN** the answer is posted as a reply where the question was asked, attributed to the queen, and a new run resumes the ant's session
 
 ### Requirement: Notifications
-The daemon SHALL raise a local desktop notification for: a new proposal, an ant question, a stale question, an extension request, an ant at its warning threshold, an ant succeeded, failed, timed out or done with no change, a follow-up started or proposed, a follow-up limit reached, a change stored for a waiting ant, a lost claim, and provider polling failures. Each kind SHALL be possible to turn off.
+The daemon SHALL raise a local desktop notification for: a new proposal, an ant question, a stale question, an extension request, an ant at its warning threshold, an ant succeeded, failed, timed out or done with no change, a follow-up started or proposed, a follow-up limit reached, a change stored for an ant between runs, a lost claim, and provider polling failures. Each kind SHALL be possible to turn off.
 
 #### Scenario: Extension request
 - **WHEN** an ant requests an extension that is not auto-approved

@@ -110,7 +110,7 @@ Local capacity (the maximum number of active runs, default 2) and the availabili
 
 #### Scenario: Capacity full
 - **WHEN** two ants have active runs and the capacity is 2
-- **THEN** eligible items are still listed, marked "waiting for capacity", and accepting one queues it
+- **THEN** eligible items are still listed, marked "capacity full", and accepting one creates a `queued` ant
 
 ### Requirement: Proposal list
 Anthill SHALL keep a proposal list of eligible items for the queen, ordered by priority (provider priority field, then a configured priority label, then age), and SHALL re-evaluate eligibility after every poll. Items declined by the queen SHALL be hidden until they change or the queen un-hides them.

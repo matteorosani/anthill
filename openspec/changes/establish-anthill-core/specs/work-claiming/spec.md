@@ -52,7 +52,7 @@ Every claim SHALL have a lease (default 15 minutes). A lease SHALL expire at the
 - **THEN** A ends any active run for #12, sets its ant to `abandoned` with reason "claim lost", keeps its local worktree, and tells its queen
 
 ### Requirement: Long-lived task claims
-While a ticket's ant is waiting without a run (`awaiting-input`, `stopped`, `failed`, `timed-out`, or `succeeded` with its PR open), the task claim SHALL stay held without active lease renewal. It is marked `parked` in the claim comment, and other instances SHALL treat a parked claim as live.
+While a ticket's ant is between runs (`awaiting-input`, `stopped`, `failed`, `timed-out`, or `succeeded` with its PR open), the task claim SHALL stay held without active lease renewal. It is marked `parked` in the claim comment, and other instances SHALL treat a parked claim as live.
 
 #### Scenario: Ant finished, PR open
 - **WHEN** an ant's run opened a PR and called `finish`

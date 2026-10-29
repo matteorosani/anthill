@@ -74,7 +74,7 @@ An actionable change on an item whose ant has an active run SHALL be delivered t
 - **WHEN** the description of #12 is edited during a run on a runner without live input or hooks
 - **THEN** the diff is attached to the result of the run's next ant-tool call
 
-### Requirement: Changes while the ant waits
+### Requirement: Changes while the ant is between runs
 An actionable change on an item whose ant is `queued`, `awaiting-input`, `stopped`, `failed` or `timed-out` SHALL start no run. It SHALL be stored, the queen SHALL be notified, and it SHALL be added to the input of the ant's next run: the start, the resumption after an answer, a retry or a continue.
 
 #### Scenario: Comment on a timed-out ant's draft PR

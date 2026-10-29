@@ -27,11 +27,18 @@ When the queen accepts an eligible item and capacity allows, Anthill SHALL, in t
 - **THEN** the item is queued, and it is claimed and started when a slot frees, if it is still eligible at that moment
 
 ### Requirement: Capacity limits active runs
-An instance SHALL have at most its capacity (default 2) of active runs at a time. Waiting ants SHALL NOT count. When a run is due and capacity is full, the ant SHALL be `queued`, and the run SHALL start when a slot frees if it is still due.
+An instance SHALL have at most its capacity (default 2) of active runs at a time. Ants between runs SHALL NOT count. When a run is due and capacity is full, the ant SHALL be `queued`, and the run SHALL start when a slot frees if it is still due.
 
 #### Scenario: Answer arrives while capacity is full
 - **WHEN** a developer answers the question of the ant for #12 while two other ants have active runs and the capacity is 2
 - **THEN** the ant for #12 is `queued`, and its run resumes the session with the answer as soon as one of the other runs ends
+
+### Requirement: Anthill schedules every run
+An ant between runs SHALL have no process. Only the daemon SHALL start an ant's next run, when its polls find an answer or an actionable change, or when the queen accepts, retries or continues. Agents SHALL NOT be relied on to wait, sleep or schedule their own wake-up.
+
+#### Scenario: Reviewer comments on an ant PR
+- **WHEN** the ant for #12 is `succeeded` with no process, and a developer comments on its PR
+- **THEN** the daemon finds the comment at its next poll and starts a follow-up run that resumes the session
 
 ### Requirement: Task brief
 The ant SHALL receive a task brief containing: the item's title, body, acceptance criteria, comments, the item URL, the branch and base branch, the time budget, the repository's agent instructions if any, and the Anthill conventions it must follow: which ant tools to use to ask questions, request time, push, open the PR and finish.
@@ -41,7 +48,7 @@ The ant SHALL receive a task brief containing: the item's title, body, acceptanc
 - **THEN** all three comments appear in the brief, and Anthill's own claim comments do not
 
 ### Requirement: Ant lifecycle states
-Each ant SHALL be in exactly one state. With an active run: `starting`, `running`, `awaiting-extension`, `finishing`. Waiting without a run: `queued` (waiting for capacity), `awaiting-input`, `stopped`, `failed`, `timed-out`, `succeeded` (PR open). Final: `done` (PR merged or closed, or no change needed) and `abandoned`. Every transition SHALL be recorded with a timestamp and a reason, and SHALL be visible in the queen console.
+Each ant SHALL be in exactly one state. With an active run: `starting`, `running`, `awaiting-extension`, `finishing`. Between runs: `queued` (a run is due, but capacity is full), `awaiting-input`, `stopped`, `failed`, `timed-out`, `succeeded` (PR open). Final: `done` (PR merged or closed, or no change needed) and `abandoned`. Every transition SHALL be recorded with a timestamp and a reason, and SHALL be visible in the queen console.
 
 #### Scenario: Ant asks a question
 - **WHEN** an ant's active run asks the developer a question

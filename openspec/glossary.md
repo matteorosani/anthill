@@ -47,10 +47,10 @@ Every spec, design and task uses these terms with exactly one meaning. When a ne
   - **Review claim**: a claim on a PR, held for one shepherd round and its fix pass.
 - **Lease**: how long a claim stays valid without renewal (default 15 minutes), counted from the provider's timestamp of the claim comment. The holder **renews** it by editing the comment.
 - **Live**: a claim whose lease has not expired, or that is parked.
-- **Parked**: a task claim held without renewal while its ant waits without a run. Other instances treat it as live.
+- **Parked**: a task claim held without renewal while its ant is between runs. Other instances treat it as live.
 - **Expired**: a claim whose lease ran out without renewal. It counts as released.
 - **Released**: a claim that is given up. Anthill removes the claim label and marks the comment as released. A developer can **force-release** any claim.
-- **Capacity**: the maximum number of active runs on one instance at the same time (default 2). Waiting ants do not use capacity.
+- **Capacity**: the maximum number of active runs on one instance at the same time (default 2). Ants between runs do not use capacity.
 
 ## Ants and runs
 
@@ -61,9 +61,10 @@ Every spec, design and task uses these terms with exactly one meaning. When a ne
   - **Follow-up run**: a run started for changes after the ant's PR is open. Retries keep the kind of the run they replace.
 - **Ant states** (ant-execution):
   - with an active run: `starting`, `running`, `awaiting-extension`, `finishing`;
-  - waiting, without a run: `queued` (waiting for capacity), `awaiting-input`, `stopped`, `failed`, `timed-out`, `succeeded` (PR open);
+  - between runs: `queued` (a run is due, but capacity is full), `awaiting-input`, `stopped`, `failed`, `timed-out`, `succeeded` (PR open);
   - final: `done` (PR merged or closed, or no change needed) and `abandoned`.
-- **Waiting**: an ant in a state without an active run that is not final.
+- **Between runs**: an ant that has no active run and is not final. It has no process at all: it is only a record in the session index. Anthill decides from its polls and from queen actions when to start the next run. Any "waiting" is done by the daemon, never by an agent.
+- **Due**: a run Anthill has decided to start, because of an answer, a change, a retry, a continue or an acceptance.
 - **Queen actions on an ant**:
   - **stop**: end the active run and keep the claim; the ant is `stopped`;
   - **retry**: start a new run for a `failed` or `stopped` ant, resuming its session with the remaining budget;
@@ -113,7 +114,7 @@ Every spec, design and task uses these terms with exactly one meaning. When a ne
 ## Changes and comments
 
 - **Change**: a human edit, comment or review on an item or PR. Anthill records each as a **change event** and classifies it as `actionable`, `informational` or `command` (change-reaction).
-- **Stored change**: an actionable change kept for the ant's next run because the ant is waiting.
+- **Stored change**: an actionable change kept for the ant's next run because the ant is between runs.
 - **Marker**: the hidden machine-readable part of every Anthill comment. It names the instance, the comment kind and the item or PR. "Marker" never means a label.
 - **Comment kinds**: `claim`, `question`, `status`, `summary`, `finding`, `reply` (agent-conversation).
 - **Question**: a `question` comment an ant posts with `ask_question`. It is **pending** until answered, and **stale** after the question timeout (default 3 days).
@@ -127,7 +128,8 @@ Every spec, design and task uses these terms with exactly one meaning. When a ne
 
 ## Writing rules
 
-- "Start", "end", "resume" and "stop" apply to runs. Ants are created, wait and become final.
+- "Start", "end", "resume" and "stop" apply to runs. Ants are created, are between runs, and become final.
+- Never write that an ant or an agent waits, sleeps or wakes up. Only Anthill schedules runs. Use "waits" only for Anthill itself, for a tool call such as `request_extension`, or for people.
 - "Running" is used only as the state name `running`. Say "has an active run" otherwise.
 - Use "item" for the tracked work, never "task".
 - Use "label" for labels and tags, and "marker" only for the hidden comment part.
