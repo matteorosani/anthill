@@ -13,6 +13,11 @@ const (
 	DefaultCeilingFactor   = 3
 	DefaultGracePeriod     = 3 * time.Minute
 	DefaultFollowUpPercent = 50
+	// DefaultMaxBaseBudget caps budget: labels.
+	DefaultMaxBaseBudget = 180 * time.Minute
+	// DefaultExtensionWait is how long request_extension waits for the
+	// queen.
+	DefaultExtensionWait = 5 * time.Minute
 )
 
 // BudgetSource tells where a base budget came from.
