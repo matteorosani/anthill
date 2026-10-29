@@ -7,6 +7,7 @@ import (
 
 	gh "github.com/google/go-github/v93/github"
 
+	"github.com/matteorosani/anthill/internal/adapters/internal/httpkit"
 	"github.com/matteorosani/anthill/internal/ports"
 )
 
@@ -38,7 +39,7 @@ func (a *Adapter) apiError(op string, resp *gh.Response, err error) error {
 	if status == 0 {
 		// A transport error: the connection, a timeout or the
 		// credential lookup. It stays wrapped for errors.Is.
-		return &scrubbedError{msg: fmt.Sprintf("github: %s: %s", op, a.scrub(err.Error())), err: err}
+		return &httpkit.ScrubbedError{Msg: fmt.Sprintf("github: %s: %s", op, a.scrub(err.Error())), Err: err}
 	}
 	return a.statusError(op, status, message)
 }
@@ -61,18 +62,8 @@ func (a *Adapter) statusError(op string, status int, message string) error {
 // scrub removes secrets from text that came from GitHub or the network:
 // the token in use, and whatever the redactor's patterns match.
 func (a *Adapter) scrub(text string) string {
-	return a.redactor.Redact(a.auth.scrub(text))
+	return a.redactor.Redact(a.token.Scrub(text))
 }
-
-// scrubbedError shows a scrubbed message but still wraps the original
-// error, so that errors.Is finds ports.ErrNoCredential or a context error.
-type scrubbedError struct {
-	msg string
-	err error
-}
-
-func (e *scrubbedError) Error() string { return e.msg }
-func (e *scrubbedError) Unwrap() error { return e.err }
 
 // notFound reports whether err is a GitHub 404.
 func notFound(err error) bool {
