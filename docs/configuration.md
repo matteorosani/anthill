@@ -3,7 +3,7 @@
 Anthill reads its settings from several layers (spec anthill-configuration). For each setting, the highest layer that sets it wins:
 
 1. **label**: a per-item setting label on the item: `agent:<runner>`, `budget:<minutes>` or `base:<branch>`.
-2. **.anthill.yml**: the repository file committed at the root of the target repository. It holds team-wide settings.
+2. **.anthill.yml**: the repository file at the root of the target repository. It holds team-wide settings.
 3. **local repository entry**: your entry for the repository in your own configuration file.
 4. **global configuration**: the top level of your own configuration file.
 5. **default**: the built-in value.
@@ -50,7 +50,7 @@ A repository is identified by `provider` (`github` or `azure-devops`) and `remot
 
 ### The repository file
 
-`.anthill.yml` sits at the root of the repository and holds only the shared settings marked `.anthill.yml` in the table below:
+`.anthill.yml` sits at the root of the repository and holds only the shared settings marked `.anthill.yml` in the table below. Anthill reads it from the working folder of your local clone, whatever branch is checked out, so an uncommitted edit takes effect at the next reload:
 
 ```yaml
 budget: 45
