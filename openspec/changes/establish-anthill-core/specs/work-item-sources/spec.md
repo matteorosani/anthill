@@ -13,13 +13,13 @@ Anthill SHALL support GitHub (Issues and Pull Requests) and Azure DevOps (Work I
 - **AND** the Azure DevOps failure is recorded and shown in the queen console with the time of the last successful poll
 
 ### Requirement: Opt-in marking of tickets
-A ticket SHALL be considered by Anthill only if it carries the configured opt-in marker: a label on GitHub, a tag on Azure DevOps (default `anthill`). Tickets without the marker SHALL be ignored for task proposals.
+A ticket SHALL be considered by Anthill only if it carries the configured opt-in label: a label on GitHub, a tag on Azure DevOps (default `anthill`). Tickets without it SHALL be ignored for proposals.
 
 #### Scenario: Ticket without opt-in label
 - **WHEN** a GitHub issue in a configured repository has no `anthill` label
 - **THEN** the issue does not appear in the proposal list and no ant is ever started for it
 
-#### Scenario: Opt-in marker added later
+#### Scenario: Opt-in label added later
 - **WHEN** the `anthill` label is added to an existing issue
 - **THEN** the issue is ingested at the next poll and evaluated for eligibility
 
@@ -48,9 +48,9 @@ Every work item SHALL be resolved to exactly one target code repository. A GitHu
 ### Requirement: Pull request ingestion
 Anthill SHALL poll open pull requests in configured repositories. Each PR SHALL be mapped to a normalized model with: identifier, URL, source and target branches, author, head commit, draft flag, labels, review threads and comments, and a link to the originating work item when it can be detected.
 
-#### Scenario: Ant-authored PR linked to its ticket
+#### Scenario: Ant PR linked to its ticket
 - **WHEN** a PR's body contains the ticket reference that Anthill wrote when opening it
-- **THEN** the normalized PR is linked to that work item and marked as ant-authored
+- **THEN** the normalized PR is linked to that work item and marked as an ant PR
 
 ### Requirement: Polling cadence
 Polling SHALL run on a configurable interval per provider (default 2 minutes). It SHALL respect provider rate limits. When a provider reports that the rate limit is exhausted, polling of that provider SHALL wait until the reported reset time instead of failing repeatedly.

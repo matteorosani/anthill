@@ -1,5 +1,9 @@
 schema: spec-driven
 
+context: |
+  Use every term exactly as defined in openspec/glossary.md, and follow its writing rules.
+  Add a new term to the glossary before using it in a spec, design or task.
+
 # Project context (optional)
 # Add only constraints that should guide OpenSpec artifacts and workflows.
 # Include constraints an agent cannot infer by reading the code.

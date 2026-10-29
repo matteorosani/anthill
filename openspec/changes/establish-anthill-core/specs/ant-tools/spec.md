@@ -44,7 +44,7 @@ Ants SHALL have `request_extension(minutes, reason)`, which applies the ant-time
 
 ### Requirement: Conversation tools
 Ants SHALL have:
-- `ask_question(text, where)`, which posts a question on the task or the PR. When the call returns, Anthill SHALL stop the runner itself with the session saved, the run ends, and the ant is `awaiting-input` (agent-conversation);
+- `ask_question(text, where)`, which posts a question on the ticket or the PR. When the call returns, Anthill SHALL stop the runner itself with the session saved, the run ends, and the ant is `awaiting-input` (agent-conversation);
 - `report_progress(text)`, which updates the run's single status comment;
 - `comment(where, body)` and `reply_to_thread(thread, body, resolve)` for agent-written comments.
 

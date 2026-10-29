@@ -6,23 +6,7 @@ Development work is tracked across several issue trackers (mainly GitHub and Azu
 
 ## Glossary
 
-The specs use these terms with one meaning each.
-
-- **Work item**, **item** or **ticket**: a GitHub issue or an Azure DevOps work item.
-- **Queen**: the developer operating one Anthill instance.
-- **Instance**: one Anthill daemon on one machine, identified as `user@machine`.
-- **Ant**: the worker an instance keeps for one accepted work item, from acceptance until it is `done` or `abandoned`. It owns the branch, the worktree, the runner session, the time budget and the task claim. Its state is defined in ant-execution.
-- **Run**: one agent process Anthill starts for an ant. A run ends when the agent calls `finish`, exits or crashes, or when Anthill ends it (after a question, at time-out, on stop or abandon). An ant does anything only through a run, so "the ant calls `push`" means its active run does.
-- **Active run**: a run whose process is alive. The ant is then `starting`, `running`, `awaiting-extension` or `finishing`. In every other state the ant has no process and is either waiting or final.
-- **Task run** and **follow-up run**: a run before the ant's PR exists, and a run started for changes after the PR is open. Retries keep the kind of the run they replace.
-- **Agent**: the AI coding assistant inside a run or a shepherd round. **Runner**: the CLI that hosts it (Claude Code, Codex, OpenCode). **Session**: the runner's saved conversation, resumed across runs of one ant.
-- **Ant PR**: a PR opened by an ant. **Human PR**: any other PR.
-- **Shepherd**: the part of Anthill that reviews PRs. A **round** is one review of one head commit by a **review agent**. A **fix agent** applies auto-fixes on opted-in human PRs. A **finding** is one problem a round reports.
-- **Claim**: a `task` claim on a ticket or a `review` claim on a PR. A claim is **live** while its lease runs, **parked** while its ant waits, and **released** when its work ends.
-- **Change**: a human edit, comment or review on a ticket or PR. It is classified `actionable`, `informational` or `command`.
-- **Marker**: the hidden machine-readable part of every Anthill comment.
-
-Writing rules: "start", "end", "resume" and "stop" apply to runs. Ants are created, wait, and become final. "Running" is used only as the state name.
+The specs, the design and the tasks use the terms defined in [`openspec/glossary.md`](../../glossary.md), each with one meaning. It defines the queen, ants and runs, claims, budgets, the shepherd, labels and markers, and the writing rules that keep them apart.
 
 ## What Changes
 
@@ -40,7 +24,7 @@ Writing rules: "start", "end", "resume" and "stop" apply to runs. Ants are creat
 - Introduce **ant tools**: the local MCP tool set through which agents push, open PRs, comment, ask questions, request time and finish, so agents never hold provider or push credentials.
 - Introduce **observability**: optional OpenTelemetry export of Anthill's traces, metrics and logs, linked to the agents' own telemetry, with content never exported.
 
-Out of scope for this change: implementation tasks (this change refines the specs only; tasks will follow), the GUI, automatic merging, automatic acceptance of tasks without the queen, hierarchy-aware execution (opt-in inherited from parent items; only leaf items are eligible for now), and providers other than GitHub and Azure DevOps.
+Out of scope for this change: implementation tasks (this change refines the specs only; tasks will follow), the GUI, automatic merging, automatic acceptance of items without the queen, hierarchy-aware execution (opt-in inherited from parent items; only leaf items are eligible for now), and providers other than GitHub and Azure DevOps.
 
 ## Capabilities
 

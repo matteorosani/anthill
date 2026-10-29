@@ -28,7 +28,7 @@ When export is on, Anthill SHALL emit spans for: each poll cycle and provider ca
 
 ### Requirement: Metrics
 When export is on, Anthill SHALL emit at least:
-- running and queued ants;
+- active runs and queued ants;
 - run duration and outcome;
 - tokens and cost per run where known;
 - provider poll latency and errors, and remaining rate limit;

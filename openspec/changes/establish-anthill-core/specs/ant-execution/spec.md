@@ -26,6 +26,13 @@ When the queen accepts an eligible item and capacity allows, Anthill SHALL, in t
 - **WHEN** the queen accepts an item while capacity is full
 - **THEN** the item is queued, and it is claimed and started when a slot frees, if it is still eligible at that moment
 
+### Requirement: Capacity limits active runs
+An instance SHALL have at most its capacity (default 2) of active runs at a time. Waiting ants SHALL NOT count. When a run is due and capacity is full, the ant SHALL be `queued`, and the run SHALL start when a slot frees if it is still due.
+
+#### Scenario: Answer arrives while capacity is full
+- **WHEN** a developer answers the question of the ant for #12 while two other ants have active runs and the capacity is 2
+- **THEN** the ant for #12 is `queued`, and its run resumes the session with the answer as soon as one of the other runs ends
+
 ### Requirement: Task brief
 The ant SHALL receive a task brief containing: the item's title, body, acceptance criteria, comments, the item URL, the branch and base branch, the time budget, the repository's agent instructions if any, and the Anthill conventions it must follow: which ant tools to use to ask questions, request time, push, open the PR and finish.
 
@@ -34,7 +41,7 @@ The ant SHALL receive a task brief containing: the item's title, body, acceptanc
 - **THEN** all three comments appear in the brief, and Anthill's own claim comments do not
 
 ### Requirement: Ant lifecycle states
-Each ant SHALL be in exactly one state. With an active run: `starting`, `running`, `awaiting-extension`, `finishing`. Waiting without a run: `queued`, `awaiting-input`, `stopped`, `failed`, `timed-out`, `succeeded` (PR open). Final: `done` (PR merged or closed, or no change needed) and `abandoned`. Every transition SHALL be recorded with a timestamp and a reason, and SHALL be visible in the queen console.
+Each ant SHALL be in exactly one state. With an active run: `starting`, `running`, `awaiting-extension`, `finishing`. Waiting without a run: `queued` (waiting for capacity), `awaiting-input`, `stopped`, `failed`, `timed-out`, `succeeded` (PR open). Final: `done` (PR merged or closed, or no change needed) and `abandoned`. Every transition SHALL be recorded with a timestamp and a reason, and SHALL be visible in the queen console.
 
 #### Scenario: Ant asks a question
 - **WHEN** an ant's active run asks the developer a question
@@ -114,7 +121,7 @@ Anthill SHALL rely on the status the ant reports with `finish` (`complete`, `par
 - **THEN** Anthill runs no build or tests, and the PR stays ready for review
 
 ### Requirement: No change needed
-When an ant concludes that its item needs no code change, it SHALL call `finish(no-change)` with an explanation and no new commits. On a task run, Anthill SHALL post the explanation on the ticket, add the exclusion marker (default `anthill:hold`), release the task claim, and set the ant to `done` with outcome no-change. A human then closes the ticket or removes the marker.
+When an ant concludes that its item needs no code change, it SHALL call `finish(no-change)` with an explanation and no new commits. On a task run, Anthill SHALL post the explanation on the ticket, add the hold label (default `anthill:hold`), release the task claim, and set the ant to `done` with outcome no-change. A human then closes the ticket or removes the marker.
 
 #### Scenario: Bug already fixed
 - **WHEN** the ant for #12 finds that the reported bug was already fixed on the base branch and calls `finish(no-change)` with the reason
@@ -122,7 +129,7 @@ When an ant concludes that its item needs no code change, it SHALL call `finish(
 
 #### Scenario: Follow-up needing no change
 - **WHEN** a follow-up run for a reviewer's question replies on the thread and calls `finish(no-change)`
-- **THEN** nothing is pushed, the PR is left as it is, no marker is added, and the claim stays parked
+- **THEN** nothing is pushed, the PR is left as it is, no hold label is added, and the claim stays parked
 
 ### Requirement: Draft PRs for incomplete work
 The agent's draft choice SHALL be honoured, except that when an ant reports partial completion, or its time budget runs out (ant-timebox), Anthill SHALL make the PR a draft regardless of the agent's choice and list the open points in the PR body. When a later run for the same item finishes with status `complete`, Anthill SHALL mark the draft PR ready for review.
@@ -145,7 +152,7 @@ The queen, or a developer with `/anthill stop`, SHALL be able to stop an ant tha
 ### Requirement: Abandoning an ant
 The queen SHALL be able to abandon an ant in any state except `done` and `abandoned`. Abandoning ends any active run and releases the task claim. The worktree SHALL be kept until the queen explicitly cleans it up.
 
-#### Scenario: Abandon a running ant
+#### Scenario: Abandon an ant with an active run
 - **WHEN** the queen abandons an ant that has an active run
 - **THEN** the run is ended within 10 seconds, the claim is released, and the ant is `abandoned`
 

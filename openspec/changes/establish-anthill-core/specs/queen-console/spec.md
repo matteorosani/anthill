@@ -1,6 +1,6 @@
 ## Purpose
 
-Defines how the developer (the ant queen) operates Anthill. A long-running local daemon does the polling and supervision, and a CLI talks to it to review proposals, accept or decline work, answer ants and control them. A GUI can be added later on the same interface.
+Defines how the queen, the developer who operates an Anthill instance, works with it. A long-running local daemon does the polling and supervision, and a CLI talks to it to review proposals, accept or decline work, answer ants and control them. A GUI can be added later on the same interface.
 
 ## ADDED Requirements
 
@@ -65,7 +65,7 @@ The CLI SHALL show recorded usage (duration, tokens, cost) per ant run, per work
 - **THEN** the CLI lists each run and round with its tokens and cost, and shows a total that states how many runs had unknown cost
 
 ### Requirement: Health and status
-The CLI SHALL report daemon health: uptime, each provider's last successful poll and error, rate limit state, running and queued ants, held claims, and the shepherd's active rounds.
+The CLI SHALL report daemon health: uptime, each provider's last successful poll and error, rate limit state, ants with active runs, queued ants, held claims, and the shepherd's active rounds.
 
 #### Scenario: Status overview
 - **WHEN** the queen runs the status command

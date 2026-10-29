@@ -5,7 +5,7 @@ Defines the PR Shepherd: the part of Anthill that watches open pull requests, re
 ## ADDED Requirements
 
 ### Requirement: Shepherd scope
-The shepherd SHALL review open, non-draft PRs in configured repositories that match the repository's shepherd scope: `ant-authored` (default), `labelled` (PRs with the `anthill:review` label), or `all`. PRs outside the scope SHALL only be reviewed when a developer explicitly requests it.
+The shepherd SHALL review open, non-draft PRs in configured repositories that match the repository's shepherd scope: `ant-authored` (default, ant PRs only), `labelled` (PRs with the `anthill:review` label), or `all`. PRs outside the scope SHALL only be reviewed when a developer explicitly requests it.
 
 #### Scenario: Human PR in ant-authored scope
 - **WHEN** a developer opens a PR without the review label in a repository with scope `ant-authored`
@@ -83,7 +83,7 @@ Review agents SHALL report findings through `submit_review` (ant-tools). Each fi
 - **THEN** an inline comment on line 42 states the problem with severity `blocking`
 
 #### Scenario: Findings handed to the owning ant
-- **WHEN** a round on an ant-authored PR produces `blocking` or `suggestion` findings
+- **WHEN** a round on an ant PR produces `blocking` or `suggestion` findings
 - **THEN** the round summary lists them as handed to the owning ant (change-reaction), whatever their classification, and lists `nit` findings classified `needs-developer` as left to developers
 
 #### Scenario: Clean round
@@ -98,10 +98,10 @@ A round SHALL NOT post a finding that matches an earlier, still unresolved findi
 - **THEN** no new inline comment is posted, and the round 2 summary links to the existing thread as still open
 
 ### Requirement: Automatic fixes
-The shepherd SHALL auto-fix `auto-fixable` findings only on human PRs that opt in, by an `anthill:autofix` label or `/anthill fix` from the PR author or a write-access user, and only when the repository has a verification command. On ant-authored PRs, findings SHALL go to the owning ant instead (change-reaction). An auto-fix push SHALL NOT trigger another automatic round.
+The shepherd SHALL auto-fix `auto-fixable` findings only on human PRs that opt in, by an `anthill:autofix` label or `/anthill fix` from the PR author or a write-access user, and only when the repository has a verification command. On ant PRs, findings SHALL go to the owning ant instead (change-reaction). An auto-fix push SHALL NOT trigger another automatic round.
 
 #### Scenario: Auto-fixable finding on an ant PR
-- **WHEN** a round on an ant-authored PR finds an unused import classified `auto-fixable`
+- **WHEN** a round on an ant PR finds an unused import classified `auto-fixable`
 - **THEN** no fix agent runs, and the finding is handed to the owning ant's follow-up run
 
 #### Scenario: Auto-fix on an opted-in human PR
@@ -114,7 +114,7 @@ The shepherd SHALL auto-fix `auto-fixable` findings only on human PRs that opt i
 
 #### Scenario: Human PR opted in
 - **WHEN** the PR author adds the `anthill:autofix` label to their PR
-- **THEN** `auto-fixable` findings on that PR are fixed and pushed like on an ant PR
+- **THEN** `auto-fixable` findings on that PR go to a fix pass, and the fixes are pushed once verified
 
 #### Scenario: Fork branch not pushable
 - **WHEN** an opted-in human PR comes from a fork that does not allow maintainer edits

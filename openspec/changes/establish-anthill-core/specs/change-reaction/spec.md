@@ -1,6 +1,6 @@
 ## Purpose
 
-Defines how Anthill reacts when a ticket or pull request it is involved in changes, such as an edited description, a new comment, review feedback, or the opt-in label being removed. It decides whether an ant must act and routes the change to a running ant or to a resumed session.
+Defines how Anthill reacts when a ticket or pull request it is involved in changes, such as an edited description, a new comment, review feedback, or the opt-in label being removed. It decides whether an ant must act and routes the change to the ant's active run, to a follow-up run, or to the ant's next run.
 
 ## ADDED Requirements
 
@@ -19,7 +19,7 @@ Change events flagged as Anthill-authored SHALL NOT trigger any reaction. This p
 - **THEN** no reaction is triggered
 
 ### Requirement: Shepherd findings on ant PRs
-On an ant-authored PR, shepherd findings with severity `blocking` or `suggestion`, of either classification, SHALL be actionable for the instance owning the ant. They SHALL start one follow-up run per round, covering those findings plus the round's `auto-fixable` nits. The run SHALL reply on each finding's thread, and its push starts the next round while rounds remain. Other nits SHALL be left to developers, and nits alone SHALL start no run.
+On an ant PR, shepherd findings with severity `blocking` or `suggestion`, of either classification, SHALL be actionable for the instance owning the ant. They SHALL start one follow-up run per round, covering those findings plus the round's `auto-fixable` nits. The run SHALL reply on each finding's thread, and its push starts the next round while rounds remain. Other nits SHALL be left to developers, and nits alone SHALL start no run.
 
 #### Scenario: Blocking finding fixed by the ant
 - **WHEN** round 1 on the ant PR for #12 posts a `blocking` finding
@@ -83,7 +83,7 @@ An actionable change on an item whose ant is `queued`, `awaiting-input`, `stoppe
 
 #### Scenario: Ticket edited while waiting for an answer
 - **WHEN** the body of #12 is edited while its ant is `awaiting-input`
-- **THEN** the edit is given to the ant together with the answer when it resumes
+- **THEN** the edit is given, together with the answer, to the run that resumes the session
 
 ### Requirement: Resuming for follow-up work
 An actionable change on an item whose ant is `succeeded` with an open ant PR SHALL start a follow-up run. The run resumes the prior session in the same worktree, gets a fresh time budget (default: half the base budget), and receives as input all actionable changes stored since the last run. It SHALL push to the existing PR branch and SHALL NOT open a new PR.
@@ -115,18 +115,18 @@ The number of follow-up runs per PR SHALL be limited by configuration (default 5
 - **THEN** no run is proposed automatically, and the queen is notified that the follow-up limit was reached
 
 ### Requirement: Hold freezes the ant
-When the exclusion marker (default `anthill:hold`) is added to an item whose ant is not final, an active run SHALL finish normally. While the marker is present, no run SHALL start for the item, the claim SHALL stay, and actionable changes SHALL be stored. When the marker is removed, stored changes SHALL be handled as if they had just arrived.
+When the hold label (default `anthill:hold`) is added to an item whose ant is not final, an active run SHALL finish normally. While the label is present, no run SHALL start for the item, the claim SHALL stay, and actionable changes SHALL be stored. When the label is removed, stored changes SHALL be handled as if they had just arrived.
 
 #### Scenario: Hold added during a run
 - **WHEN** a developer adds `anthill:hold` to #12 while its ant has an active run
-- **THEN** the run continues to its end, and no follow-up run starts afterwards while the marker is present
+- **THEN** the run continues to its end, and no follow-up run starts afterwards while the label is present
 
 #### Scenario: Retry while held
 - **WHEN** the queen retries a failed ant whose item carries `anthill:hold`
 - **THEN** the retry is refused with "item is on hold"
 
 ### Requirement: Withdrawal of opt-in
-If the opt-in marker is removed from a claimed item, or the item is closed, Anthill SHALL end any active run for it, keep the worktree, release the task claim, and notify the queen. An open ant PR SHALL be left to the developers.
+If the opt-in label is removed from a claimed item, or the item is closed, Anthill SHALL end any active run for it, keep the worktree, release the task claim, and notify the queen. An open ant PR SHALL be left to the developers.
 
 #### Scenario: Label removed mid-run
 - **WHEN** the `anthill` label is removed from #12 while its ant has an active run

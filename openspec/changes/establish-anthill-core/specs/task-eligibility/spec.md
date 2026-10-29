@@ -12,9 +12,9 @@ A work item SHALL be eligible only if every prerequisite in this specification h
 - **THEN** evaluation reports it as not eligible with both `not-claimed` and `dependencies-satisfied` listed as unmet
 
 ### Requirement: Prerequisite opted-in
-The item SHALL carry the configured opt-in marker (`opted-in`).
+The item SHALL carry the configured opt-in label (`opted-in`).
 
-#### Scenario: Marker removed
+#### Scenario: Opt-in label removed
 - **WHEN** the `anthill` label is removed from a proposed item
 - **THEN** the item leaves the proposal list at the next evaluation
 
@@ -74,7 +74,7 @@ The item SHALL map to a repository that is configured and cloned on this machine
 - **THEN** the item is not eligible, with reason "repository contoso/api not available on this machine"
 
 ### Requirement: Prerequisite no active work
-The item SHALL have no open ant-authored PR and no local ant in any state other than `done` or `abandoned` (`no-active-work`). Follow-up work on such an item goes through change-reaction, not through a new proposal.
+The item SHALL have no open ant PR and no local ant in any state other than `done` or `abandoned` (`no-active-work`). Follow-up work on such an item goes through change-reaction, not through a new proposal.
 
 #### Scenario: PR already open
 - **WHEN** an ant already opened a PR for the item and the PR is still open
@@ -99,17 +99,17 @@ The item SHALL have a non-empty description (`has-description`). When a reposito
 - **THEN** it is not eligible, with `has-description` unmet
 
 ### Requirement: Prerequisite not excluded
-The item SHALL NOT carry any configured exclusion marker (`not-excluded`, default `anthill:hold`).
+The item SHALL NOT carry the hold label (`not-excluded`, default `anthill:hold`).
 
 #### Scenario: Put on hold
 - **WHEN** a developer adds `anthill:hold` to an eligible item
 - **THEN** it leaves the proposal list
 
 ### Requirement: Eligibility is separate from capacity
-Local capacity (the maximum number of concurrent ants, default 2) and the availability of an agent runner SHALL NOT affect eligibility. They SHALL only gate starting an ant: eligible items stay proposed while capacity is full.
+Local capacity (the maximum number of active runs, default 2) and the availability of an agent runner SHALL NOT affect eligibility. They SHALL only gate starting an ant: eligible items stay proposed while capacity is full.
 
 #### Scenario: Capacity full
-- **WHEN** two ants are running and the limit is 2
+- **WHEN** two ants have active runs and the capacity is 2
 - **THEN** eligible items are still listed, marked "waiting for capacity", and accepting one queues it
 
 ### Requirement: Proposal list

@@ -73,7 +73,7 @@ Ant commits SHALL use the developer's configured git identity, with trailers nam
 - **THEN** the commit message ends with `Anthill-Item: gh-12`, `Anthill-Agent: claude-code` and `Anthill-Instance: mrosani@LAPTOP-42`
 
 ### Requirement: Worktree cleanup
-After an ant PR is merged or closed, or a task is abandoned and the queen confirms cleanup, Anthill SHALL remove the worktree. It SHALL delete the local branch, and the remote branch only if the provider has not already deleted it and the PR is merged. Worktrees with unpushed commits SHALL NOT be removed without explicit confirmation.
+After an ant PR is merged or closed, or its ant is abandoned and the queen confirms cleanup, Anthill SHALL remove the worktree. It SHALL delete the local branch, and the remote branch only if the provider has not already deleted it and the PR is merged. Worktrees with unpushed commits SHALL NOT be removed without explicit confirmation.
 
 #### Scenario: PR merged
 - **WHEN** the PR for #12 is merged

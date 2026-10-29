@@ -12,14 +12,14 @@ Configuration SHALL be resolved from these layers, highest precedence first: per
 - **THEN** ants for that repository get 45 minutes, and inspecting the setting shows `.anthill.yml` as its source
 
 ### Requirement: Shared repository settings
-The committed `.anthill.yml` SHALL be able to set team-wide behaviour only: opt-in, exclusion and claim labels, budgets, maximum base budget and warning threshold, extension allowance and ceiling, branch prefix and base branch, protected branch patterns, shepherd scope, review runner, round limit, auto-follow-up, follow-up limit, auto-resume, verification command, acceptance-criteria requirement, and agent instructions file. It SHALL NOT contain credentials or machine paths.
+The committed `.anthill.yml` SHALL be able to set team-wide behaviour only: opt-in, hold and claim labels, budgets, maximum base budget and warning threshold, extension allowance and ceiling, branch prefix and base branch, protected branch patterns, shepherd scope, review runner, round limit, auto-follow-up, follow-up limit, auto-resume, verification command, acceptance-criteria requirement, and agent instructions file. It SHALL NOT contain credentials or machine paths.
 
 #### Scenario: Credentials in repository file
 - **WHEN** `.anthill.yml` contains a `token` key
 - **THEN** the file is rejected with an error naming the forbidden key, and the repository is treated as misconfigured
 
 ### Requirement: Local repository entries
-The user's local configuration SHALL list the repositories this machine works on. Each entry holds the provider and remote identity, the path of the local clone, and optional local overrides such as the runner, maximum concurrency, and turning shepherd reviewing off for that repository. The global configuration SHALL also allow turning reviewing off for the whole machine.
+The user's local configuration SHALL list the repositories this machine works on. Each entry holds the provider and remote identity, the path of the local clone, and optional local overrides such as the runner, capacity, and turning shepherd reviewing off for that repository. The global configuration SHALL also allow turning reviewing off for the whole machine.
 
 #### Scenario: Repository listed without a clone
 - **WHEN** a configured local path does not contain a git clone of the configured remote
@@ -36,9 +36,9 @@ The OTLP endpoint SHALL be accepted only in local configuration, never in `.anth
 - **WHEN** the local configuration contains OTLP headers
 - **THEN** the configuration is rejected with an error saying that OTLP headers belong in the OS credential store
 
-### Requirement: Built-in defaults for markers and timing
+### Requirement: Built-in defaults for labels and timing
 Anthill SHALL provide these defaults:
-- opt-in marker `anthill`; exclusion marker `anthill:hold`; claim marker `anthill:claimed`
+- opt-in label `anthill`; hold label `anthill:hold`; claim label `anthill:claimed`
 - poll interval 2 min; claim lease 15 min
 - budget 60 min; maximum base budget 180 min; warning at 80%; ceiling 3× budget; grace period 3 min; follow-up budget 50%
 
@@ -49,7 +49,7 @@ Anthill SHALL provide these defaults:
 ### Requirement: Built-in defaults for limits and automation
 Anthill SHALL provide these defaults:
 - telemetry export off; extension wait 5 min
-- concurrency 2; review rounds 3; follow-up limit 5; question staleness 3 days
+- capacity 2 active runs; review rounds 3; follow-up limit 5; question staleness 3 days
 - shepherd reviewing on; review runner same as ant runner; shepherd scope `ant-authored`; auto-fix only on human PRs that opt in per PR; auto-follow-up on; auto-resume off; branch prefix `ant`
 
 #### Scenario: Empty configuration

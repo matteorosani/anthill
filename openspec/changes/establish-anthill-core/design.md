@@ -65,7 +65,7 @@ GitHub has no compare-and-swap on labels, assignees or comments. A claim is ther
 
 ### D4. Agents decide, Anthill executes provider and push operations
 
-Ants edit files and commit inside their worktree. Everything that leaves the machine goes through an ant tool (D5) that Anthill executes: `push`, `open_pull_request`, `update_pull_request`, `comment`, `reply_to_thread`, `ask_question`, `submit_review`. Each agent role (task ant, follow-up ant, review agent, fix agent) gets only its own subset (spec: ant-tools). The agent keeps the decisions (PR title, body, draft or ready, what to say and where), while Anthill enforces the branching policy, adds the closing reference, label and marker, and applies comment safety in one code path.
+Ants edit files and commit inside their worktree. Everything that leaves the machine goes through an ant tool (D5) that Anthill executes: `push`, `open_pull_request`, `update_pull_request`, `comment`, `reply_to_thread`, `ask_question`, `submit_review`. Each agent role (task run, follow-up run, review agent, fix agent) gets only its own subset (spec: ant-tools). The agent keeps the decisions (PR title, body, draft or ready, what to say and where), while Anthill enforces the branching policy, adds the closing reference, label and marker, and applies comment safety in one code path.
 
 Agents get no provider tokens: Anthill strips `GH_TOKEN`, `GITHUB_TOKEN`, `AZURE_DEVOPS_EXT_PAT` and similar from the environment, sets `GIT_TERMINAL_PROMPT=0` and disables the git credential helper for the worktree, so a direct `git push` fails. Where the runner supports hooks, a pre-tool hook refuses `git push`, `gh` and `az` with a pointer to the right tool.
 
@@ -170,7 +170,7 @@ There, the fix agent only edits, commits and reports per finding through `finish
 
 ### D20. Run outcomes
 
-An ant is the worker for one item and lives until its PR is merged or closed (`done`) or it is abandoned. A run is one agent process of that ant. Every exit without `finish`, clean or crashed, is `failed`. Anthill pushes the branch so the work is safe but opens no PR, and turns an open PR into a draft so the shepherd does not review half-done work. The queen retries or abandons. A stop by the queen or `/anthill stop` ends the run, pushes nothing and parks the claim, so the ant is `stopped` until a retry. When an ant finds that nothing needs changing, `finish(no-change)` posts its explanation, releases the claim and adds the exclusion marker, leaving the ticket to a human. An extension request pauses the budget only while the tool waits. After that the run goes on, and a late approval on a timed-out ant acts as "continue".
+An ant is the worker for one item and lives until its PR is merged or closed (`done`) or it is abandoned. A run is one agent process of that ant. Every exit without `finish`, clean or crashed, is `failed`. Anthill pushes the branch so the work is safe but opens no PR, and turns an open PR into a draft so the shepherd does not review half-done work. The queen retries or abandons. A stop by the queen or `/anthill stop` ends the run, pushes nothing and parks the claim, so the ant is `stopped` until a retry. When an ant finds that nothing needs changing, `finish(no-change)` posts its explanation, releases the claim and adds the hold label, leaving the ticket to a human. An extension request pauses the budget only while the tool waits. After that the run goes on, and a late approval on a timed-out ant acts as "continue".
 
 ## Risks / Trade-offs
 
