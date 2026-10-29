@@ -17,6 +17,14 @@ var (
 	// "Azure DevOps optimistic concurrency") or a push rejected because
 	// the remote branch moved (spec ant-tools, "Push tool").
 	ErrConflict = errors.New("conflict")
+	// ErrNoClone: a configured path does not hold a git clone of the
+	// configured repository (spec anthill-configuration, "Repository
+	// listed without a clone").
+	ErrNoClone = errors.New("no git clone of the repository")
+	// ErrHistoryRewritten: a push was rejected because the branch rewrote
+	// commits that were already pushed (spec branching-policy, "History
+	// rewriting").
+	ErrHistoryRewritten = errors.New("published history rewritten")
 	// ErrRateLimited: the provider refused the request until its rate
 	// limit resets (spec work-item-sources, "Polling cadence"). Use
 	// errors.As with *RateLimitError to read the reset time.
