@@ -46,13 +46,13 @@ Terms follow `openspec/glossary.md`. Every group lands its own tests and docs. U
 
 ## 6. Git and worktrees
 
-- [ ] 6.1 Implement the git CLI adapter: fetch, base branch resolution (`base:` label, repository setting, remote default), and branch creation from the fetched base, and verify tests on temporary repositories including "base branch missing"
-- [ ] 6.2 Create worktrees under the worktree root and never touch the developer's working copy, and verify a test that a clone with uncommitted changes is unchanged after starting
-- [ ] 6.3 Detect a foreign branch with the same name through the `Anthill-Instance` trailer and add a numeric suffix, and verify the "name already taken" test
-- [ ] 6.4 Add the commit trailers (`Anthill-Item`, `Anthill-Agent`, `Anthill-Instance`) through a worktree-local `prepare-commit-msg` hook, and verify that a commit made in the worktree carries all three
-- [ ] 6.5 Configure the worktree so agent pushes fail: credential helper disabled, `GIT_TERMINAL_PROMPT=0`, provider tokens removed from the agent environment, and verify a test that `git push` from that environment fails
-- [ ] 6.6 Implement the push policy: only Anthill-created branches or opted-in human PR branches, never base, default or protected branches, no force-push, rebase and amend allowed only before the first push, and verify tests for each branching-policy scenario
-- [ ] 6.7 Implement worktree cleanup (local branch, remote branch only when the PR is merged and the provider kept it, confirmation for unpushed commits), and verify tests for "PR merged" and "unpushed work"
+- [x] 6.1 Implement the git CLI adapter: fetch, base branch resolution (`base:` label, repository setting, remote default), and branch creation from the fetched base, and verify tests on temporary repositories including "base branch missing"
+- [x] 6.2 Create worktrees under the worktree root and never touch the developer's working copy, and verify a test that a clone with uncommitted changes is unchanged after starting
+- [x] 6.3 Detect a foreign branch with the same name through the `Anthill-Instance` trailer and add a numeric suffix, and verify the "name already taken" test
+- [x] 6.4 Add the commit trailers (`Anthill-Item`, `Anthill-Agent`, `Anthill-Instance`) through a worktree-local `prepare-commit-msg` hook, and verify that a commit made in the worktree carries all three
+- [x] 6.5 Configure the worktree so agent pushes fail: credential helper disabled, `GIT_TERMINAL_PROMPT=0`, provider tokens removed from the agent environment, and verify a test that `git push` from that environment fails
+- [x] 6.6 Implement the push policy: only Anthill-created branches or opted-in human PR branches, never base, default or protected branches, no force-push, rebase and amend allowed only before the first push, and verify tests for each branching-policy scenario
+- [x] 6.7 Implement worktree cleanup (local branch, remote branch only when the PR is merged and the provider kept it, confirmation for unpushed commits), and verify tests for "PR merged" and "unpushed work"
 
 ## 7. GitHub adapter
 
