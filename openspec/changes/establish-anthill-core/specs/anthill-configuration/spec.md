@@ -62,6 +62,7 @@ Anthill SHALL provide these defaults:
 - telemetry export off; extension wait 5 min
 - capacity 2 active runs; review rounds 3; follow-up limit 5; question staleness 3 days
 - runner `claude-code`; shepherd reviewing on; review runner same as ant runner; shepherd scope `ant-authored`; auto-fix only on human PRs that opt in per PR; auto-follow-up on; auto-resume off; branch prefix `ant`
+- worktree root `~/.anthill/worktrees`, settable only in the global configuration
 
 #### Scenario: Empty configuration
 - **WHEN** Anthill runs with only one repository entry and no other settings

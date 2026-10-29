@@ -53,6 +53,7 @@ type Effective struct {
 	QuestionStaleness time.Duration
 	OTLPEndpoint      string // "" means telemetry export is off
 	SecretPatterns    []string
+	WorktreeRoot      string // "" means DefaultWorktreeRoot under the user's home
 
 	sources map[string]Layer
 	shown   map[string]string
@@ -222,6 +223,13 @@ func (l ConfigLayers) Resolve() Effective {
 	e.QuestionStaleness = dur(KeyQuestionStaleness, DefaultQuestionStaleness, func(s *SettingValues) *time.Duration { return s.QuestionStaleness })
 	e.OTLPEndpoint = str(KeyOTLPEndpoint, "", func(s *SettingValues) *string { return s.OTLPEndpoint })
 	e.SecretPatterns = resolveList(r, KeySecretPatterns, func(s *SettingValues) []string { return s.SecretPatterns })
+	e.WorktreeRoot = resolveValue(r, KeyWorktreeRoot, "", func(s *SettingValues) *string { return s.WorktreeRoot },
+		func(v string) string {
+			if v == "" {
+				return DefaultWorktreeRootText
+			}
+			return v
+		})
 	return e
 }
 

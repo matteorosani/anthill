@@ -109,6 +109,7 @@ var emptyConfigurationDefaults = map[string]string{
 	"question-staleness":          "72h",
 	"otlp-endpoint":               "none",
 	"secret-patterns":             "none",
+	"worktree-root":               "~/.anthill/worktrees",
 }
 
 // Scenario "Empty configuration": with only a repository entry, every
@@ -397,6 +398,7 @@ func TestValidateSettings(t *testing.T) {
 		{"question staleness", domain.SettingValues{QuestionStaleness: ptr(time.Duration(0))}, "question staleness must be more than 0"},
 		{"otlp endpoint", domain.SettingValues{OTLPEndpoint: ptr("collector:4318")}, "OTLP endpoint must be an http or https URL"},
 		{"secret pattern", domain.SettingValues{SecretPatterns: []string{"("}}, "secret pattern \"(\" is not valid: error parsing regexp: missing closing ): `(`"},
+		{"worktree root relative", domain.SettingValues{WorktreeRoot: ptr("worktrees")}, `worktree root "worktrees" must be an absolute path`},
 		{"budget over maximum", domain.SettingValues{Budget: ptr(200), MaxBaseBudget: ptr(100)}, domain.MessageBudgetOverMaximum},
 	}
 	for _, tt := range tests {

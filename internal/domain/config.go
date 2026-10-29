@@ -101,6 +101,7 @@ const (
 	KeyQuestionStaleness = "question-staleness"
 	KeyOTLPEndpoint      = "otlp-endpoint"
 	KeySecretPatterns    = "secret-patterns"
+	KeyWorktreeRoot      = "worktree-root"
 
 	KeyProvider = "provider"
 	KeyRemote   = "remote"
@@ -168,6 +169,7 @@ var settingInfos = []SettingInfo{
 	{KeyQuestionStaleness, globalOnly},
 	{KeyOTLPEndpoint, globalOnly},
 	{KeySecretPatterns, globalOnly},
+	{KeyWorktreeRoot, globalOnly},
 	{KeyProvider, entryOnly},
 	{KeyRemote, entryOnly},
 	{KeyPath, entryOnly},
@@ -245,7 +247,7 @@ func forbiddenReason(layer Layer, name string) string {
 		return reasonTelemetry
 	case name == KeySecretPatterns:
 		return reasonPatterns
-	case name == KeyPath || name == "clone-path" || name == "worktree-root":
+	case name == KeyPath || name == "clone-path" || name == KeyWorktreeRoot:
 		return reasonPaths
 	case name == KeyRepositories:
 		return reasonMachine
@@ -387,6 +389,7 @@ type SettingValues struct {
 	QuestionStaleness *time.Duration `yaml:"question-staleness"`
 	OTLPEndpoint      *string        `yaml:"otlp-endpoint"`
 	SecretPatterns    []string       `yaml:"secret-patterns"`
+	WorktreeRoot      *string        `yaml:"worktree-root"`
 }
 
 // RepositoryEntry is one local repository entry: a repository this

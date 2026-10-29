@@ -134,7 +134,7 @@ agent-instructions: docs/AGENTS.md
 	for _, row := range e.Inspect() {
 		switch row.Key {
 		case domain.KeyRunner, domain.KeyCapacity, domain.KeyReviewing, domain.KeyPollInterval, domain.KeyLease,
-			domain.KeyGracePeriod, domain.KeyExtensionWait, domain.KeyQuestionStaleness, domain.KeyOTLPEndpoint, domain.KeySecretPatterns:
+			domain.KeyGracePeriod, domain.KeyExtensionWait, domain.KeyQuestionStaleness, domain.KeyOTLPEndpoint, domain.KeySecretPatterns, domain.KeyWorktreeRoot:
 			continue
 		}
 		if row.Source != domain.LayerRepositoryFile {
@@ -350,5 +350,28 @@ func TestUncommittedEditIsUsed(t *testing.T) {
 	e := domain.ConfigLayers{RepositoryFile: v, Global: &domain.SettingValues{}}.Resolve()
 	if e.Budget != 30*time.Minute || e.Source(domain.KeyBudget) != domain.LayerRepositoryFile {
 		t.Errorf("budget %v from %q, want 30m from .anthill.yml", e.Budget, e.Source(domain.KeyBudget))
+	}
+}
+
+// worktree-root is a machine path: only the global configuration sets it.
+func TestWorktreeRoot(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "wt")
+	cfg, err := configfile.ParseLocal("config.yml", []byte("worktree-root: '"+root+"'\n"))
+	if err != nil || cfg.Global.WorktreeRoot == nil || *cfg.Global.WorktreeRoot != root {
+		t.Fatalf("ParseLocal() = %+v, %v", cfg.Global, err)
+	}
+	if e := (domain.ConfigLayers{Global: &cfg.Global}).Resolve(); e.WorktreeRoot != root {
+		t.Errorf("effective worktree root = %q", e.WorktreeRoot)
+	}
+	cfg, err = configfile.ParseLocal("config.yml", []byte("repositories:\n  - provider: github\n    remote: a/b\n    path: /a\n    worktree-root: /wt\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := messages(cfg.Repositories[0].Err); !slices.Equal(got, []string{`key "worktree-root" can be set only in the global configuration`}) {
+		t.Errorf("entry messages = %q", got)
+	}
+	_, got := parseRepositoryFile(t, "worktree-root: /wt\n")
+	if !slices.Equal(got, []string{`forbidden key "worktree-root": machine paths belong in the local configuration`}) {
+		t.Errorf("repository file messages = %q", got)
 	}
 }

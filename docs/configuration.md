@@ -139,6 +139,7 @@ Credential values never appear in logs, errors, comments, task briefs or telemet
 | `question-staleness` | global configuration | 72h | Time after which an unanswered question is reported as stale. |
 | `otlp-endpoint` | global configuration | none | OTLP endpoint for telemetry export; none means export is off. |
 | `secret-patterns` | global configuration | none | Extra secret patterns, added to the built-in ones. |
+| `worktree-root` | global configuration | ~/.anthill/worktrees | Absolute path of the directory that holds the ant worktrees, laid out as `<provider>-<org>-<name>/<branch>`. |
 | `provider` | local repository entry | required | Provider of the repository: `github` or `azure-devops`. |
 | `remote` | local repository entry | required | Repository on the provider: `owner/name` or `organization/project/repository`. |
 | `path` | local repository entry | required | Absolute path of the local clone. |
@@ -149,3 +150,5 @@ Credential values never appear in logs, errors, comments, task briefs or telemet
 - Shepherd auto-fix runs only on human PRs that opt in, one PR at a time, with the `anthill:autofix` label or `/anthill fix`.
 - Telemetry export stays off until you set `otlp-endpoint`.
 - The `repo:<name>` label picks an item's target repository. It is not a setting.
+- Anthill never changes your clone's working copy, checked-out branch or uncommitted changes. The only thing it writes to the clone's `.git/config` is `extensions.worktreeConfig = true`, so that each ant worktree can have its own hooks and its own git settings.
+- In an ant worktree, Anthill's hooks run first and then call the repository's own hook of the same name, if there is one, so checks such as `pre-commit` and `commit-msg` still run. `pre-push` is the exception: it always refuses, because ants push only through the `push` tool.
