@@ -57,10 +57,13 @@ jobs:
       - name: Check go.mod is tidy
         run: |
           go mod tidy
-          git diff --exit-code go.mod go.sum
+          # git status, unlike git diff, also works while go.sum does not
+          # exist (a module without dependencies) and catches a new one.
+          changed=$(git status --porcelain -- go.mod go.sum)
+          if [ -n "$changed" ]; then echo "Run go mod tidy:"; echo "$changed"; git diff -- go.mod go.sum; exit 1; fi
       - uses: golangci/golangci-lint-action@v8
         with:
-          version: v2.1
+          version: v2.15
 
   go-test:
     name: Go build and test (${{ matrix.os }})
