@@ -170,7 +170,7 @@ There, the fix agent only edits, commits and reports per finding through `finish
 
 ### D20. Run outcomes
 
-Every exit without `finish`, clean or crashed, is `failed`. Anthill pushes the branch so the work is safe but opens no PR, and turns an open PR into a draft so the shepherd does not review half-done work. The queen retries or abandons. When an ant finds that nothing needs changing, `finish(no-change)` posts its explanation, releases the claim and adds the exclusion marker, leaving the ticket to a human. An extension request pauses the budget only while the tool waits. After that the ant works on, and a late approval on a timed-out ant acts as "continue".
+An ant is the worker for one item and lives until its PR is merged or closed (`done`) or it is abandoned. A run is one agent process of that ant. Every exit without `finish`, clean or crashed, is `failed`. Anthill pushes the branch so the work is safe but opens no PR, and turns an open PR into a draft so the shepherd does not review half-done work. The queen retries or abandons. A stop by the queen or `/anthill stop` ends the run, pushes nothing and parks the claim, so the ant is `stopped` until a retry. When an ant finds that nothing needs changing, `finish(no-change)` posts its explanation, releases the claim and adds the exclusion marker, leaving the ticket to a human. An extension request pauses the budget only while the tool waits. After that the run goes on, and a late approval on a timed-out ant acts as "continue".
 
 ## Risks / Trade-offs
 

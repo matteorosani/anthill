@@ -154,4 +154,4 @@ The shepherd SHALL stop all activity on a PR once it is merged or closed. It SHA
 
 #### Scenario: PR merged by developer
 - **WHEN** a developer merges an ant PR
-- **THEN** the shepherd records the PR as done, releases the parked task claim on the ticket, and cleans up the worktree
+- **THEN** the ant becomes `done`, the parked task claim on the ticket is released, and the worktree is cleaned up

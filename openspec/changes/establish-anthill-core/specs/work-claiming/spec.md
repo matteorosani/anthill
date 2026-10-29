@@ -12,7 +12,7 @@ Each Anthill instance SHALL have a stable instance identifier made of the develo
 - **THEN** the two instances have different identifiers and compete for claims like any two instances
 
 ### Requirement: Claims are stored on the provider
-A claim SHALL be recorded on the provider. It consists of a claim comment with a machine-readable Anthill marker (instance id, claim kind, lease expiry), a `anthill:claimed` label or tag, and, for tickets, assignment to the claiming developer. No shared server or database SHALL be required.
+A claim SHALL be recorded on the provider. It consists of a claim comment with a machine-readable Anthill marker (instance id, claim kind, lease duration), an `anthill:claimed` label or tag, and, for tickets, assignment to the claiming developer. No shared server or database SHALL be required.
 
 #### Scenario: Claim visible to humans
 - **WHEN** an instance claims issue #12
@@ -23,11 +23,11 @@ A claim SHALL be recorded on the provider. It consists of a claim comment with a
 - **THEN** the comment is not treated as a claim
 
 ### Requirement: Claim acquisition resolves races deterministically
-An instance SHALL acquire a claim in this order: check that there is no live claim, post its claim comment, then re-read the item's claim comments. The earliest live claim comment by provider creation order (comment id as tie-breaker) wins. A losing instance SHALL delete or retract its comment and treat the claim as failed.
+An instance SHALL acquire a claim in this order: check that there is no live claim, post its claim comment, then re-read the item's claim comments. The earliest live claim comment by provider creation order (comment id as tie-breaker) wins. Only the winner SHALL then add the claim label and, for tickets, the assignee. A losing instance SHALL retract its comment, touch nothing else, and treat the claim as failed.
 
 #### Scenario: Two instances claim simultaneously
 - **WHEN** instances A and B both post claim comments on #12, and A's comment was created first
-- **THEN** A holds the claim, B retracts its comment, and B's queen is told "claimed by A"
+- **THEN** A holds the claim and adds the label and assignee, B retracts its comment without touching the label, and B's queen is told "claimed by A"
 
 #### Scenario: Azure DevOps optimistic concurrency
 - **WHEN** a claim is written to an Azure DevOps work item
@@ -41,7 +41,7 @@ Claims SHALL have a kind. `task` is a claim on a ticket for implementation. `rev
 - **THEN** instance B may claim that PR for review while A still holds the task claim on #12
 
 ### Requirement: Leases and renewal
-Every claim SHALL have a lease (default 15 minutes). The holder SHALL renew it while work is active by editing its claim comment. A claim whose lease has expired SHALL count as released.
+Every claim SHALL have a lease (default 15 minutes). A lease SHALL expire at the provider's last-update timestamp of the claim comment plus the lease duration in its marker; local clocks SHALL NOT be used. The holder SHALL renew it while work is active by editing its claim comment. A claim whose lease has expired SHALL count as released.
 
 #### Scenario: Machine goes offline
 - **WHEN** instance A's laptop sleeps and its claim on #12 is not renewed for longer than the lease
@@ -49,13 +49,13 @@ Every claim SHALL have a lease (default 15 minutes). The holder SHALL renew it w
 
 #### Scenario: Holder returns after expiry
 - **WHEN** instance A wakes after its lease expired and another instance has claimed #12 meanwhile
-- **THEN** A stops its ant for #12, keeps its local worktree, and tells its queen that the claim was lost
+- **THEN** A ends any active run for #12, sets its ant to `abandoned` with reason "claim lost", keeps its local worktree, and tells its queen
 
 ### Requirement: Long-lived task claims
-While a ticket has an open ant-authored PR, a pending ant question, or a failed or timed-out ant awaiting the queen's decision, the task claim SHALL stay held without active lease renewal. It is marked `parked` in the claim comment, and other instances SHALL treat a parked claim as live.
+While a ticket's ant is waiting without a run (`awaiting-input`, `stopped`, `failed`, `timed-out`, or `succeeded` with its PR open), the task claim SHALL stay held without active lease renewal. It is marked `parked` in the claim comment, and other instances SHALL treat a parked claim as live.
 
 #### Scenario: Ant finished, PR open
-- **WHEN** an ant opened a PR and exited
+- **WHEN** an ant's run opened a PR and called `finish`
 - **THEN** the claim on the ticket becomes parked, and the ticket is not proposed to other queens
 
 ### Requirement: No claim transfer

@@ -30,28 +30,28 @@ The queen SHALL be able to accept a proposal, optionally overriding the runner, 
 
 #### Scenario: Accept with a longer budget
 - **WHEN** the queen accepts #12 with a 90-minute budget
-- **THEN** the ant for #12 starts with a 90-minute budget
+- **THEN** the ant for #12 is created with a 90-minute budget, and its first run starts
 
 #### Scenario: Decline is local
 - **WHEN** the queen declines #12
 - **THEN** it is hidden on this machine, and it stays proposed on colleagues' machines
 
 ### Requirement: Monitoring ants
-The CLI SHALL list ants with item, state, runner, elapsed and remaining budget, and branch. It SHALL also stream an ant's live activity log on request.
+The CLI SHALL list ants with item, state, runner, elapsed and remaining budget, and branch. It SHALL also stream the activity log of an ant's active run on request.
 
 #### Scenario: Follow an ant
 - **WHEN** the queen follows the ant for #12
 - **THEN** the agent's activity is streamed until the queen detaches, and the ant is not affected by detaching
 
 ### Requirement: Controlling ants
-The queen SHALL be able, from the console, to: answer a pending question, approve, reduce or deny an extension, stop or abandon an ant, retry a failed ant, continue a timed-out ant with a new budget, accept a follow-up proposal, and clean up a worktree.
+The queen SHALL be able, from the console, to: list and answer pending questions, list and approve, reduce or deny open extension requests, stop or abandon an ant, retry a failed or stopped ant, continue a timed-out ant with a new budget, accept or decline a follow-up proposal, un-hide a declined item, and clean up a worktree.
 
 #### Scenario: Answer from the console
-- **WHEN** the queen answers a pending question in the CLI
-- **THEN** the answer is also posted as a reply comment on the ticket, attributed to the queen, and the ant resumes
+- **WHEN** the queen answers in the CLI a question that the ant asked on its PR
+- **THEN** the answer is posted as a reply where the question was asked, attributed to the queen, and a new run resumes the ant's session
 
 ### Requirement: Notifications
-The daemon SHALL raise a local desktop notification for: a new proposal, an ant question, an extension request, an ant at its warning threshold, an ant succeeded, failed or timed out, a lost claim, and provider polling failures. Each kind SHALL be possible to turn off.
+The daemon SHALL raise a local desktop notification for: a new proposal, an ant question, a stale question, an extension request, an ant at its warning threshold, an ant succeeded, failed, timed out or done with no change, a follow-up started or proposed, a follow-up limit reached, a change stored for a waiting ant, a lost claim, and provider polling failures. Each kind SHALL be possible to turn off.
 
 #### Scenario: Extension request
 - **WHEN** an ant requests an extension that is not auto-approved

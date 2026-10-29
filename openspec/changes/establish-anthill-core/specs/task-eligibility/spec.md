@@ -74,11 +74,15 @@ The item SHALL map to a repository that is configured and cloned on this machine
 - **THEN** the item is not eligible, with reason "repository contoso/api not available on this machine"
 
 ### Requirement: Prerequisite no active work
-The item SHALL have no open ant-authored PR and no local ant that is running, paused or timed out (`no-active-work`). Follow-up work on such an item goes through change-reaction, not through a new proposal.
+The item SHALL have no open ant-authored PR and no local ant in any state other than `done` or `abandoned` (`no-active-work`). Follow-up work on such an item goes through change-reaction, not through a new proposal.
 
 #### Scenario: PR already open
 - **WHEN** an ant already opened a PR for the item and the PR is still open
 - **THEN** the item is not proposed again
+
+#### Scenario: Failed ant awaiting retry
+- **WHEN** the item's ant on this machine is `failed` and the queen has not yet retried or abandoned it
+- **THEN** the item is not proposed, with `no-active-work` unmet
 
 ### Requirement: Prerequisite no pending question
 The item SHALL have no unanswered question from an ant (`no-pending-question`), as defined by agent-conversation.

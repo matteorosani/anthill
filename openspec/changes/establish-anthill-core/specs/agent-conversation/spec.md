@@ -18,19 +18,19 @@ When an ant needs information it cannot find, it SHALL ask through the `ask_ques
 - **WHEN** an ant cannot tell whether "timeout" means 30 or 60 seconds
 - **THEN** a question comment is posted on #12, the ant is `awaiting-input`, and its time budget is paused
 
-### Requirement: Answers resume the ant
-A non-Anthill comment that replies to a pending question SHALL be treated as its answer. On a threaded provider, a reply in the thread counts. Otherwise, the first human comment after the question that quotes it or mentions `@anthill` counts. The ant SHALL then resume with the answer, and the question SHALL be marked answered.
+### Requirement: Answers resume the session
+A non-Anthill comment that replies to a pending question SHALL be treated as its answer. On a threaded provider, a reply in the thread counts. Otherwise, the first human comment after the question that quotes it or mentions `@anthill` counts. Anthill SHALL then start a run that resumes the ant's session with the answer, and the question SHALL be marked answered.
 
 #### Scenario: Developer replies in thread
 - **WHEN** a developer replies "60 seconds" in the PR thread of an ant's question
-- **THEN** the ant resumes its session with "60 seconds" as input
+- **THEN** a new run resumes the ant's session with "60 seconds" as input
 
 #### Scenario: Unrelated comment
 - **WHEN** a developer posts an unrelated comment on the ticket without quoting the question or mentioning `@anthill`
 - **THEN** the question stays pending
 
 ### Requirement: Question timeout
-A question not answered within the configured time (default 3 days) SHALL be reported to the queen as stale. The ant SHALL NOT resume on its own.
+A question not answered within the configured time (default 3 days) SHALL be reported to the queen as stale. No run SHALL start on its own.
 
 #### Scenario: No answer for three days
 - **WHEN** a question has been pending for 3 days
@@ -40,9 +40,9 @@ A question not answered within the configured time (default 3 days) SHALL be rep
 Anthill SHALL recognise these commands in human comments on tickets and PRs, each on its own line:
 - `/anthill review`: request a shepherd round
 - `/anthill fix`: fix the referenced thread
-- `/anthill stop`: stop the running ant
+- `/anthill stop`: stop the ant's active run, keeping its claim
 - `/anthill release`: force-release claims
-- `/anthill retry`: retry a failed ant
+- `/anthill retry`: retry a failed or stopped ant
 - `/anthill help`: list commands
 
 Unknown commands SHALL be answered with the help text.
@@ -60,8 +60,8 @@ Unknown commands SHALL be answered with the help text.
 - **THEN** Anthill replies with the list of valid commands
 
 #### Scenario: Stop command
-- **WHEN** a developer comments `/anthill stop` on #12 while its ant is running
-- **THEN** the ant is stopped and `abandoned`, and Anthill replies confirming the stop
+- **WHEN** a developer comments `/anthill stop` on #12 while its ant has an active run
+- **THEN** the ant is `stopped` with its claim parked, and Anthill replies confirming the stop and how to retry
 
 ### Requirement: Commands are authorized
 Commands SHALL be executed only when the commenter has write access to the repository. The one exception is `/anthill fix` on a PR, which the PR's author SHALL also be allowed to use. Commands from other users SHALL be ignored, with a reply stating that permission is missing.

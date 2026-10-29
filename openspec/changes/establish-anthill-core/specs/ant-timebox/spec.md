@@ -1,11 +1,11 @@
 ## Purpose
 
-Defines the time budget of every ant run: how time is counted, the early warning, how an ant asks for more time, and what happens when the budget runs out.
+Defines the time budget of every ant: how time is counted, the early warning, how an ant asks for more time, and what happens when the budget runs out.
 
 ## ADDED Requirements
 
-### Requirement: Every run has a time budget
-Every ant run SHALL have a base budget, taken in this order: the queen's override at acceptance, a `budget:<minutes>` label or tag on the item, the repository setting, the global default (60 minutes). A label above the repository's maximum base budget (default 180 minutes) SHALL be capped at that maximum. The ant SHALL be told its budget in the task brief.
+### Requirement: Every ant has a time budget
+Every ant SHALL have a base budget, taken in this order: the queen's override at acceptance, a `budget:<minutes>` label or tag on the item, the repository setting, the global default (60 minutes). A label above the repository's maximum base budget (default 180 minutes) SHALL be capped at that maximum. The ant SHALL be told its budget in the task brief.
 
 #### Scenario: Default budget
 - **WHEN** an ant starts in a repository without a budget setting, on an item without a budget label
@@ -23,12 +23,19 @@ Every ant run SHALL have a base budget, taken in this order: the queen's overrid
 - **WHEN** an item carries `budget:abc`
 - **THEN** the label is ignored, the next source in the order applies, and the queen is warned
 
+### Requirement: The budget carries over between runs
+The budget SHALL belong to the ant, not to a run. Resuming after an answer, a stop or a failure SHALL keep the remaining budget. Only a follow-up run (change-reaction) and a continue after a time-out SHALL set a new budget.
+
+#### Scenario: Retry after a failure
+- **WHEN** an ant fails after using 40 of its 60 minutes and the queen retries it
+- **THEN** the new run has 20 minutes left
+
 ### Requirement: Budget counts active time only
-The budget SHALL count wall-clock time only while the ant is `running` or `finishing`. Time spent in `queued`, `awaiting-input` or `awaiting-extension` SHALL NOT count.
+The budget SHALL count wall-clock time only while the ant is `starting`, `running` or `finishing`. Time in `awaiting-extension` and in every state without an active run SHALL NOT count.
 
 #### Scenario: Paused while waiting for an answer
 - **WHEN** an ant has used 30 minutes and then waits 2 hours for a developer's answer
-- **THEN** after resuming it still has 30 minutes left
+- **THEN** the run that resumes the session still has 30 minutes left
 
 ### Requirement: Warning threshold
 When an ant reaches the warning threshold (default 80% of its budget), Anthill SHALL deliver a warning to the ant, by the means defined in ant-tools, that states the remaining time and the options to wrap up or request more time. The queen SHALL be notified at the same moment.
@@ -39,33 +46,33 @@ When an ant reaches the warning threshold (default 80% of its budget), Anthill S
 - **AND** the queen console shows the ant as near its limit
 
 ### Requirement: Remaining time is queryable
-A running ant SHALL be able to ask Anthill for its remaining time at any moment through the `time_remaining` tool.
+During a run, an ant SHALL be able to ask Anthill for its remaining time at any moment through the `time_remaining` tool.
 
 #### Scenario: Ant checks its budget
 - **WHEN** an ant queries its remaining time after 20 of 60 minutes
 - **THEN** it is told 40 minutes remain
 
 ### Requirement: Extension requests
-A running ant SHALL be able to request an extension through the `request_extension` tool, stating the extra minutes needed and a justification. A request within the repository's auto-approve allowance SHALL be approved immediately. Otherwise the ant SHALL be `awaiting-extension` only while the tool call waits (ant-tools). If the wait ends without a decision, the ant SHALL return to `running`, its budget SHALL count again, and the request SHALL stay open for the queen.
+During a run, an ant SHALL be able to request an extension through the `request_extension` tool, stating the extra minutes needed and a justification. A request within the repository's auto-approve allowance SHALL be approved immediately. Otherwise the ant SHALL be `awaiting-extension` only while the tool call waits (ant-tools). If the wait ends without a decision, the ant SHALL return to `running`, its budget SHALL count again, and the request SHALL stay open for the queen.
 
 #### Scenario: Auto-approved
 - **WHEN** auto-approve allows up to 15 extra minutes once and the ant requests 10
-- **THEN** the budget grows by 10 minutes, the ant continues without pausing, and the extension is logged
+- **THEN** the budget grows by 10 minutes, the run continues without waiting, and the extension is logged
 
 #### Scenario: Queen approves a smaller extension
 - **WHEN** an ant requests 45 minutes and the queen approves 20
-- **THEN** the budget grows by 20 minutes and the ant resumes with that answer
+- **THEN** the budget grows by 20 minutes and the run continues with that answer
 
 #### Scenario: Queen denies
 - **WHEN** the queen denies the request
-- **THEN** the ant resumes with the instruction to wrap up within the remaining time
+- **THEN** the run continues with the instruction to wrap up within the remaining time
 
 #### Scenario: No decision within the wait
 - **WHEN** an ant with 4 minutes left requests 30 minutes and the queen does not answer within the extension wait
 - **THEN** the ant is `running` again with 4 minutes left, and the request stays open in the queen console
 
 ### Requirement: Late extension decisions
-A decision on an open request SHALL apply when it arrives. On a running ant, an approval or reduction SHALL grow the budget, and a denial SHALL be delivered as a message to wrap up. On a timed-out ant, an approval or reduction SHALL act as "continue" with the granted minutes as the new budget, and a denial SHALL change nothing. A request SHALL be closed when its ant ends in any other state.
+A decision on an open request SHALL apply when it arrives. On an ant with an active run, an approval or reduction SHALL grow the budget, and a denial SHALL be delivered as a message to wrap up. On a timed-out ant, an approval or reduction SHALL act as "continue" with the granted minutes as the new budget, and a denial SHALL change nothing. In any other state, the request SHALL be closed.
 
 #### Scenario: Budget runs out while the request is open
 - **WHEN** an ant's request is still open and its budget reaches zero
@@ -76,7 +83,7 @@ A decision on an open request SHALL apply when it arrives. On a running ant, an 
 - **THEN** the session is resumed in the same worktree with a 30-minute budget, and its commits are pushed to the existing draft PR
 
 ### Requirement: Maximum total budget
-The total budget of one run, extensions included, SHALL NOT exceed the configured maximum (default 3× the base budget). Requests beyond it SHALL be rejected automatically.
+One budget, extensions included, SHALL NOT exceed the configured maximum (default 3× the base budget). Requests beyond it SHALL be rejected automatically.
 
 #### Scenario: Ceiling reached
 - **WHEN** an ant with a 60-minute base has already received 120 extra minutes and requests 10 more
@@ -87,7 +94,7 @@ When the budget is exhausted, Anthill SHALL tell the ant to stop and give it a g
 
 #### Scenario: Time runs out
 - **WHEN** an ant's budget reaches zero and the grace period ends
-- **THEN** the agent process is stopped, the branch with the WIP commits is pushed, a draft PR with the progress summary is opened, the ticket gets a comment linking to it, the ant is `timed-out`, and the claim is parked
+- **THEN** the run is ended, the branch with the WIP commits is pushed, a draft PR with the progress summary is opened, the ticket gets a comment linking to it, the ant is `timed-out`, and the claim is parked
 
 #### Scenario: Time runs out with no commits
 - **WHEN** an ant's budget is exhausted and the branch has no commits

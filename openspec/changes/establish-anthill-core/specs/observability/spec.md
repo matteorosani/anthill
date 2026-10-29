@@ -50,7 +50,7 @@ When export is on, Anthill SHALL export its structured application logs, and eac
 When export is on and a runner supports OpenTelemetry, Anthill SHALL launch the agent with telemetry export to the same endpoint. It SHALL set resource attributes `anthill.item`, `anthill.ant_id` and `anthill.instance`, and pass the run's trace context where the runner accepts it.
 
 #### Scenario: Agent telemetry carries Anthill attributes
-- **WHEN** an ant runs on a runner with OpenTelemetry support while export is on
+- **WHEN** a run uses a runner with OpenTelemetry support while export is on
 - **THEN** the agent's own telemetry arrives at the endpoint with `anthill.item` and `anthill.ant_id`
 
 #### Scenario: Runner without telemetry support

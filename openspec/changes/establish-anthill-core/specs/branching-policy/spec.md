@@ -5,10 +5,10 @@ Defines the git rules Anthill and its ants follow: where worktrees live, how bra
 ## ADDED Requirements
 
 ### Requirement: One branch and worktree per work item
-Each work item SHALL have exactly one ant branch and one git worktree on the claiming machine. Every ant run and resumed session for that item SHALL reuse them.
+Each work item SHALL have exactly one ant branch and one git worktree on the claiming machine. Every run of the item's ant SHALL reuse them.
 
 #### Scenario: Second run for the same item
-- **WHEN** an ant for #12 is resumed after a ticket update
+- **WHEN** a follow-up run for #12 starts after a ticket update
 - **THEN** it works in the existing worktree on the existing branch, and no new branch is created
 
 ### Requirement: Branch naming
@@ -19,7 +19,7 @@ Ant branches SHALL be named `<prefix>/<provider>-<id>-<slug>`. The prefix defaul
 - **THEN** the branch is `ant/gh-12-fix-login-timeout-on-safari`
 
 #### Scenario: Name already taken remotely by someone else
-- **WHEN** the branch name exists on the remote but was not created by Anthill for this item
+- **WHEN** the branch name exists on the remote but its commits do not carry this instance's trailer for this item, for example a branch left by an instance whose claim expired
 - **THEN** a numeric suffix is added (`…-2`) and the existing branch is left untouched
 
 ### Requirement: Base branch resolution
@@ -66,11 +66,11 @@ Before its branch is first pushed, Anthill SHALL allow an ant to rebase or amend
 - **THEN** the push is rejected as non-fast-forward, and the ant is told to keep the published history and add a new commit
 
 ### Requirement: Commit identity and traceability
-Ant commits SHALL use the developer's configured git identity, with a trailer naming the ant and the item (for example `Anthill-Item: gh-12`), so automated commits are identifiable.
+Ant commits SHALL use the developer's configured git identity, with trailers naming the item, the runner and the instance, so automated commits and their owner are identifiable.
 
 #### Scenario: Commit trailer
 - **WHEN** an ant commits on `ant/gh-12-…`
-- **THEN** the commit message ends with `Anthill-Item: gh-12` and `Anthill-Agent: claude-code`
+- **THEN** the commit message ends with `Anthill-Item: gh-12`, `Anthill-Agent: claude-code` and `Anthill-Instance: mrosani@LAPTOP-42`
 
 ### Requirement: Worktree cleanup
 After an ant PR is merged or closed, or a task is abandoned and the queen confirms cleanup, Anthill SHALL remove the worktree. It SHALL delete the local branch, and the remote branch only if the provider has not already deleted it and the PR is merged. Worktrees with unpushed commits SHALL NOT be removed without explicit confirmation.

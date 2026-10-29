@@ -1,18 +1,18 @@
 ## Purpose
 
-Defines the only channel between Anthill and the agents it runs: the ant tools. It covers how the tools are given to an agent, the set of tools and what each does, the policy checks Anthill applies to every call, and how Anthill delivers messages such as time warnings to a running agent.
+Defines the only channel between Anthill and the agents it runs: the ant tools. It covers how the tools are given to an agent, the set of tools and what each does, the policy checks Anthill applies to every call, and how Anthill delivers messages such as time warnings to an agent during its run.
 
 ## ADDED Requirements
 
 ### Requirement: Tools are delivered as a local stdio MCP server
-Anthill SHALL give every ant and shepherd agent its tools as an MCP server it starts over stdio (`anthill mcp --ant <token>`). The server SHALL be added to the agent's own configuration when the agent is launched. It relays calls to the daemon over the local control interface. No other channel (CLI, HTTP) SHALL be offered.
+Anthill SHALL give every run and every review or fix agent its tools as an MCP server it starts over stdio (`anthill mcp --ant <token>`). The server SHALL be added to the agent's own configuration when the agent is launched. It relays calls to the daemon over the local control interface. No other channel (CLI, HTTP) SHALL be offered.
 
 #### Scenario: Tools available at start
-- **WHEN** an ant starts with Claude Code
+- **WHEN** a run starts with Claude Code
 - **THEN** the Anthill tools appear in the agent's tool list with their descriptions and parameter schemas, and they are allowed without a permission prompt
 
 #### Scenario: MCP server fails to start
-- **WHEN** the Anthill MCP server cannot start for an ant
+- **WHEN** the Anthill MCP server cannot start for a run
 - **THEN** the run is aborted before the agent does any work, and the ant becomes `failed` with reason "ant tools unavailable"
 
 ### Requirement: Tool tokens are scoped to one run
@@ -44,7 +44,7 @@ Ants SHALL have `request_extension(minutes, reason)`, which applies the ant-time
 
 ### Requirement: Conversation tools
 Ants SHALL have:
-- `ask_question(text, where)`, which posts a question on the task or the PR. When the call returns, Anthill SHALL stop the runner itself with the session saved, and the run is paused (agent-conversation);
+- `ask_question(text, where)`, which posts a question on the task or the PR. When the call returns, Anthill SHALL stop the runner itself with the session saved, the run ends, and the ant is `awaiting-input` (agent-conversation);
 - `report_progress(text)`, which updates the run's single status comment;
 - `comment(where, body)` and `reply_to_thread(thread, body, resolve)` for agent-written comments.
 
@@ -82,11 +82,11 @@ Ants SHALL end a run with `finish(status, summary, open_points)`, where status i
 - **THEN** the ant becomes `succeeded`, and the task claim is parked
 
 #### Scenario: Complete without commits
-- **WHEN** a task ant calls `finish(complete, …)` and its branch has no new commits
+- **WHEN** a task run calls `finish(complete, …)` and the branch has no new commits
 - **THEN** the call is refused with "no commits on the branch: finish with no-change, or ask a question"
 
 #### Scenario: No-change with commits
-- **WHEN** a task ant calls `finish(no-change, …)` and its branch has new commits
+- **WHEN** a task run calls `finish(no-change, …)` and the branch has new commits
 - **THEN** the call is refused with "the branch has new commits: finish with complete or partial"
 
 ### Requirement: Review tool
@@ -105,8 +105,8 @@ Fix agents SHALL end a fix pass with `finish_fixes(results)`, giving for each fi
 
 ### Requirement: Tool sets per agent role
 Anthill SHALL offer each agent only the tools of its role, and SHALL refuse calls to any other tool:
-- task ant: the task, time, extension, conversation, push, pull request and finish tools;
-- follow-up ant: the same, without `open_pull_request`;
+- task run: the task, time, extension, conversation, push, pull request and finish tools;
+- follow-up run: the same, without `open_pull_request`;
 - review agent: `submit_review` only;
 - fix agent: `finish_fixes` only.
 
@@ -125,15 +125,15 @@ Before executing a tool call, Anthill SHALL check it against the ant's state, it
 - **WHEN** an ant calls `comment` with a body containing a string that matches a secret pattern
 - **THEN** the comment is posted with the value redacted
 
-#### Scenario: Call while paused
-- **WHEN** a paused ant's process calls `push`
-- **THEN** the call is refused with "run is paused"
+#### Scenario: Call while waiting for an extension
+- **WHEN** a run calls `push` while its ant is `awaiting-extension`
+- **THEN** the call is refused with "waiting for the extension decision"
 
-### Requirement: Messages to a running agent
-Anthill SHALL deliver time warnings, extension decisions and ticket updates to a running agent through the first means the runner supports: a live input message, a hook that adds context after each tool use, or a notice attached to the result of the agent's next ant-tool call.
+### Requirement: Messages during a run
+Anthill SHALL deliver time warnings, extension decisions and ticket updates to an agent during its run through the first means the runner supports: a live input message, a hook that adds context after each tool use, or a notice attached to the result of the agent's next ant-tool call.
 
 #### Scenario: Runner without live input
-- **WHEN** an ant runs on a runner without live input or hooks and reaches 80% of its budget
+- **WHEN** a run on a runner without live input or hooks reaches 80% of its budget
 - **THEN** the warning is attached to the result of its next ant-tool call
 
 ### Requirement: Provider commands are redirected to tools
