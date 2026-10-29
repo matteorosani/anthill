@@ -1,0 +1,47 @@
+[
+  {
+    "id": 5034,
+    "node_id": "PR_kwDOA034",
+    "number": 34,
+    "title": "Fix login timeout on Safari",
+    "body": "Keeps the session alive.\n\nCloses #12",
+    "state": "open",
+    "draft": false,
+    "user": {"login": "mrosani"},
+    "labels": [{"name": "anthill"}],
+    "html_url": "https://github.com/MatteoRosani/Anthill/pull/34",
+    "head": {"ref": "ant/gh-12-fix-login-timeout-on-safari", "sha": "1111111111111111111111111111111111111111", "repo": {"full_name": "MatteoRosani/Anthill"}},
+    "base": {"ref": "main", "sha": "0000000000000000000000000000000000000000", "repo": {"full_name": "MatteoRosani/Anthill"}},
+    "updated_at": "2026-10-29T09:50:00Z"
+  },
+  {
+    "id": 5035,
+    "node_id": "PR_kwDOA035",
+    "number": 35,
+    "title": "Drop the legacy exporter",
+    "body": "A developer edited the closing reference away.",
+    "state": "open",
+    "draft": true,
+    "user": {"login": "mrosani"},
+    "labels": [],
+    "html_url": "https://github.com/MatteoRosani/Anthill/pull/35",
+    "head": {"ref": "ant/gh-13-drop-the-legacy-exporter", "sha": "2222222222222222222222222222222222222222", "repo": {"full_name": "MatteoRosani/Anthill"}},
+    "base": {"ref": "main", "sha": "0000000000000000000000000000000000000000", "repo": {"full_name": "MatteoRosani/Anthill"}},
+    "updated_at": "2026-10-29T09:40:00Z"
+  },
+  {
+    "id": 5036,
+    "node_id": "PR_kwDOA036",
+    "number": 36,
+    "title": "Human PR",
+    "body": "Fixes MatteoRosani/Other#5",
+    "state": "open",
+    "draft": false,
+    "user": {"login": "erin"},
+    "labels": [],
+    "html_url": "https://github.com/MatteoRosani/Anthill/pull/36",
+    "head": {"ref": "feature/export", "sha": "3333333333333333333333333333333333333333", "repo": {"full_name": "MatteoRosani/Anthill"}},
+    "base": {"ref": "main", "sha": "0000000000000000000000000000000000000000", "repo": {"full_name": "MatteoRosani/Anthill"}},
+    "updated_at": "2026-10-29T08:00:00Z"
+  }
+]

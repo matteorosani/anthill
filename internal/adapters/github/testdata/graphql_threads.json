@@ -1,0 +1,33 @@
+{
+  "data": {
+    "repository": {
+      "pullRequest": {
+        "reviewThreads": {
+          "pageInfo": {"hasNextPage": false, "endCursor": "Y3Vyc29yOjI="},
+          "nodes": [
+            {
+              "id": "PRRT_kwDOA001",
+              "isResolved": false,
+              "path": "web/session.go",
+              "line": 42,
+              "originalLine": 40,
+              "comments": {"nodes": [
+                {"databaseId": 7001, "url": "https://github.com/MatteoRosani/Anthill/pull/34#discussion_r7001", "body": "Why 60 seconds?", "createdAt": "2026-10-29T09:44:00Z", "updatedAt": "2026-10-29T09:44:00Z", "author": {"login": "alice"}}
+              ]}
+            },
+            {
+              "id": "PRRT_kwDOA002",
+              "isResolved": true,
+              "path": "web/old.go",
+              "line": null,
+              "originalLine": 7,
+              "comments": {"nodes": [
+                {"databaseId": 7002, "url": "https://github.com/MatteoRosani/Anthill/pull/34#discussion_r7002", "body": "Unused import.", "createdAt": "2026-10-29T09:00:00Z", "updatedAt": "2026-10-29T09:00:00Z", "author": null}
+              ]}
+            }
+          ]
+        }
+      }
+    }
+  }
+}

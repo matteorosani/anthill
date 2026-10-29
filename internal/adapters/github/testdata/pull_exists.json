@@ -1,0 +1,1 @@
+{"message": "Validation Failed", "errors": [{"resource": "PullRequest", "code": "custom", "message": "A pull request already exists for MatteoRosani:ant/gh-12-fix-login-timeout-on-safari."}], "documentation_url": "https://docs.github.com/rest/pulls/pulls#create-a-pull-request", "status": "422"}

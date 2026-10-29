@@ -1,0 +1,15 @@
+{
+  "id": 5034,
+  "node_id": "PR_kwDOA034",
+  "number": 34,
+  "title": "Fix login timeout on Safari",
+  "body": "Keeps the session alive.\n\nCloses #12",
+  "state": "open",
+  "draft": false,
+  "user": {"login": "mrosani"},
+  "labels": [{"name": "anthill"}],
+  "html_url": "https://github.com/MatteoRosani/Anthill/pull/34",
+  "head": {"ref": "ant/gh-12-fix-login-timeout-on-safari", "sha": "1111111111111111111111111111111111111111", "repo": {"full_name": "MatteoRosani/Anthill"}},
+  "base": {"ref": "main", "sha": "0000000000000000000000000000000000000000", "repo": {"full_name": "MatteoRosani/Anthill"}},
+  "updated_at": "2026-10-29T09:50:00Z"
+}
