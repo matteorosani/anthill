@@ -331,8 +331,9 @@ func TestProviderPullRequests(t *testing.T) {
 	alice := p.Client("alice")
 	pr, err := alice.OpenPullRequest(ctx, ports.NewPullRequest{
 		Repo: ghRepo, Source: "ant/gh-12-fix-login", Target: "main", Title: "Fix login", Body: "Closes #12", Labels: []string{"anthill"},
+		Item: &item12,
 	})
-	if err != nil || pr.Ref.Kind != domain.KindPR || pr.Author != "alice" || pr.Draft {
+	if err != nil || pr.Ref.Kind != domain.KindPR || pr.Author != "alice" || pr.Draft || pr.Item == nil || *pr.Item != item12 {
 		t.Fatalf("OpenPullRequest() = %+v, %v", pr, err)
 	}
 	draft := true
@@ -394,4 +395,19 @@ func atoi(t *testing.T, s string) int {
 		t.Fatalf("id %q is not a number", s)
 	}
 	return n
+}
+
+func TestProviderRepositories(t *testing.T) {
+	ctx := context.Background()
+	p, _ := newProvider(t)
+	alice := p.Client("alice")
+	if repos, err := alice.Repositories(ctx, ghRepo); err != nil || !slices.Equal(repos, []domain.Repository{ghRepo}) {
+		t.Errorf("Repositories(github) = %v, %v", repos, err)
+	}
+	shop := domain.Repository{Provider: domain.AzureDevOps, Org: "contoso", Project: "shop"}
+	web := domain.Repository{Provider: domain.AzureDevOps, Org: "contoso", Project: "shop", Name: "web"}
+	p.PutRepositories(shop, web)
+	if repos, err := alice.Repositories(ctx, shop); err != nil || !slices.Equal(repos, []domain.Repository{web}) {
+		t.Errorf("Repositories(project) = %v, %v", repos, err)
+	}
 }

@@ -41,6 +41,7 @@ const (
 	OpAddReviewComment Op = "add-review-comment"
 	OpReplyToThread    Op = "reply-to-thread"
 	OpResolveThread    Op = "resolve-thread"
+	OpRepositories     Op = "repositories"
 )
 
 // Request is one call received by the fake provider.
@@ -74,6 +75,7 @@ type Provider struct {
 	readLag  time.Duration
 	limitTo  time.Time
 	prNumber int
+	repos    map[domain.Repository][]domain.Repository
 }
 
 type itemEntry struct {
@@ -102,7 +104,16 @@ func NewProvider(clock *Clock) *Provider {
 		fail:     map[Op]error{},
 		failNext: map[Op][]error{},
 		barriers: map[Op]*barrier{},
+		repos:    map[domain.Repository][]domain.Repository{},
 	}
+}
+
+// PutRepositories sets the code repositories of a scope, such as the Git
+// repositories of an Azure DevOps project, for Repositories.
+func (p *Provider) PutRepositories(scope domain.Repository, repos ...domain.Repository) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.repos[scope] = slices.Clone(repos)
 }
 
 // Client returns the view of the provider for one developer login. It
@@ -762,6 +773,24 @@ func (c *ProviderClient) PullRequest(_ context.Context, ref domain.Ref) (domain.
 	return p.visiblePR(e.pr), p.clock.Now(), nil
 }
 
+// Repositories returns the repositories put for scope; a GitHub
+// repository with none put is its own only repository.
+func (c *ProviderClient) Repositories(_ context.Context, scope domain.Repository) ([]domain.Repository, error) {
+	p := c.p
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if err := p.call(OpRepositories, c.login, domain.Ref{}, scope); err != nil {
+		return nil, err
+	}
+	if repos, ok := p.repos[scope]; ok {
+		return slices.Clone(repos), nil
+	}
+	if scope.Provider == domain.GitHub {
+		return []domain.Repository{scope}, nil
+	}
+	return nil, nil
+}
+
 // OpenPullRequest opens a PR with the next free number, authored by the
 // client's login.
 func (c *ProviderClient) OpenPullRequest(_ context.Context, n ports.NewPullRequest) (domain.PullRequest, error) {
@@ -781,6 +810,10 @@ func (c *ProviderClient) OpenPullRequest(_ context.Context, n ports.NewPullReque
 		Author:       c.login,
 		Draft:        n.Draft,
 		Labels:       slices.Clone(n.Labels),
+	}
+	if n.Item != nil {
+		item := *n.Item
+		pr.Item = &item
 	}
 	pr.URL = fmt.Sprintf("https://fake.test/%s/pull/%d", n.Repo, pr.Ref.Number)
 	e := &prEntry{pr: pr}

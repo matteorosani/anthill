@@ -184,6 +184,23 @@ var settingChecks = []settingCheck{
 		}
 		return ""
 	}},
+	{KeyAzureDevOpsProjects, func(s *SettingValues) string {
+		seen := map[Repository]bool{}
+		for _, p := range s.AzureDevOpsProjects {
+			r, err := p.Repository()
+			if err != nil {
+				return err.Error()
+			}
+			if name := strings.TrimSpace(p.DefaultRepository); name == "" || strings.Contains(name, "/") {
+				return fmt.Sprintf("project %q: default repository %q must be the name of one repository", p.Project, p.DefaultRepository)
+			}
+			if seen[r] {
+				return fmt.Sprintf("project %q is listed more than once", p.Project)
+			}
+			seen[r] = true
+		}
+		return ""
+	}},
 	{KeySecretPatterns, func(s *SettingValues) string {
 		for _, p := range s.SecretPatterns {
 			if _, err := regexp.Compile(p); err != nil {

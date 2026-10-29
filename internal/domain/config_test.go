@@ -110,6 +110,7 @@ var emptyConfigurationDefaults = map[string]string{
 	"otlp-endpoint":               "none",
 	"secret-patterns":             "none",
 	"worktree-root":               "~/.anthill/worktrees",
+	"azure-devops-projects":       "none",
 }
 
 // Scenario "Empty configuration": with only a repository entry, every
@@ -267,6 +268,27 @@ func TestForItemLabelInAnotherCase(t *testing.T) {
 	}
 }
 
+// azure-devops-projects names a project in any case; its default
+// repository is found case-insensitively and the project is lowercased.
+func TestAzureDevOpsProjectDefault(t *testing.T) {
+	e := domain.ConfigLayers{Global: &domain.SettingValues{AzureDevOpsProjects: []domain.AzureDevOpsProject{
+		{Project: "Contoso/Shop", DefaultRepository: "web"},
+	}}}.Resolve()
+	shop := domain.Repository{Provider: domain.AzureDevOps, Org: "contoso", Project: "shop"}
+	if got := e.DefaultRepository(shop); got != "web" {
+		t.Errorf("DefaultRepository = %q, want web", got)
+	}
+	if got := e.DefaultRepository(domain.Repository{Provider: domain.AzureDevOps, Org: "contoso", Project: "hr"}); got != "" {
+		t.Errorf("DefaultRepository of an unlisted project = %q, want none", got)
+	}
+	if r, err := e.AzureDevOpsProjects[0].Repository(); err != nil || r != shop {
+		t.Errorf("Repository() = %+v, %v; want lowercase %+v", r, err, shop)
+	}
+	if e.Source(domain.KeyAzureDevOpsProjects) != domain.LayerGlobal {
+		t.Errorf("source = %q", e.Source(domain.KeyAzureDevOpsProjects))
+	}
+}
+
 // The runner order: agent: label, local entry, global, default (spec
 // ant-execution, "Label overrides repository default").
 func TestForItemLabelOverridesRepositoryDefault(t *testing.T) {
@@ -329,6 +351,10 @@ func TestCheckKey(t *testing.T) {
 		{domain.LayerRepositoryFile, "extension-allowance.foo", `unknown key "extension-allowance.foo"`},
 		{domain.LayerRepositoryFile, "budget", ""},
 		{domain.LayerRepositoryFile, "extension-allowance.times", ""},
+		{domain.LayerRepositoryFile, "azure-devops-projects", `forbidden key "azure-devops-projects": machine settings belong in the local configuration`},
+		{domain.LayerLocalEntry, "azure-devops-projects", `key "azure-devops-projects" can be set only in the global configuration`},
+		{domain.LayerGlobal, "azure-devops-projects.default-repository", ""},
+		{domain.LayerGlobal, "azure-devops-projects.repo", `unknown key "azure-devops-projects.repo"`},
 		// Scenario "OTLP headers in a configuration file".
 		{domain.LayerGlobal, "otlp-headers", "OTLP headers belong in the OS credential store, not in a configuration file"},
 		{domain.LayerLocalEntry, "otlp-headers", "OTLP headers belong in the OS credential store, not in a configuration file"},
@@ -406,6 +432,11 @@ func TestValidateSettings(t *testing.T) {
 		{"question staleness", domain.SettingValues{QuestionStaleness: ptr(time.Duration(0))}, "question staleness must be more than 0"},
 		{"otlp endpoint", domain.SettingValues{OTLPEndpoint: ptr("collector:4318")}, "OTLP endpoint must be an http or https URL"},
 		{"secret pattern", domain.SettingValues{SecretPatterns: []string{"("}}, "secret pattern \"(\" is not valid: error parsing regexp: missing closing ): `(`"},
+		{"azure devops project without organization", domain.SettingValues{AzureDevOpsProjects: []domain.AzureDevOpsProject{{Project: "shop", DefaultRepository: "web"}}}, `project "shop" must be organization/project`},
+		{"azure devops project without default", domain.SettingValues{AzureDevOpsProjects: []domain.AzureDevOpsProject{{Project: "contoso/shop"}}}, `project "contoso/shop": default repository "" must be the name of one repository`},
+		{"azure devops project twice", domain.SettingValues{AzureDevOpsProjects: []domain.AzureDevOpsProject{
+			{Project: "contoso/shop", DefaultRepository: "web"}, {Project: "Contoso/Shop", DefaultRepository: "api"},
+		}}, `project "Contoso/Shop" is listed more than once`},
 		{"worktree root relative", domain.SettingValues{WorktreeRoot: ptr("worktrees")}, `worktree root "worktrees" must be an absolute path`},
 		{"budget over maximum", domain.SettingValues{Budget: ptr(200), MaxBaseBudget: ptr(100)}, domain.MessageBudgetOverMaximum},
 	}

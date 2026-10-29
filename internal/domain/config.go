@@ -102,6 +102,9 @@ const (
 	KeyOTLPEndpoint      = "otlp-endpoint"
 	KeySecretPatterns    = "secret-patterns"
 	KeyWorktreeRoot      = "worktree-root"
+	// KeyAzureDevOpsProjects maps Azure DevOps projects to their default
+	// target repository (spec work-item-sources, "Repository mapping").
+	KeyAzureDevOpsProjects = "azure-devops-projects"
 
 	KeyProvider = "provider"
 	KeyRemote   = "remote"
@@ -119,6 +122,12 @@ const (
 const (
 	KeyAllowanceMinutes = "minutes"
 	KeyAllowanceTimes   = "times"
+)
+
+// The sub-keys of each azure-devops-projects entry.
+const (
+	KeyProject           = "project"
+	KeyDefaultRepository = "default-repository"
 )
 
 // SettingInfo describes one setting: its key and the layers that may set
@@ -170,6 +179,7 @@ var settingInfos = []SettingInfo{
 	{KeyOTLPEndpoint, globalOnly},
 	{KeySecretPatterns, globalOnly},
 	{KeyWorktreeRoot, globalOnly},
+	{KeyAzureDevOpsProjects, globalOnly},
 	{KeyProvider, entryOnly},
 	{KeyRemote, entryOnly},
 	{KeyPath, entryOnly},
@@ -273,6 +283,12 @@ func CheckKey(layer Layer, path []string) string {
 	}
 	if len(path) == 2 && path[0] == KeyExtensionAllowance {
 		if name == KeyAllowanceMinutes || name == KeyAllowanceTimes {
+			return ""
+		}
+		return "unknown key " + quote(strings.Join(path, "."))
+	}
+	if len(path) == 2 && path[0] == KeyAzureDevOpsProjects {
+		if name == KeyProject || name == KeyDefaultRepository {
 			return ""
 		}
 		return "unknown key " + quote(strings.Join(path, "."))
@@ -390,6 +406,28 @@ type SettingValues struct {
 	OTLPEndpoint      *string        `yaml:"otlp-endpoint"`
 	SecretPatterns    []string       `yaml:"secret-patterns"`
 	WorktreeRoot      *string        `yaml:"worktree-root"`
+	// AzureDevOpsProjects is nil when the layer does not set it.
+	AzureDevOpsProjects []AzureDevOpsProject `yaml:"azure-devops-projects"`
+}
+
+// AzureDevOpsProject is one entry of azure-devops-projects: the target
+// repository of the project's work items that carry no repo: label.
+type AzureDevOpsProject struct {
+	// Project is organization/project.
+	Project string `yaml:"project"`
+	// DefaultRepository is the name of a Git repository of the project.
+	DefaultRepository string `yaml:"default-repository"`
+}
+
+// Repository returns the project as a work item repository
+// (organization/project, no name) in lowercase, because Azure DevOps
+// names ignore case.
+func (p AzureDevOpsProject) Repository() (Repository, error) {
+	org, project, ok := strings.Cut(p.Project, "/")
+	if !ok || strings.TrimSpace(org) == "" || strings.TrimSpace(project) == "" || strings.Contains(project, "/") {
+		return Repository{}, fmt.Errorf("project %q must be organization/project", p.Project)
+	}
+	return Repository{Provider: AzureDevOps, Org: strings.ToLower(org), Project: strings.ToLower(project)}, nil
 }
 
 // RepositoryEntry is one local repository entry: a repository this

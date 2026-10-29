@@ -28,6 +28,10 @@ type NewPullRequest struct {
 	Body   string
 	Draft  bool
 	Labels []string
+	// Item is the work item the PR is opened for, or nil. Azure DevOps
+	// links it natively (workItemRefs), which body text cannot do; GitHub
+	// relies on the closing reference in Body and ignores it.
+	Item *domain.Ref
 }
 
 // PullRequestUpdate changes the fields that are set and leaves nil ones
@@ -77,6 +81,12 @@ type CodeHostPort interface {
 	// ResolveThread resolves a review thread after a verified auto-fix
 	// (spec pr-shepherd, "Anthill verifies, pushes and replies").
 	ResolveThread(ctx context.Context, ref domain.Ref, threadID string) error
+	// Repositories lists the code repositories of a scope: the Git
+	// repositories of an Azure DevOps project (organization/project), or
+	// the GitHub repository itself. The Ingestion service maps items to
+	// their target repository with it and domain.ResolveTargetRepository
+	// (spec work-item-sources, "Repository mapping").
+	Repositories(ctx context.Context, scope domain.Repository) ([]domain.Repository, error)
 	// CanWrite reports whether login has write access to the code
 	// repository, for commands on PRs (spec agent-conversation, "Commands
 	// are authorized"). It is separate from TrackerPort.CanWrite because

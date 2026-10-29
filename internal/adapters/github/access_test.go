@@ -84,3 +84,14 @@ func TestCanWriteErrorIsNotCached(t *testing.T) {
 		t.Errorf("after the error: %v, %v", ok, err)
 	}
 }
+
+func TestRepositoriesIsTheRepositoryItself(t *testing.T) {
+	e := newEnv(t)
+	got, err := e.a.Repositories(ctx(t), domain.Repository{Provider: domain.GitHub, Org: "MatteoRosani", Name: "Anthill"})
+	if err != nil || len(got) != 1 || got[0] != repo {
+		t.Errorf("Repositories() = %v, %v; want [%v]", got, err, repo)
+	}
+	if len(e.srv.sent()) != 0 {
+		t.Errorf("sent %d requests, want none", len(e.srv.sent()))
+	}
+}
