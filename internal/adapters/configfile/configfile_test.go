@@ -329,3 +329,26 @@ func TestDefaultPath(t *testing.T) {
 		t.Errorf("DefaultPath() = %q", path)
 	}
 }
+
+// Scenario "Uncommitted edit is used": the file is read from the clone's
+// working folder, not from a commit.
+func TestUncommittedEditIsUsed(t *testing.T) {
+	clone := t.TempDir()
+	file := filepath.Join(clone, ".anthill.yml")
+	if err := os.WriteFile(file, []byte("budget: 45\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	src := configfile.New(filepath.Join(t.TempDir(), "config.yml"))
+	entry := domain.RepositoryEntry{Provider: "github", Remote: "a/b", Path: clone}
+	if err := os.WriteFile(file, []byte("budget: 30\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	v, err := src.RepositoryFile(context.Background(), entry)
+	if err != nil {
+		t.Fatal(err)
+	}
+	e := domain.ConfigLayers{RepositoryFile: v, Global: &domain.SettingValues{}}.Resolve()
+	if e.Budget != 30*time.Minute || e.Source(domain.KeyBudget) != domain.LayerRepositoryFile {
+		t.Errorf("budget %v from %q, want 30m from .anthill.yml", e.Budget, e.Source(domain.KeyBudget))
+	}
+}
