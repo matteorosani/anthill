@@ -50,6 +50,16 @@ type ClaimFields struct {
 	Released     bool      `json:"released"`
 }
 
+// FindingFields are the marker fields only finding comments carry. They
+// let a later round match a new finding to this one (design D9) without
+// reading the rendered comment text.
+type FindingFields struct {
+	Fingerprint string `json:"fingerprint"`
+	File        string `json:"file,omitempty"`
+	StartLine   int    `json:"start_line,omitempty"`
+	EndLine     int    `json:"end_line,omitempty"`
+}
+
 // Marker is the hidden machine-readable part of every Anthill comment. It
 // is written as an HTML comment holding JSON:
 //
@@ -69,6 +79,9 @@ type Marker struct {
 	// ClaimFields is set for claim markers and nil for all others. Its
 	// fields are written at the top level of the JSON object.
 	*ClaimFields
+	// FindingFields is set for finding markers that carry a fingerprint,
+	// and nil for all others. Its fields are also written at the top level.
+	*FindingFields
 }
 
 // Validate checks that the marker has every field its kind needs.
@@ -96,6 +109,17 @@ func (m Marker) Validate() error {
 		}
 	} else if m.ClaimFields != nil {
 		return fmt.Errorf("only claim markers have claim fields")
+	}
+	if m.FindingFields != nil {
+		if m.Kind != CommentFinding {
+			return fmt.Errorf("only finding markers have finding fields")
+		}
+		if m.Fingerprint == "" {
+			return fmt.Errorf("finding marker has no fingerprint")
+		}
+		if m.StartLine < 0 || m.EndLine < m.StartLine {
+			return fmt.Errorf("finding marker has an invalid line range %d-%d", m.StartLine, m.EndLine)
+		}
 	}
 	return nil
 }

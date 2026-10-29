@@ -40,11 +40,15 @@ The OTLP endpoint SHALL be accepted only in local configuration, never in `.anth
 Anthill SHALL provide these defaults:
 - opt-in label `anthill`; hold label `anthill:hold`; claim label `anthill:claimed`
 - poll interval 2 min; claim lease 15 min
-- budget 60 min; maximum base budget 180 min; warning at 80%; ceiling 3× budget; grace period 3 min; follow-up budget 50%
+- budget 60 min; maximum base budget 180 min; warning at 80%; ceiling 3× budget; grace period 3 min; follow-up budget 50%; extension auto-approve allowance 0 min (always ask the queen)
 
 #### Scenario: Default budget and lease
 - **WHEN** no budget or lease is configured anywhere
 - **THEN** ants get 60 minutes and claims are leased for 15 minutes
+
+#### Scenario: No auto-approve allowance by default
+- **WHEN** no extension allowance is configured and an ant requests 5 more minutes
+- **THEN** the request is not approved automatically and waits for the queen's decision
 
 ### Requirement: Built-in defaults for limits and automation
 Anthill SHALL provide these defaults:

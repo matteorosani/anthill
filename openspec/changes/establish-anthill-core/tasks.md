@@ -19,13 +19,13 @@ Terms follow `openspec/glossary.md`. Every group lands its own tests and docs. U
 
 ## 3. Domain: eligibility, claims, ants and budgets
 
-- [ ] 3.1 Implement each prerequisite as a named check returning met/unmet with a reason, and evaluation returning all unmet prerequisites, and verify one test per task-eligibility scenario
-- [ ] 3.2 Implement claims: kinds, lease expiry from the provider timestamp plus the lease in the marker, live/parked/expired/released, earliest-live-claim resolution with comment id tie-break, and ignoring claims by users without write access, and verify tests for every work-claiming scenario that needs no provider
-- [ ] 3.3 Implement the ant state machine with all states of ant-execution, allowed transitions, and a recorded timestamp and reason per transition, and verify table tests for every allowed transition and that every other transition is refused
-- [ ] 3.4 Implement the budget: base budget sources and cap, counting only `starting`, `running` and `finishing`, carry-over between runs, follow-up budget, warning threshold, extensions with auto-approve and ceiling, grace period, and late decisions, and verify tests with a fake clock for every ant-timebox scenario
-- [ ] 3.5 Implement findings (severity, classification, location) and the de-duplication fingerprint from D9, and verify tests that an unchanged problem matches its earlier finding and a moved one by a few lines still matches
-- [ ] 3.6 Implement change events, the "who can trigger work" rule and the `actionable`/`informational`/`command` rule for edits, and verify tests for the outside commenter and ticket author scenarios
-- [ ] 3.7 Implement `/anthill` command parsing (one per line, unknown commands answered with help) and command authorization, and verify tests for every command, `/anthill deploy`, and `/anthill fix` by a PR author without write access
+- [x] 3.1 Implement each prerequisite as a named check returning met/unmet with a reason, and evaluation returning all unmet prerequisites, and verify one test per task-eligibility scenario
+- [x] 3.2 Implement claims: kinds, lease expiry from the provider timestamp plus the lease in the marker, live/parked/expired/released, earliest-live-claim resolution with comment id tie-break, and ignoring claims by users without write access, and verify tests for every work-claiming scenario that needs no provider
+- [x] 3.3 Implement the ant state machine with all states of ant-execution, allowed transitions, and a recorded timestamp and reason per transition, and verify table tests for every allowed transition and that every other transition is refused
+- [x] 3.4 Implement the budget: base budget sources and cap, counting only `starting`, `running` and `finishing`, carry-over between runs, follow-up budget, warning threshold, extensions with auto-approve and ceiling, grace period, and late decisions, and verify tests with a fake clock for every ant-timebox scenario
+- [x] 3.5 Implement findings (severity, classification, location) and the de-duplication fingerprint from D9, and verify tests that an unchanged problem matches its earlier finding and a moved one by a few lines still matches
+- [x] 3.6 Implement change events, the "who can trigger work" rule and the `actionable`/`informational`/`command` rule for edits, and verify tests for the outside commenter and ticket author scenarios
+- [x] 3.7 Implement `/anthill` command parsing (one per line, unknown commands answered with help) and command authorization, and verify tests for every command, `/anthill deploy`, and `/anthill fix` by a PR author without write access
 
 ## 4. Configuration and credentials
 

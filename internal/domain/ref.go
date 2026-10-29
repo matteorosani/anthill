@@ -106,6 +106,39 @@ func (r Ref) Full() string {
 	return fmt.Sprintf("%s#%d", r.Repo, r.Number)
 }
 
+// Display prints the reference the way people write it in a comment or a
+// reason. Seen from the repository from, an item is #10 on GitHub and
+// AB#10 on Azure DevOps, and a pull request is #34 on GitHub and !34 on
+// Azure DevOps. A reference to another repository gets that repository's
+// path in front, such as matteorosani/other#10.
+func (r Ref) Display(from Repository) string {
+	var short string
+	switch {
+	case r.Repo.Provider == AzureDevOps && r.Kind == KindPR:
+		short = fmt.Sprintf("!%d", r.Number)
+	case r.Repo.Provider == AzureDevOps:
+		short = fmt.Sprintf("AB#%d", r.Number)
+	default:
+		short = fmt.Sprintf("#%d", r.Number)
+	}
+	if !r.sameRepository(from) {
+		if r.Repo.Provider == AzureDevOps && r.Kind == KindItem {
+			return r.Repo.String() + " " + short
+		}
+		return r.Repo.String() + short
+	}
+	return short
+}
+
+// sameRepository reports whether r lives in from. An Azure DevOps work item
+// belongs to its project, so any repository of that project counts.
+func (r Ref) sameRepository(from Repository) bool {
+	if r.Repo.Provider == AzureDevOps && r.Kind == KindItem {
+		return from.Provider == AzureDevOps && from.Org == r.Repo.Org && from.Project == r.Repo.Project
+	}
+	return r.Repo == from
+}
+
 // ParseRef parses a short form such as gh-12 or ado-pr-34 found in the
 // given repository, and returns the full reference. The provider in the
 // short form must match the repository's provider. An Azure DevOps work
