@@ -1,0 +1,15 @@
+[
+  {
+    "id": 2016,
+    "number": 16,
+    "title": "Opt-in label removed",
+    "body": "Not for Anthill any more.",
+    "state": "open",
+    "user": {"login": "alice"},
+    "labels": [],
+    "comments": 0,
+    "html_url": "https://github.com/MatteoRosani/Anthill/issues/16",
+    "repository_url": "https://api.github.com/repos/MatteoRosani/Anthill",
+    "updated_at": "2026-10-29T10:05:00Z"
+  }
+]

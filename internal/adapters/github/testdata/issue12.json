@@ -1,0 +1,16 @@
+{
+  "id": 2012,
+  "node_id": "I_kwDOA012",
+  "number": 12,
+  "title": "Fix login timeout on Safari",
+  "body": "Users are logged out after 30 seconds.",
+  "state": "open",
+  "user": {"login": "alice"},
+  "labels": [{"name": "anthill"}],
+  "assignees": [{"login": "bob"}],
+  "type": {"name": "Task"},
+  "comments": 0,
+  "html_url": "https://github.com/MatteoRosani/Anthill/issues/12",
+  "repository_url": "https://api.github.com/repos/MatteoRosani/Anthill",
+  "updated_at": "2026-10-29T09:30:00Z"
+}

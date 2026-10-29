@@ -56,12 +56,12 @@ Terms follow `openspec/glossary.md`. Every group lands its own tests and docs. U
 
 ## 7. GitHub adapter
 
-- [ ] 7.1 Implement authentication from the credential store or the `gh` session, and verify with `httptest` that requests carry the token and that the token is never logged
-- [ ] 7.2 Implement issue polling with ETags and `since`, mapping labels, assignees, "blocked by" links, sub-issues, comments and `closed-not-planned`, and verify tests against recorded API fixtures
-- [ ] 7.3 Implement pull request polling with head commit, draft flag, review threads and the link to the item, and verify fixture tests including the "PR body reference removed" case
-- [ ] 7.4 Implement writes: comments with markers (idempotent by marker id), comment edits, labels, assignees, open and update PR with closing reference and `anthill` label, draft and ready, review comments, thread replies and resolution, and verify fixture tests for each call
-- [ ] 7.5 Implement the write-access lookup with caching, and verify tests for a collaborator, a non-collaborator and a cache hit
-- [ ] 7.6 Handle rate limits by pausing until the reported reset, and verify the "rate limit exhausted" test with no requests sent before the reset
+- [x] 7.1 Implement authentication from the credential store or the `gh` session, and verify with `httptest` that requests carry the token and that the token is never logged
+- [x] 7.2 Implement issue polling with ETags and `since`, mapping labels, assignees, "blocked by" links, sub-issues, comments and `closed-not-planned`, and verify tests against recorded API fixtures
+- [x] 7.3 Implement pull request polling with head commit, draft flag, review threads and the link to the item, and verify fixture tests including the "PR body reference removed" case
+- [x] 7.4 Implement writes: comments with markers (idempotent by marker id), comment edits, labels, assignees, open and update PR with closing reference and `anthill` label, draft and ready, review comments, thread replies and resolution, and verify fixture tests for each call
+- [x] 7.5 Implement the write-access lookup with caching, and verify tests for a collaborator, a non-collaborator and a cache hit
+- [x] 7.6 Handle rate limits by pausing until the reported reset, and verify the "rate limit exhausted" test with no requests sent before the reset
 
 ## 8. Azure DevOps adapter
 

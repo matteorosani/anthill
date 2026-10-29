@@ -1,0 +1,12 @@
+[
+  {
+    "id": 7001,
+    "user": {"login": "alice"},
+    "html_url": "https://github.com/MatteoRosani/Anthill/pull/34#discussion_r7001",
+    "path": "web/session.go",
+    "line": 42,
+    "body": "Why 60 seconds?",
+    "created_at": "2026-10-29T09:44:00Z",
+    "updated_at": "2026-10-29T09:44:00Z"
+  }
+]

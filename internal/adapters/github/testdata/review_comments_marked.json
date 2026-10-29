@@ -1,0 +1,12 @@
+[
+  {
+    "id": 7005,
+    "user": {"login": "mrosani"},
+    "html_url": "https://github.com/MatteoRosani/Anthill/pull/34#discussion_r7005",
+    "path": "web/session.go",
+    "line": 44,
+    "body": "🐜 Shepherd (mrosani@LAPTOP-42)\n\nUnused variable.\n\n<!-- anthill {\"v\":1,\"id\":\"finding-abc\",\"instance\":\"mrosani@LAPTOP-42\",\"kind\":\"finding\",\"ref\":\"gh-pr-34\"} -->",
+    "created_at": "2026-10-29T09:41:00Z",
+    "updated_at": "2026-10-29T09:41:00Z"
+  }
+]
