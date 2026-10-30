@@ -105,6 +105,14 @@ Provider credentials and OTLP headers never live in a configuration file. Anthil
    - `otlp-headers` for the OTLP headers, written as `key1=value1,key2=value2`.
 2. The provider's own CLI session, when the store has no entry: `gh auth token --hostname <host>` for GitHub, and `az account get-access-token` for Azure DevOps. OTLP headers come only from the store.
 
+An Azure DevOps value shaped like a JWT, such as the token `az` prints, is a Microsoft Entra ID access token. Anthill sends it as a Bearer token and asks for a new one two minutes before it expires. Any other value is a personal access token (PAT), sent with Basic authentication. A PAT needs these scopes:
+
+- Work Items (Read & write), for work items, their tags, comments and claims;
+- Code (Read & write), for repositories and pull requests;
+- Identity (Read) and Security (Manage), to check who has write access. Without them, Anthill treats every user as without write access and logs one warning.
+
+Anthill works with Azure DevOps Services (`dev.azure.com`) only. Azure DevOps Server (on-premises) is not supported.
+
 Credential values never appear in logs, errors, comments, task briefs or telemetry.
 
 ## Settings

@@ -65,11 +65,11 @@ Terms follow `openspec/glossary.md`. Every group lands its own tests and docs. U
 
 ## 8. Azure DevOps adapter
 
-- [ ] 8.1 Implement authentication from the credential store or the `az` session, and verify with `httptest` that the token is sent and never logged
-- [ ] 8.2 Implement work item polling with WIQL on `System.ChangedDate`, tags, Predecessor and Child links, `System.Rev` and the Acceptance Criteria field, and verify the "Azure DevOps bug mapped" fixture test
-- [ ] 8.3 Implement repository mapping per project and the `repo:` tag, with unmapped items, and verify the "Azure DevOps item with no repository" test
-- [ ] 8.4 Implement pull request polling and writes, including `AB#12` closing references and thread replies, and verify fixture tests for each call
-- [ ] 8.5 Implement claim writes with a JSON-Patch `test` on `/rev`, treating a conflict as a lost race, and verify the "optimistic concurrency" fixture test
+- [x] 8.1 Implement authentication from the credential store or the `az` session, and verify with `httptest` that the token is sent and never logged
+- [x] 8.2 Implement work item polling with WIQL on `System.ChangedDate`, tags, Predecessor and Child links, `System.Rev` and the Acceptance Criteria field, and verify the "Azure DevOps bug mapped" fixture test
+- [x] 8.3 Implement repository mapping per project and the `repo:` tag, with unmapped items, and verify the "Azure DevOps item with no repository" test
+- [x] 8.4 Implement pull request polling and writes, including `AB#12` closing references and thread replies, and verify fixture tests for each call
+- [x] 8.5 Implement claim writes with a JSON-Patch `test` on `/rev`, treating a conflict as a lost race, and verify the "optimistic concurrency" fixture test
 
 ## 9. Ingestion and change detection
 

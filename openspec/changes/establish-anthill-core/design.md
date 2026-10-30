@@ -131,7 +131,7 @@ Rust was rejected because its steeper curve slows down an exploratory project an
 Layout follows D1: `cmd/anthill` (CLI, daemon and `anthill mcp` entry points), `internal/domain` (no I/O), `internal/app` (application services), `internal/ports` (interfaces), `internal/adapters/<name>` (one package per adapter), and `internal/testkit` (fakes for every port).
 
 Main libraries, chosen for being maintained and pure Go where possible:
-- `google/go-github` for GitHub, and `microsoft/azure-devops-go-api` for Azure DevOps;
+- `google/go-github` for GitHub. Azure DevOps is called over its REST API with `net/http` and `encoding/json`. `microsoft/azure-devops-go-api` was rejected: its last release dates from 2023, its typed calls never expose the HTTP response, whose Date and `Retry-After` headers the adapter needs, and its per-area clients accept no injected transport for tests;
 - `modernc.org/sqlite` for the local store, so no C compiler is needed;
 - the official `modelcontextprotocol/go-sdk` for the ant tools;
 - `spf13/cobra` for the CLI;
