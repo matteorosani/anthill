@@ -13,8 +13,8 @@ import (
 
 func pr(n int) domain.Ref { return domain.Ref{Repo: repo, Kind: domain.KindPR, Number: n} }
 
-// servePulls registers the open PRs of pulls.json with their comments
-// and review threads.
+// servePulls registers the open PRs of pulls.json with their comments,
+// reviews and review threads.
 func servePulls(t *testing.T, e *env) {
 	e.srv.fixture("GET /repos/matteorosani/anthill/pulls", http.StatusOK, "pulls.json", "ETag", `"pulls-1"`)
 	for _, n := range []int{34, 35, 36} {
@@ -23,6 +23,11 @@ func servePulls(t *testing.T, e *env) {
 			file = "empty_list.json"
 		}
 		e.srv.fixture(fmt.Sprintf("GET /repos/matteorosani/anthill/issues/%d/comments", n), http.StatusOK, file)
+		reviews := "pr_reviews.json"
+		if n != 34 {
+			reviews = "empty_list.json"
+		}
+		e.srv.fixture(fmt.Sprintf("GET /repos/matteorosani/anthill/pulls/%d/reviews", n), http.StatusOK, reviews)
 	}
 	e.srv.graphql(
 		`"number":34`, "graphql_threads.json",
@@ -61,8 +66,23 @@ func TestPullRequestsPoll(t *testing.T) {
 		if !slices.Equal(p34.Labels, []string{"anthill"}) {
 			t.Errorf("labels = %v", p34.Labels)
 		}
-		if len(p34.Comments) != 1 || p34.Comments[0].ID != "9101" {
+		if len(p34.Comments) != 2 || p34.Comments[0].ID != "9101" {
 			t.Errorf("comments = %+v", p34.Comments)
+		}
+	})
+
+	// A review's summary is a comment, so that change detection sees it;
+	// reviews without text and pending reviews are not.
+	t.Run("review summaries", func(t *testing.T) {
+		submitted := time.Date(2026, 10, 29, 9, 47, 0, 0, time.UTC)
+		want := domain.Comment{ID: "v456", Author: "bob", Body: "Please handle the empty password too.",
+			URL:       "https://github.com/MatteoRosani/Anthill/pull/34#pullrequestreview-456",
+			CreatedAt: submitted, UpdatedAt: submitted}
+		if len(p34.Comments) != 2 || p34.Comments[1] != want {
+			t.Errorf("comments = %+v, want the summary %+v", p34.Comments, want)
+		}
+		if len(p35.Comments) != 0 {
+			t.Errorf("comments of #35 = %+v", p35.Comments)
 		}
 	})
 
@@ -120,6 +140,7 @@ func TestPullRequestsIncrementalPoll(t *testing.T) {
 		respond(t, http.StatusOK, "pulls.json", "ETag", `"pulls-2"`)(w, r)
 	})
 	e.srv.fixture("GET /repos/matteorosani/anthill/issues/34/comments", http.StatusOK, "pr_comments.json")
+	e.srv.fixture("GET /repos/matteorosani/anthill/pulls/34/reviews", http.StatusOK, "empty_list.json")
 	e.srv.graphql(`"number":34`, "graphql_threads.json")
 
 	start := `{"since":"2026-10-29T09:45:00Z","etag":"\"pulls-1\""}`
@@ -159,6 +180,7 @@ func TestPullRequestUsesRepoOptions(t *testing.T) {
 		_, _ = fmt.Fprint(w, `{"number":35,"body":"","head":{"ref":"bot/gh-13-drop","sha":"22"},"base":{"ref":"main"}}`)
 	})
 	e.srv.fixture("GET /repos/matteorosani/anthill/issues/35/comments", http.StatusOK, "empty_list.json")
+	e.srv.fixture("GET /repos/matteorosani/anthill/pulls/35/reviews", http.StatusOK, "empty_list.json")
 	e.srv.graphql(`"number":35`, "graphql_no_threads.json")
 
 	got, now, err := e.a.PullRequest(ctx(t), pr(35))

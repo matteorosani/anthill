@@ -92,7 +92,11 @@ func (a *Adapter) pullRequest(ctx context.Context, repo domain.Repository, pr *g
 	if err != nil {
 		return domain.PullRequest{}, err
 	}
-	mapped.Comments = comments
+	reviews, err := a.reviewSummaries(ctx, mapped.Ref)
+	if err != nil {
+		return domain.PullRequest{}, err
+	}
+	mapped.Comments = append(comments, reviews...)
 	threads, err := a.reviewThreads(ctx, mapped.Ref)
 	if err != nil {
 		return domain.PullRequest{}, err
@@ -296,6 +300,40 @@ func (c gqlComment) comment() domain.Comment {
 // endpoints, so a review comment's ID carries an r in front, such as
 // r123, and EditComment picks the endpoint by it.
 const reviewPrefix = "r"
+
+// The summary of a submitted review, the text typed with Approve or
+// Request changes, is a PR comment whose ID carries a v in front, such
+// as v456, because reviews have IDs of their own. Anthill never edits
+// one, so EditComment refuses it as not found.
+const summaryPrefix = "v"
+
+// reviewSummaries reads the submitted reviews of a PR and returns those
+// with a summary as comments, so that they reach change detection like
+// any other comment. A pending review is visible to its author only and
+// is skipped.
+func (a *Adapter) reviewSummaries(ctx context.Context, ref domain.Ref) ([]domain.Comment, error) {
+	list, resp, err := collect(func(o gh.ListOptions) ([]*gh.PullRequestReview, *gh.Response, error) {
+		return a.client.PullRequests.ListReviews(ctx, ref.Repo.Org, ref.Repo.Name, ref.Number, &o)
+	})
+	if err != nil {
+		return nil, a.apiError("list reviews of "+ref.Full(), resp, err)
+	}
+	var out []domain.Comment
+	for _, r := range list {
+		if r.GetState() == "PENDING" || strings.TrimSpace(r.GetBody()) == "" {
+			continue
+		}
+		out = append(out, domain.Comment{
+			ID:        summaryPrefix + strconv.FormatInt(r.GetID(), 10),
+			Author:    r.GetUser().GetLogin(),
+			URL:       r.GetHTMLURL(),
+			Body:      r.GetBody(),
+			CreatedAt: r.GetSubmittedAt().Time,
+			UpdatedAt: r.GetSubmittedAt().Time,
+		})
+	}
+	return out, nil
+}
 
 func reviewCommentID(id int64) string {
 	return reviewPrefix + strconv.FormatInt(id, 10)
