@@ -1,0 +1,7 @@
+{
+  "$id": "1",
+  "message": "TF400733: The request has been throttled.",
+  "typeKey": "RequestBlockedException",
+  "errorCode": 0,
+  "eventId": 3000
+}

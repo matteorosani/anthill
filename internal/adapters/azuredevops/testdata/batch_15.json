@@ -1,0 +1,40 @@
+{
+  "count": 1,
+  "value": [
+    {
+      "id": 15,
+      "rev": 3,
+      "fields": {
+        "System.Id": 15,
+        "System.TeamProject": "Shop",
+        "System.WorkItemType": "User Story",
+        "System.State": "Closed",
+        "System.Reason": "Duplicate",
+        "System.Title": "Remember the login",
+        "System.Description": "Keep users signed in.",
+        "Microsoft.VSTS.Common.AcceptanceCriteria": "- The session lasts 30 days.",
+        "System.Tags": "Anthill",
+        "System.CreatedBy": {
+          "displayName": "Ada",
+          "uniqueName": "ada@contoso.com"
+        },
+        "System.ChangedDate": "2026-10-29T09:00:00Z",
+        "System.CommentCount": 0
+      },
+      "relations": [
+        {
+          "rel": "System.LinkTypes.Hierarchy-Forward",
+          "url": "https://dev.azure.com/Contoso/_apis/wit/workItems/16",
+          "attributes": {
+            "name": "Child"
+          }
+        }
+      ],
+      "multilineFieldsFormat": {
+        "System.Description": "markdown",
+        "Microsoft.VSTS.Common.AcceptanceCriteria": "markdown"
+      },
+      "url": "https://dev.azure.com/Contoso/Shop/_apis/wit/workItems/15"
+    }
+  ]
+}

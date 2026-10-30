@@ -1,0 +1,14 @@
+{
+  "id": 1,
+  "parentCommentId": 0,
+  "author": {
+    "displayName": "M.Rosani",
+    "uniqueName": "m.rosani@contoso.com"
+  },
+  "content": "EDITED",
+  "publishedDate": "2026-10-29T09:00:00Z",
+  "lastUpdatedDate": "2026-10-29T10:00:00Z",
+  "lastContentUpdatedDate": "2026-10-29T10:00:00Z",
+  "commentType": "text",
+  "usersLiked": []
+}

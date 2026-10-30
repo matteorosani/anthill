@@ -1,0 +1,12 @@
+{
+  "id": 12,
+  "rev": 8,
+  "fields": {
+    "System.TeamProject": "Shop",
+    "System.Tags": "anthill; anthill:claimed",
+    "System.AssignedTo": {
+      "displayName": "M.Rosani",
+      "uniqueName": "M.Rosani@contoso.com"
+    }
+  }
+}

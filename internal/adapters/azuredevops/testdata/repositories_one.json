@@ -1,0 +1,17 @@
+{
+  "count": 1,
+  "value": [
+    {
+      "id": "r-web",
+      "name": "Web",
+      "url": "https://dev.azure.com/Contoso/Shop/_apis/git/repositories/r-web",
+      "project": {
+        "id": "p-shop",
+        "name": "Shop",
+        "state": "wellFormed"
+      },
+      "defaultBranch": "refs/heads/main",
+      "webUrl": "https://dev.azure.com/Contoso/Shop/_git/Web"
+    }
+  ]
+}

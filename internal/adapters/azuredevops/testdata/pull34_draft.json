@@ -1,0 +1,35 @@
+{
+  "pullRequestId": 34,
+  "codeReviewId": 34,
+  "status": "active",
+  "title": "Fix login timeout",
+  "description": "Fixes the timeout.\n\nCloses AB#12",
+  "sourceRefName": "refs/heads/ant/ado-12-fix-login",
+  "targetRefName": "refs/heads/main",
+  "isDraft": true,
+  "createdBy": {
+    "displayName": "M.Rosani",
+    "uniqueName": "M.Rosani@contoso.com"
+  },
+  "creationDate": "2026-10-29T08:00:00Z",
+  "lastMergeSourceCommit": {
+    "commitId": "c0ffee"
+  },
+  "mergeStatus": "succeeded",
+  "labels": [
+    {
+      "id": "l1",
+      "name": "anthill",
+      "active": true
+    }
+  ],
+  "repository": {
+    "id": "r-web",
+    "name": "Web",
+    "project": {
+      "id": "p-shop",
+      "name": "Shop"
+    }
+  },
+  "url": "https://dev.azure.com/Contoso/Shop/_apis/git/repositories/r-web/pullRequests/34"
+}

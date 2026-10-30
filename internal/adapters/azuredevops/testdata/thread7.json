@@ -1,0 +1,49 @@
+{
+  "id": 7,
+  "publishedDate": "2026-10-29T08:10:00Z",
+  "lastUpdatedDate": "2026-10-29T08:20:00Z",
+  "status": "active",
+  "threadContext": {
+    "filePath": "/src/auth.ts",
+    "rightFileStart": {
+      "line": 42,
+      "offset": 1
+    },
+    "rightFileEnd": {
+      "line": 44,
+      "offset": 1
+    }
+  },
+  "comments": [
+    {
+      "id": 1,
+      "parentCommentId": 0,
+      "author": {
+        "displayName": "Ada",
+        "uniqueName": "Ada@contoso.com"
+      },
+      "content": "Null dereference here.",
+      "publishedDate": "2026-10-29T08:10:00Z",
+      "lastUpdatedDate": "2026-10-29T08:10:00Z",
+      "lastContentUpdatedDate": "2026-10-29T08:10:00Z",
+      "commentType": "text",
+      "usersLiked": []
+    },
+    {
+      "id": 2,
+      "parentCommentId": 1,
+      "author": {
+        "displayName": "M.Rosani",
+        "uniqueName": "m.rosani@contoso.com"
+      },
+      "content": "Fixed.",
+      "publishedDate": "2026-10-29T08:20:00Z",
+      "lastUpdatedDate": "2026-10-29T08:20:00Z",
+      "lastContentUpdatedDate": "2026-10-29T08:20:00Z",
+      "commentType": "text",
+      "usersLiked": []
+    }
+  ],
+  "properties": {},
+  "isDeleted": false
+}

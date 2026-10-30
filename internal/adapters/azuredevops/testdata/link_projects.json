@@ -1,0 +1,22 @@
+{
+  "count": 3,
+  "value": [
+    {
+      "id": 10,
+      "rev": 2,
+      "fields": {
+        "System.Id": 10,
+        "System.TeamProject": "Shop"
+      }
+    },
+    {
+      "id": 3,
+      "rev": 9,
+      "fields": {
+        "System.Id": 3,
+        "System.TeamProject": "Platform"
+      }
+    },
+    null
+  ]
+}

@@ -1,0 +1,7 @@
+{
+  "$id": "1",
+  "message": "TF401232: Work item 99 does not exist, or you do not have permissions to read it.",
+  "typeKey": "WorkItemUnauthorizedAccessException",
+  "errorCode": 0,
+  "eventId": 3200
+}

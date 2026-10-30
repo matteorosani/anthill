@@ -1,0 +1,21 @@
+{
+  "queryType": "flat",
+  "queryResultType": "workItem",
+  "asOf": "2026-10-29T10:00:00Z",
+  "columns": [
+    {
+      "referenceName": "System.Id",
+      "name": "ID"
+    }
+  ],
+  "workItems": [
+    {
+      "id": 12,
+      "url": "https://dev.azure.com/Contoso/_apis/wit/workItems/12"
+    },
+    {
+      "id": 15,
+      "url": "https://dev.azure.com/Contoso/_apis/wit/workItems/15"
+    }
+  ]
+}

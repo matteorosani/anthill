@@ -1,0 +1,90 @@
+{
+  "count": 2,
+  "value": [
+    {
+      "id": 12,
+      "rev": 7,
+      "fields": {
+        "System.Id": 12,
+        "System.TeamProject": "Shop",
+        "System.WorkItemType": "Bug",
+        "System.State": "Active",
+        "System.Reason": "Approved",
+        "System.Title": "Login times out on Safari",
+        "System.Description": "<div>Login fails after 30 s on Safari.</div><div><br></div>",
+        "System.Tags": "anthill; repo:Web",
+        "System.AssignedTo": {
+          "displayName": "M.Rosani",
+          "uniqueName": "M.Rosani@contoso.com"
+        },
+        "System.CreatedBy": {
+          "displayName": "Ada",
+          "uniqueName": "Ada@contoso.com"
+        },
+        "System.ChangedDate": "2026-10-29T09:30:00.123Z",
+        "System.CommentCount": 1
+      },
+      "relations": [
+        {
+          "rel": "System.LinkTypes.Dependency-Reverse",
+          "url": "https://dev.azure.com/Contoso/_apis/wit/workItems/10",
+          "attributes": {
+            "isLocked": false,
+            "name": "Predecessor"
+          }
+        },
+        {
+          "rel": "System.LinkTypes.Hierarchy-Reverse",
+          "url": "https://dev.azure.com/Contoso/_apis/wit/workItems/3",
+          "attributes": {
+            "isLocked": false,
+            "name": "Parent"
+          }
+        },
+        {
+          "rel": "ArtifactLink",
+          "url": "vstfs:///Git/Commit/abc",
+          "attributes": {
+            "name": "Fixed in Commit"
+          }
+        }
+      ],
+      "url": "https://dev.azure.com/Contoso/Shop/_apis/wit/workItems/12"
+    },
+    {
+      "id": 15,
+      "rev": 3,
+      "fields": {
+        "System.Id": 15,
+        "System.TeamProject": "Shop",
+        "System.WorkItemType": "User Story",
+        "System.State": "Closed",
+        "System.Reason": "Duplicate",
+        "System.Title": "Remember the login",
+        "System.Description": "Keep users signed in.",
+        "Microsoft.VSTS.Common.AcceptanceCriteria": "- The session lasts 30 days.",
+        "System.Tags": "Anthill",
+        "System.CreatedBy": {
+          "displayName": "Ada",
+          "uniqueName": "ada@contoso.com"
+        },
+        "System.ChangedDate": "2026-10-29T09:00:00Z",
+        "System.CommentCount": 0
+      },
+      "relations": [
+        {
+          "rel": "System.LinkTypes.Hierarchy-Forward",
+          "url": "https://dev.azure.com/Contoso/_apis/wit/workItems/16",
+          "attributes": {
+            "name": "Child"
+          }
+        }
+      ],
+      "multilineFieldsFormat": {
+        "System.Description": "markdown",
+        "Microsoft.VSTS.Common.AcceptanceCriteria": "markdown"
+      },
+      "url": "https://dev.azure.com/Contoso/Shop/_apis/wit/workItems/15"
+    }
+  ]
+}
