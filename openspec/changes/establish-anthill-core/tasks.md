@@ -85,10 +85,10 @@ Terms follow `openspec/glossary.md`. Every group lands its own tests and docs. U
 
 ## 11. Daemon, control interface and notifications
 
-- [ ] 11.1 Implement the daemon process with the single-instance lock, and verify the "second daemon start" test
-- [ ] 11.2 Implement the JSON-RPC control interface over a Unix socket and a Windows named pipe (`go-winio`), local-only, with streaming responses, and verify a client round-trip test on each OS in CI
-- [ ] 11.3 Implement the CLI skeleton with `cobra` as a thin client, with `anthill daemon` and `anthill status`, and verify an end-to-end test that `status` reports uptime from a running daemon
-- [ ] 11.4 Implement the `Notifier` port with desktop notifications (`beeep`) and a per-kind switch, and verify with a fake notifier that each notification kind of queen-console is raised and can be turned off
+- [x] 11.1 Implement the daemon process with the single-instance lock, and verify the "second daemon start" test
+- [x] 11.2 Implement the JSON-RPC control interface over a Unix socket and a Windows named pipe (`go-winio`), local-only, with streaming responses, and verify a client round-trip test on each OS in CI
+- [x] 11.3 Implement the CLI skeleton with `cobra` as a thin client, with `anthill daemon` and `anthill status`, and verify an end-to-end test that `status` reports uptime from a running daemon
+- [x] 11.4 Implement the `Notifier` port with desktop notifications (`beeep`) and a per-kind switch, and verify with a fake notifier that each notification kind of queen-console is raised and can be turned off
 
 ## 12. Ant tools
 
