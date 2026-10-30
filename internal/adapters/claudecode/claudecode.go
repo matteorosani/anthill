@@ -18,6 +18,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/matteorosani/anthill/internal/adapters/internal/agentenv"
 	"github.com/matteorosani/anthill/internal/adapters/internal/agentproc"
 	"github.com/matteorosani/anthill/internal/ports"
 )
@@ -137,7 +138,7 @@ func (r *Runner) start(ctx context.Context, resume string, spec ports.RunSpec) (
 		Path:   r.opts.Command,
 		Args:   args,
 		Dir:    spec.Worktree,
-		Env:    withEnv(spec.Env, telemetryEnv(spec.Telemetry)),
+		Env:    agentenv.With(spec.Env, telemetryEnv(spec.Telemetry)),
 		Stdin:  true,
 		Line:   rn.line,
 		Stderr: r.opts.Log,
@@ -295,22 +296,4 @@ func writeJSON(path string, v any) error {
 		return err
 	}
 	return os.WriteFile(path, b, 0o600)
-}
-
-// withEnv returns env with the variables of set, which replace any
-// earlier value of the same name.
-func withEnv(env, set []string) []string {
-	names := map[string]bool{}
-	for _, kv := range set {
-		name, _, _ := strings.Cut(kv, "=")
-		names[envKey(name)] = true
-	}
-	out := make([]string, 0, len(env)+len(set))
-	for _, kv := range env {
-		name, _, _ := strings.Cut(kv, "=")
-		if !names[envKey(name)] {
-			out = append(out, kv)
-		}
-	}
-	return append(out, set...)
 }

@@ -212,6 +212,6 @@ Not applicable (greenfield). Rollout: one developer first, with shepherd scope `
 - Optional local verification before opening a PR. See D16.
 - GUI technology. Deferrable: the GUI is just another client of the control API.
 - Whether stacked ant branches (working on top of an unmerged dependency PR) should be supported later. The current specs forbid it.
-- Per-runner details such as headless permission flags, which hooks are used, how session ids are captured (D17) and which OTel variables each runner honours (D18). Fixed for Claude Code in `docs/runners.md`; for Codex and OpenCode when their adapters are built.
+- Per-runner details such as headless permission flags, which hooks are used, how session ids are captured (D17) and which OTel variables each runner honours (D18). Fixed in `docs/runners.md` for each runner, with the points the manual smoke runs still have to confirm.
 - Stronger agent isolation (separate OS user or container) to close the credential gap in D4.
 - Agents left running after the daemon itself crashes or is killed. On Windows, the Job Object ends them when the daemon's handle to it closes. On Unix, the process group survives the daemon, so an agent could keep working while restart reconciliation (ant-execution) resumes its session or marks it failed. Reconciliation should find and end such processes first, for example from a process group id recorded with the run.

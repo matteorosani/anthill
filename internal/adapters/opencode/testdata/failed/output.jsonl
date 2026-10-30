@@ -1,0 +1,3 @@
+{"type":"step_start","timestamp":1761830400123,"sessionID":"ses_6f2a9c1e4ffeK3w8Q1Zr7bN2xD","part":{"id":"prt_21","sessionID":"ses_6f2a9c1e4ffeK3w8Q1Zr7bN2xD","messageID":"msg_21","type":"step-start","snapshot":"4b825dc6"}}
+not json: a warning opencode printed on standard output
+{"type":"error","timestamp":1761830400500,"sessionID":"ses_6f2a9c1e4ffeK3w8Q1Zr7bN2xD","error":{"name":"ProviderAuthError","data":{"providerID":"anthropic","message":"no credentials"}}}

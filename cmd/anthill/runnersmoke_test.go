@@ -34,7 +34,8 @@ func TestRunnerSmoke(t *testing.T) {
 	}
 }
 
-// A smoke run needs a known runner with an adapter, and no daemon.
+// A smoke run needs a known runner whose CLI is installed, and no
+// daemon.
 func TestRunnerSmokeRefuses(t *testing.T) {
 	te := newTestEnv(t)
 	if code, _, stderr := te.command("runner-smoke", "--runner", "nope", "x"); code != 2 || !strings.Contains(stderr, `unknown runner "nope"`) {
@@ -43,8 +44,10 @@ func TestRunnerSmokeRefuses(t *testing.T) {
 	if code, _, stderr := te.command("runner-smoke", "--runner", "claude-code"); code != 2 || !strings.Contains(stderr, "needs the brief") {
 		t.Errorf("no brief: code %d, stderr %q", code, stderr)
 	}
-	if code, _, stderr := te.command("runner-smoke", "--runner", "codex", "x"); code != 1 || !strings.Contains(stderr, "runner codex is not supported by this build yet") {
-		t.Errorf("codex: code %d, stderr %q", code, stderr)
+	for _, r := range []string{"codex", "opencode"} {
+		if code, _, stderr := te.command("runner-smoke", "--runner", r, "--command", "anthill-no-such-cli", "x"); code != 1 || !strings.Contains(stderr, "runner "+r+" not available") {
+			t.Errorf("%s missing: code %d, stderr %q", r, code, stderr)
+		}
 	}
 	if code, _, stderr := te.command("runner-smoke", "--runner", "claude-code", "--command", "anthill-no-such-claude", "x"); code != 1 || !strings.Contains(stderr, "runner claude-code not available") {
 		t.Errorf("missing CLI: code %d, stderr %q", code, stderr)
