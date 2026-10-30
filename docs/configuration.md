@@ -39,6 +39,8 @@ azure-devops-projects:
     default-repository: web
 provider-poll-intervals:
   azure-devops/contoso: 5m
+notifications:
+  claim-lost: false
 
 repositories:
   - provider: github
@@ -89,6 +91,7 @@ Your own configuration file never accepts credential keys either. OTLP headers a
 - `protected-branches` is a list of glob patterns such as `release/*`. The base branch and the default branch are always protected.
 - `azure-devops-projects` is a list of entries, each with `project` (`organization/project`, in any case) and `default-repository` (the name of a Git repository of that project). An Azure DevOps work item goes to the repository its `repo:<name>` label names, else to its project's default repository, else to the project's only Git repository. Otherwise it is unmapped (spec work-item-sources, "Repository mapping").
 - `provider-poll-intervals` maps a provider connection to its own poll interval. Anthill polls each connection on its own: `github` for GitHub, and `azure-devops/<organization>` for each Azure DevOps organization, written in any case. A connection without an entry uses `poll-interval`. Each interval must be at least `30s`.
+- `notifications` turns desktop notifications on (`true`) or off (`false`) per kind. A kind without an entry stays on. The kinds are `proposal`, `question`, `stale-question`, `extension-request`, `warning`, `succeeded`, `failed`, `timed-out`, `no-change`, `follow-up-started`, `follow-up-proposed`, `follow-up-limit`, `change-stored`, `claim-lost` and `poll-failed` (spec queen-console, "Notifications"). An unknown kind or a value that is not `true` or `false` makes the global configuration invalid.
 - `secret-patterns` is a list of Go regular expressions (RE2 syntax). A pattern can name a group `secret` to redact only that part. These patterns add to the built-in ones, which cannot be removed.
 
 ## Validation
@@ -157,6 +160,7 @@ Credential values never appear in logs, errors, comments, task briefs or telemet
 | `worktree-root` | global configuration | ~/.anthill/worktrees | Absolute path of the directory that holds the ant worktrees, laid out as `<provider>-<org>-<name>/<branch>`. |
 | `azure-devops-projects` | global configuration | none | Default target repository of each Azure DevOps project, for work items without a `repo:` label: a list of `project` (`organization/project`) and `default-repository`. |
 | `provider-poll-intervals` | global configuration | none | Poll interval per provider connection, overriding `poll-interval`: a map from `github` or `azure-devops/<organization>` to an interval of at least 30s. |
+| `notifications` | global configuration | every kind on | Desktop notifications per kind: a map from a notification kind to `true` or `false`. |
 | `provider` | local repository entry | required | Provider of the repository: `github` or `azure-devops`. |
 | `remote` | local repository entry | required | Repository on the provider: `owner/name` or `organization/project/repository`. |
 | `path` | local repository entry | required | Absolute path of the local clone. |

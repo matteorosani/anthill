@@ -112,6 +112,7 @@ var emptyConfigurationDefaults = map[string]string{
 	"worktree-root":               "~/.anthill/worktrees",
 	"azure-devops-projects":       "none",
 	"provider-poll-intervals":     "none",
+	"notifications":               "every kind on",
 }
 
 // Scenario "Empty configuration": with only a repository entry, every
@@ -172,6 +173,33 @@ func copyExported(dst *domain.Effective, src domain.Effective) {
 	for i := range sv.NumField() {
 		if sv.Type().Field(i).IsExported() {
 			dv.Field(i).Set(sv.Field(i))
+		}
+	}
+}
+
+// Every notification kind is on by default, and the notifications
+// setting turns single kinds off (spec queen-console, "Notifications").
+func TestNotificationOn(t *testing.T) {
+	for _, kind := range domain.NotificationKinds() {
+		if !domain.Defaults().NotificationOn(kind) {
+			t.Errorf("%s is off by default", kind)
+		}
+	}
+	e := domain.ConfigLayers{Global: &domain.SettingValues{
+		Notifications: map[string]bool{"claim-lost": false, "proposal": true},
+	}}.Resolve()
+	if e.NotificationOn(domain.NotifyClaimLost) {
+		t.Error("claim-lost is on")
+	}
+	if !e.NotificationOn(domain.NotifyProposal) || !e.NotificationOn(domain.NotifyFailed) {
+		t.Error("proposal or failed is off")
+	}
+	if e.Source(domain.KeyNotifications) != domain.LayerGlobal {
+		t.Errorf("source = %q", e.Source(domain.KeyNotifications))
+	}
+	for _, row := range e.Inspect() {
+		if row.Key == domain.KeyNotifications && row.Value != "claim-lost: off, proposal: on" {
+			t.Errorf("shown as %q", row.Value)
 		}
 	}
 }
@@ -381,6 +409,9 @@ func TestCheckKey(t *testing.T) {
 		{domain.LayerGlobal, "provider-poll-intervals.azure-devops/contoso", ""},
 		{domain.LayerLocalEntry, "provider-poll-intervals", `key "provider-poll-intervals" can be set only in the global configuration`},
 		{domain.LayerRepositoryFile, "provider-poll-intervals", `forbidden key "provider-poll-intervals": machine settings belong in the local configuration`},
+		{domain.LayerGlobal, "notifications.claim-lost", ""},
+		{domain.LayerLocalEntry, "notifications", `key "notifications" can be set only in the global configuration`},
+		{domain.LayerRepositoryFile, "notifications", `forbidden key "notifications": machine settings belong in the local configuration`},
 		// Scenario "OTLP headers in a configuration file".
 		{domain.LayerGlobal, "otlp-headers", "OTLP headers belong in the OS credential store, not in a configuration file"},
 		{domain.LayerLocalEntry, "otlp-headers", "OTLP headers belong in the OS credential store, not in a configuration file"},
@@ -466,6 +497,7 @@ func TestValidateSettings(t *testing.T) {
 		{"provider poll interval too short", domain.SettingValues{ProviderPollIntervals: map[string]time.Duration{"github": 10 * time.Second}}, `poll interval of "github" must be at least 30s`},
 		{"provider poll interval empty name", domain.SettingValues{ProviderPollIntervals: map[string]time.Duration{" ": time.Minute}}, "provider connection name must not be empty"},
 		{"provider poll interval twice", domain.SettingValues{ProviderPollIntervals: map[string]time.Duration{"GitHub": time.Minute, "github": time.Minute}}, `provider connection "github" is listed more than once`},
+		{"unknown notification kind", domain.SettingValues{Notifications: map[string]bool{"claim-lost": false, "coffee-ready": true}}, `unknown notification kind "coffee-ready"`},
 		{"worktree root relative", domain.SettingValues{WorktreeRoot: ptr("worktrees")}, `worktree root "worktrees" must be an absolute path`},
 		{"budget over maximum", domain.SettingValues{Budget: ptr(200), MaxBaseBudget: ptr(100)}, domain.MessageBudgetOverMaximum},
 	}

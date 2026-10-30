@@ -7,35 +7,32 @@ import (
 )
 
 // NotificationKind is what a notification is about. Each kind can be
-// turned off (spec queen-console, "Notifications").
-type NotificationKind string
+// turned off with the notifications setting (spec queen-console,
+// "Notifications"). The kinds live in the domain, so that configuration
+// validation can name them.
+type NotificationKind = domain.NotificationKind
 
 // The notification kinds, one per event listed in queen-console.
 const (
-	NotifyProposal         NotificationKind = "proposal"
-	NotifyQuestion         NotificationKind = "question"
-	NotifyStaleQuestion    NotificationKind = "stale-question"
-	NotifyExtension        NotificationKind = "extension-request"
-	NotifyWarning          NotificationKind = "warning"
-	NotifySucceeded        NotificationKind = "succeeded"
-	NotifyFailed           NotificationKind = "failed"
-	NotifyTimedOut         NotificationKind = "timed-out"
-	NotifyNoChange         NotificationKind = "no-change"
-	NotifyFollowUpStarted  NotificationKind = "follow-up-started"
-	NotifyFollowUpProposed NotificationKind = "follow-up-proposed"
-	NotifyFollowUpLimit    NotificationKind = "follow-up-limit"
-	NotifyChangeStored     NotificationKind = "change-stored"
-	NotifyClaimLost        NotificationKind = "claim-lost"
-	NotifyPollFailed       NotificationKind = "poll-failed"
+	NotifyProposal         = domain.NotifyProposal
+	NotifyQuestion         = domain.NotifyQuestion
+	NotifyStaleQuestion    = domain.NotifyStaleQuestion
+	NotifyExtension        = domain.NotifyExtension
+	NotifyWarning          = domain.NotifyWarning
+	NotifySucceeded        = domain.NotifySucceeded
+	NotifyFailed           = domain.NotifyFailed
+	NotifyTimedOut         = domain.NotifyTimedOut
+	NotifyNoChange         = domain.NotifyNoChange
+	NotifyFollowUpStarted  = domain.NotifyFollowUpStarted
+	NotifyFollowUpProposed = domain.NotifyFollowUpProposed
+	NotifyFollowUpLimit    = domain.NotifyFollowUpLimit
+	NotifyChangeStored     = domain.NotifyChangeStored
+	NotifyClaimLost        = domain.NotifyClaimLost
+	NotifyPollFailed       = domain.NotifyPollFailed
 )
 
 // NotificationKinds lists every kind.
-var NotificationKinds = []NotificationKind{
-	NotifyProposal, NotifyQuestion, NotifyStaleQuestion, NotifyExtension, NotifyWarning,
-	NotifySucceeded, NotifyFailed, NotifyTimedOut, NotifyNoChange,
-	NotifyFollowUpStarted, NotifyFollowUpProposed, NotifyFollowUpLimit,
-	NotifyChangeStored, NotifyClaimLost, NotifyPollFailed,
-}
+var NotificationKinds = domain.NotificationKinds()
 
 // Notification is one desktop notification for the queen.
 type Notification struct {
@@ -46,8 +43,9 @@ type Notification struct {
 	Ref *domain.Ref
 }
 
-// Notifier raises local notifications (design D10). Whether a kind is
-// turned off is decided by the caller.
+// Notifier raises local notifications (design D10). The desktop adapter
+// shows every notification it gets; app.Notifications wraps it and drops
+// the kinds the notifications setting turns off.
 type Notifier interface {
 	Notify(ctx context.Context, n Notification) error
 }

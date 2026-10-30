@@ -135,7 +135,8 @@ agent-instructions: docs/AGENTS.md
 	for _, row := range e.Inspect() {
 		switch row.Key {
 		case domain.KeyRunner, domain.KeyCapacity, domain.KeyReviewing, domain.KeyPollInterval, domain.KeyLease,
-			domain.KeyGracePeriod, domain.KeyExtensionWait, domain.KeyQuestionStaleness, domain.KeyOTLPEndpoint, domain.KeySecretPatterns, domain.KeyWorktreeRoot, domain.KeyAzureDevOpsProjects, domain.KeyProviderPollIntervals:
+			domain.KeyGracePeriod, domain.KeyExtensionWait, domain.KeyQuestionStaleness, domain.KeyOTLPEndpoint, domain.KeySecretPatterns, domain.KeyWorktreeRoot, domain.KeyAzureDevOpsProjects, domain.KeyProviderPollIntervals,
+			domain.KeyNotifications:
 			continue
 		}
 		if row.Source != domain.LayerRepositoryFile {
@@ -193,6 +194,9 @@ azure-devops-projects:
 provider-poll-intervals:
   GitHub: 1m
   azure-devops/contoso: 5m
+notifications:
+  claim-lost: false
+  proposal: true
 repositories:
   - provider: github
     remote: matteorosani/anthill
@@ -214,7 +218,8 @@ repositories:
 		*g.QuestionStaleness != 48*time.Hour || *g.OTLPEndpoint != "http://localhost:4318" ||
 		!slices.Equal(g.SecretPatterns, []string{"ACME-[0-9]{8}"}) || *g.Budget != 30 ||
 		!slices.Equal(g.AzureDevOpsProjects, []domain.AzureDevOpsProject{{Project: "contoso/shop", DefaultRepository: "web"}}) ||
-		!maps.Equal(g.ProviderPollIntervals, map[string]time.Duration{"GitHub": time.Minute, "azure-devops/contoso": 5 * time.Minute}) {
+		!maps.Equal(g.ProviderPollIntervals, map[string]time.Duration{"GitHub": time.Minute, "azure-devops/contoso": 5 * time.Minute}) ||
+		!maps.Equal(g.Notifications, map[string]bool{"claim-lost": false, "proposal": true}) {
 		t.Errorf("global = %+v", g)
 	}
 	if len(cfg.Repositories) != 2 {
@@ -276,6 +281,7 @@ func TestParseLocalGlobalRejections(t *testing.T) {
 		{"repositories not a list", "repositories: {a: b}\n", []string{"repositories must be a list of entries"}},
 		{"secret value", "otlp-endpoint: https://user:hunter2hunter2@collector\n", []string{`key "otlp-endpoint" holds a value that looks like a secret`}},
 		{"wrong type", "lease: 15\n", []string{"line 1: cannot unmarshal !!int `15` into time.Duration"}},
+		{"notification not a bool", "notifications:\n  claim-lost: sometimes\n", []string{"line 2: cannot unmarshal !!str `sometimes` into bool"}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

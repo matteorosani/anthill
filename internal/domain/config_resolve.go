@@ -61,6 +61,9 @@ type Effective struct {
 	// ProviderPollIntervals overrides PollInterval per connection, keyed
 	// by the lowercased connection name. Use PollIntervalFor.
 	ProviderPollIntervals map[string]time.Duration
+	// Notifications holds the kinds the notifications setting names,
+	// with whether each is shown. Use NotificationOn.
+	Notifications map[NotificationKind]bool
 
 	sources map[string]Layer
 	shown   map[string]string
@@ -143,6 +146,36 @@ func resolveIntervals(r resolver) map[string]time.Duration {
 	}
 	r.record(KeyProviderPollIntervals, LayerDefault, showList(nil))
 	return nil
+}
+
+// resolveNotifications is resolveList for notifications.
+func resolveNotifications(r resolver) map[NotificationKind]bool {
+	for _, l := range r.layers {
+		if v := l.values.Notifications; v != nil {
+			out := make(map[NotificationKind]bool, len(v))
+			var shown []string
+			for _, k := range slices.Sorted(maps.Keys(v)) {
+				out[NotificationKind(k)] = v[k]
+				state := "off"
+				if v[k] {
+					state = "on"
+				}
+				shown = append(shown, k+": "+state)
+			}
+			// Kinds the layer does not name stay on.
+			r.record(KeyNotifications, l.layer, showList(shown))
+			return out
+		}
+	}
+	r.record(KeyNotifications, LayerDefault, "every kind on")
+	return nil
+}
+
+// NotificationOn reports whether notifications of kind are shown: every
+// kind is, unless the notifications setting turns it off.
+func (e Effective) NotificationOn(kind NotificationKind) bool {
+	on, ok := e.Notifications[kind]
+	return !ok || on
 }
 
 // PollIntervalFor returns the poll interval of a provider connection: its
@@ -290,6 +323,7 @@ func (l ConfigLayers) Resolve() Effective {
 	e.SecretPatterns = resolveList(r, KeySecretPatterns, func(s *SettingValues) []string { return s.SecretPatterns })
 	e.AzureDevOpsProjects = resolveProjects(r)
 	e.ProviderPollIntervals = resolveIntervals(r)
+	e.Notifications = resolveNotifications(r)
 	e.WorktreeRoot = resolveValue(r, KeyWorktreeRoot, "", func(s *SettingValues) *string { return s.WorktreeRoot },
 		func(v string) string {
 			if v == "" {

@@ -219,6 +219,14 @@ var settingChecks = []settingCheck{
 		}
 		return ""
 	}},
+	{KeyNotifications, func(s *SettingValues) string {
+		for _, name := range slices.Sorted(maps.Keys(s.Notifications)) {
+			if !NotificationKind(name).Valid() {
+				return fmt.Sprintf("unknown notification kind %q", name)
+			}
+		}
+		return ""
+	}},
 	{KeySecretPatterns, func(s *SettingValues) string {
 		for _, p := range s.SecretPatterns {
 			if _, err := regexp.Compile(p); err != nil {
