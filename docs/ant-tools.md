@@ -52,8 +52,6 @@ The calls of one ant are executed one at a time. A provider error makes the call
 
 ## Tools
 
-The tools marked *not implemented yet* are listed in the tool list of their roles, but a call to them is refused with `<tool> is not implemented yet` after the checks above.
-
 ### `get_task`
 
 Roles: task run, follow-up run.
@@ -90,80 +88,119 @@ While a request is open, a new call does not make a second request; it waits for
 
 ### `ask_question`
 
-Roles: task run, follow-up run. *Not implemented yet.*
+Roles: task run, follow-up run.
 
-Posts a question on the item, or on the ant PR. When the call returns, Anthill stops the runner with the session saved, and the ant is `awaiting-input` until a developer answers.
+Posts a `question` comment on the item, or on the ant PR, and notifies the queen. When the call returns, the ant is `awaiting-input` with its budget paused, and Anthill stops the runner with the session saved. A later run resumes the session with the answer.
 
 - Arguments: `text` (string); `where` (`item` or `pr`), by default the item in a task run and the PR in a follow-up run.
+- Result: `url` of the question and `message`.
+- Refusals: the checks on every call; `you have no pull request yet: push and open one with open_pull_request first` for `where: pr` before the PR is open.
 
 ### `report_progress`
 
-Roles: task run, follow-up run. *Not implemented yet.*
+Roles: task run, follow-up run.
 
-Writes the run's single status comment on the item. The first call posts it and later calls replace its text.
+Writes the run's single `status` comment on the item. The first call of a run posts it and later calls replace its text. The text is cut to the summary length (4,000 characters).
 
 - Arguments: `text` (string).
+- Result: `url` of the status comment.
 
 ### `comment`
 
-Roles: task run, follow-up run. *Not implemented yet.*
+Roles: task run, follow-up run.
 
-Posts a comment with the ant's marker on the item or the ant PR, with secrets redacted.
+Posts a `reply` comment on the item or the ant PR.
 
 - Arguments: `where` (`item` or `pr`), `body` (string).
+- Result: `url` of the comment.
+- Refusals: the checks on every call; the missing PR refusal of `ask_question` for `where: pr`.
 
 ### `reply_to_thread`
 
-Roles: task run, follow-up run. *Not implemented yet.*
+Roles: task run, follow-up run.
 
-Replies in a review thread of the ant PR, with the ant's marker, and resolves the thread when asked.
+Replies in a review thread of the ant PR with a `reply` comment, and resolves the thread when asked.
 
-- Arguments: `thread` (string), `body` (string); `resolve` (boolean, default false).
+- Arguments: `thread` (string, the thread's id), `body` (string); `resolve` (boolean, default false).
+- Result: `url` of the reply and `resolved`.
+- Refusals: the checks on every call; the missing PR refusal. An unknown thread makes the call fail.
+
+### Text Anthill posts for the ant
+
+Every comment, reply, question and status comment posted on behalf of an ant starts with the visible `🐜 Ant (<instance>)` prefix and carries the hidden marker with the matching kind (`question`, `status` or `reply`). Before Anthill posts any text for an ant, PR titles and bodies included, it makes the text safe (spec agent-conversation, "Comment content safety"):
+
+- the absolute path of the worktree becomes `.`, and the user's home directory `~`;
+- every string matching a secret pattern, built-in or added in the configuration, becomes `[REDACTED]`;
+- summaries and `report_progress` are cut to the summary length with a note; comments, replies and PR bodies are not cut.
 
 ### `push`
 
-Roles: task run, follow-up run. *Not implemented yet.*
+Roles: task run, follow-up run.
 
-Pushes the worktree's current branch under the branching policy, never with force. It returns git's result, including rejections and conflicts.
+Pushes the worktree's current branch, never with force. Anthill first applies the branching policy: only the ant's own branch, never the base branch, the remote's default branch or a protected branch, and never from a detached HEAD. It then runs `git push` from the ant's worktree with the developer's credentials and the repository's own hooks given back for that one command, so the repository's pre-push hook checks the ant's code and can stop the push.
 
 - Arguments: none.
+- Result: `status` `pushed` and git's `output`.
+- Refusals: the checks on every call;
+  - `push to <branch> is not allowed`, with the reason, from the branching policy;
+  - `push rejected: the remote branch has commits this worktree lacks; they were fetched as origin/<branch>: merge them (git merge origin/<branch>) and call push again`, followed by git's output. Merge, then push again;
+  - `push rejected: the push was rejected as non-fast-forward: the branch rewrites commits that were already pushed. Keep the published history and add a new commit`, after an amend or a rebase of pushed commits;
+  - `push failed: …` with git's output, for anything else, such as a pre-push hook that refused.
 
 ### `open_pull_request`
 
-Roles: task run. *Not implemented yet.*
+Roles: task run.
 
-Opens the ant PR against the base branch. The agent writes the title and body and chooses draft or ready; Anthill adds the closing reference to the item and the `anthill` label.
+Opens the ant PR from the ant branch to the base branch. The agent writes the title and body and chooses draft or ready. Anthill adds the closing reference on its own line (`Closes #12`, `Closes owner/repo#12` across repositories, or `AB#12` for Azure DevOps) and the opt-in label (default `anthill`). It opens a draft whatever the agent chose when the ant's last ended run finished `partial` or timed out and no run finished `complete` since.
 
 - Arguments: `title` (string), `body` (string); `draft` (boolean, default false).
+- Result: `url`, `title`, `draft`, and `forced_draft` with the reason when the draft was forced.
+- Refusals: the checks on every call;
+  - `the item already has an open ant PR <url>: use update_pull_request`, when the ant has a PR or an open PR comes from the ant branch;
+  - `the branch <branch> is not on the remote: call push first`;
+  - `the branch has <n> commits that are not pushed: call push first`.
 
 ### `update_pull_request`
 
-Roles: task run, follow-up run. *Not implemented yet.*
+Roles: task run, follow-up run.
 
-Changes the ant PR's title, body or draft state.
+Changes the ant PR's title, body or draft state. A new body keeps the closing reference.
 
 - Arguments: at least one of `title` (string), `body` (string), `draft` (boolean).
+- Result: as for `open_pull_request`.
+- Refusals: the checks on every call; `give at least one of title, body and draft`; the missing PR refusal; `the PR stays a draft until a run finishes complete: …` for `draft: false` while the draft is forced.
 
 ### `finish`
 
-Roles: task run, follow-up run. *Not implemented yet.*
+Roles: task run, follow-up run.
 
-Ends the run with its status.
+Ends the run with its status. In a task run, `complete` and `partial` need new commits on the branch after the base branch, and `no-change` allows none; a follow-up run may use any status. The ant becomes `finishing`, and Anthill ends the run and acts on the outcome: it parks or releases the claim, opens or updates the PR, and marks a draft ready after `complete` (spec ant-execution).
 
 - Arguments: `status` (`complete`, `partial` or `no-change`), `summary` (string); `open_points` (array of strings).
+- Result: `status` `accepted` and `message`.
+- Refusals: the checks on every call; `no commits on the branch: finish with no-change, or ask a question`; `the branch has new commits: finish with complete or partial`.
 
 ### `submit_review`
 
-Roles: review agent. *Not implemented yet.*
+Roles: review agent.
 
-Reports a review round's result. It is the review agent's only tool.
+Reports a review round's result. It is the review agent's only tool, and it can be called once. Anthill posts each finding with a known location as an inline comment and the rest in the round's summary (spec pr-shepherd).
 
 - Arguments: `summary` (string); `findings`, each with `severity` (`blocking`, `suggestion` or `nit`), `classification` (`auto-fixable` or `needs-developer`) and `message`, and optionally `file`, `start_line`, `end_line` and `suggested_fix`.
+- Result: `status` `submitted` and `message`.
+- Refusals: the checks on every call; `findings[<i>]: …` for a finding with lines but no file or an end line before its start line; `already reported: this agent's result was handed over` for a second call.
 
 ### `finish_fixes`
 
-Roles: fix agent. *Not implemented yet.*
+Roles: fix agent.
 
-Ends a fix pass with one result for each finding the agent was given. It is the fix agent's only tool.
+Ends a fix pass with one result for each finding the agent was given. It is the fix agent's only tool, and it can be called once. Anthill then runs the verification command, pushes the fixes and replies on the threads, and reclassifies skipped findings as `needs-developer` (spec pr-shepherd).
 
-- Arguments: `results`, each with `finding` (the finding's id) and `status` (`fixed` or `skipped`), plus `commit` for a fixed finding or `reason` for a skipped one.
+- Arguments: `results`, each with `finding` (the finding's id) and `status` (`fixed` or `skipped`), plus `commit` for a fixed finding (its hash, or at least its first 7 characters) or `reason` for a skipped one.
+- Result: `status` `submitted` and `message`.
+- Refusals: the checks on every call;
+  - `no result for finding <id>: report each finding as fixed or skipped`;
+  - `finding <id> has more than one result`, `finding "<id>" was not given to this fix pass`;
+  - `finding <id>: commit <hash> is not a new commit of this fix pass`, or too short, or ambiguous;
+  - `finding <id> is skipped without a reason`;
+  - `already reported: this agent's result was handed over` for a second call.

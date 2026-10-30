@@ -422,7 +422,7 @@ func (s *SourceControl) RemoveWorktree(_ context.Context, clone ports.Clone, pat
 // when the remote has commits the branch lacks, it fetches the remote
 // branch and fails with ports.ErrHistoryRewritten when one of them is
 // owner's, or ports.ErrConflict otherwise.
-func (s *SourceControl) Push(_ context.Context, clone ports.Clone, branch string, owner domain.BranchOwner) (string, error) {
+func (s *SourceControl) Push(_ context.Context, clone ports.Clone, worktree, branch string, owner domain.BranchOwner) (string, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	c, err := s.clone(GitPush, clone)

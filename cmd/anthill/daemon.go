@@ -92,10 +92,12 @@ func runDaemon(ctx context.Context, env *environment) error {
 		control:  control.NewServer(logger),
 	}
 	// No run starts yet, so no tool token is issued and the ant tools
-	// need no store, claims or providers: every call is refused as an
-	// unknown token. Ant supervision wires them when it starts runs.
-	d.tools = app.NewAntTools(nil, nil, nil, nil, env.clock, app.AntToolsOptions{
+	// need no store, claims, providers or git: every call is refused as
+	// an unknown token. Ant supervision wires them when it starts runs.
+	d.tools = app.NewAntTools(app.AntToolsDeps{Clock: env.clock, Notifier: d.notifier}, app.AntToolsOptions{
 		ExtensionWait: func() time.Duration { return config.Current().Global.ExtensionWait },
+		Redactor:      func() *domain.Redactor { return config.Current().Redactor },
+		Home:          filepath.Dir(env.home),
 	})
 	registerAPI(d.control, d.health, d.tools)
 

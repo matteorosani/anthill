@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"slices"
+	"strings"
 )
 
 // AgentRole is what an agent is started for (glossary). Each role gets its
@@ -166,4 +167,171 @@ func CheckToolState(s AntState, tool string) error {
 // no longer holds.
 func MessageClaimNotHeld(ref Ref) string {
 	return fmt.Sprintf("the claim on %s is no longer held by this instance: stop working", ref)
+}
+
+// FinishStatus is the status an ant reports with finish (glossary).
+type FinishStatus string
+
+// The finish statuses.
+const (
+	FinishComplete FinishStatus = "complete"
+	FinishPartial  FinishStatus = "partial"
+	FinishNoChange FinishStatus = "no-change"
+)
+
+// Valid reports whether s is one of the finish statuses.
+func (s FinishStatus) Valid() bool {
+	return s == FinishComplete || s == FinishPartial || s == FinishNoChange
+}
+
+// The refusals of finish on a task run (spec ant-tools, "Finish tool").
+const (
+	MessageFinishWithoutCommits = "no commits on the branch: finish with no-change, or ask a question"
+	MessageNoChangeWithCommits  = "the branch has new commits: finish with complete or partial"
+)
+
+// CheckFinish applies the finish rules: on a task run, complete and
+// partial need new commits on the branch and no-change allows none. A
+// follow-up run may finish with any status.
+func CheckFinish(r AgentRole, s FinishStatus, newCommits int) error {
+	if !s.Valid() {
+		return RefuseTool("finish status must be complete, partial or no-change, not %q", s)
+	}
+	if r != RoleTaskRun {
+		return nil
+	}
+	switch {
+	case s == FinishNoChange && newCommits > 0:
+		return RefuseTool("%s", MessageNoChangeWithCommits)
+	case s != FinishNoChange && newCommits == 0:
+		return RefuseTool("%s", MessageFinishWithoutCommits)
+	}
+	return nil
+}
+
+// FixResult is what a fix agent reports for one finding with
+// finish_fixes (spec ant-tools, "Fix report tool").
+type FixResult struct {
+	// Finding is the id of the finding the fix agent was given.
+	Finding string
+	Fixed   bool
+	// Commit is the full hash of the commit that fixes it, when Fixed.
+	Commit string
+	// Reason is why it was skipped, when not Fixed.
+	Reason string
+}
+
+// minCommitPrefix is the shortest abbreviated hash a fix result may
+// give.
+const minCommitPrefix = 7
+
+// ResolveFixResults checks a fix agent's results against the findings it
+// was given and the commits of its fix pass, oldest first: every finding
+// is answered exactly once, a fixed one names one of those commits (in
+// full or by a prefix of at least 7 characters), and a skipped one gives
+// a reason. It returns the results in the order of given, with full
+// commit hashes.
+func ResolveFixResults(given []string, results []FixResult, commits []string) ([]FixResult, error) {
+	byID := map[string]FixResult{}
+	for _, r := range results {
+		switch {
+		case !slices.Contains(given, r.Finding):
+			return nil, RefuseTool("finding %q was not given to this fix pass", r.Finding)
+		case byID[r.Finding].Finding != "":
+			return nil, RefuseTool("finding %s has more than one result", r.Finding)
+		}
+		if r.Fixed {
+			full, err := matchCommit(r.Commit, commits)
+			if err != nil {
+				return nil, RefuseTool("finding %s: %s", r.Finding, err)
+			}
+			r.Commit, r.Reason = full, ""
+		} else {
+			if r.Reason == "" {
+				return nil, RefuseTool("finding %s is skipped without a reason", r.Finding)
+			}
+			r.Commit = ""
+		}
+		byID[r.Finding] = r
+	}
+	out := make([]FixResult, 0, len(given))
+	var missing []string
+	for _, id := range given {
+		r, ok := byID[id]
+		if !ok {
+			missing = append(missing, id)
+			continue
+		}
+		out = append(out, r)
+	}
+	if len(missing) > 0 {
+		return nil, RefuseTool("no result for finding %s: report each finding as fixed or skipped", strings.Join(missing, ", "))
+	}
+	return out, nil
+}
+
+// matchCommit finds the commit that hash names.
+func matchCommit(hash string, commits []string) (string, error) {
+	switch {
+	case hash == "":
+		return "", errors.New("a fixed finding needs the commit that fixes it")
+	case len(hash) < minCommitPrefix:
+		return "", fmt.Errorf("commit %q is too short: give at least %d characters", hash, minCommitPrefix)
+	}
+	var found string
+	for _, c := range commits {
+		if strings.HasPrefix(c, strings.ToLower(hash)) {
+			if found != "" {
+				return "", fmt.Errorf("commit %q is ambiguous", hash)
+			}
+			found = c
+		}
+	}
+	if found == "" {
+		return "", fmt.Errorf("commit %s is not a new commit of this fix pass", hash)
+	}
+	return found, nil
+}
+
+// ClosingReference is the text that makes the code host close item when
+// the PR from repo merges (spec ant-execution, "Finishing with a pull
+// request"): Closes #12, Closes owner/other#12 across GitHub
+// repositories, or AB#12 for an Azure DevOps work item.
+func ClosingReference(item Ref, repo Repository) string {
+	if item.Repo.Provider == AzureDevOps {
+		return fmt.Sprintf("AB#%d", item.Number)
+	}
+	return "Closes " + item.Display(repo)
+}
+
+// WithClosingReference returns body with the closing reference on its
+// own last line, unless body already has it.
+func WithClosingReference(body string, item Ref, repo Repository) string {
+	ref := ClosingReference(item, repo)
+	if strings.Contains(body, ref) {
+		return body
+	}
+	body = strings.TrimRight(body, " \t\r\n")
+	if body == "" {
+		return ref
+	}
+	return body + "\n\n" + ref
+}
+
+// RewritePaths takes absolute local paths out of text Anthill posts (spec
+// agent-conversation, "Comment content safety"): the worktree becomes "."
+// and the user's home directory "~". Both forms of separator are
+// matched, since agents on Windows write either. Empty paths are
+// skipped.
+func RewritePaths(text, worktree, home string) string {
+	for _, p := range []struct{ path, with string }{{worktree, "."}, {home, "~"}} {
+		if len(strings.Trim(p.path, `/\`)) == 0 {
+			continue
+		}
+		path := strings.TrimRight(p.path, `/\`)
+		for _, form := range []string{path, strings.ReplaceAll(path, `\`, "/"), strings.ReplaceAll(path, "/", `\`)} {
+			text = strings.ReplaceAll(text, form, p.with)
+		}
+	}
+	return text
 }

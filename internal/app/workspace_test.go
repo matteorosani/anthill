@@ -152,7 +152,7 @@ func TestPrepareRecreatesWorktree(t *testing.T) {
 	f := newWorkspace(t)
 	first := f.prepare(t)
 	f.git.Commit(first.Worktree, "work")
-	if _, err := f.git.Push(ctx, f.clone, first.Branch, wsTrail.Owner()); err != nil {
+	if _, err := f.git.Push(ctx, f.clone, "", first.Branch, wsTrail.Owner()); err != nil {
 		t.Fatal(err)
 	}
 	_ = f.git.RemoveWorktree(ctx, f.clone, first.Worktree, false)
