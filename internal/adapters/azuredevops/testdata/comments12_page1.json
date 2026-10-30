@@ -1,0 +1,26 @@
+{
+  "totalCount": 2,
+  "count": 1,
+  "comments": [
+    {
+      "workItemId": 12,
+      "id": 5,
+      "version": 1,
+      "text": "first",
+      "renderedText": "<p>first</p>",
+      "format": "markdown",
+      "createdBy": {
+        "displayName": "Ada",
+        "uniqueName": "ada@contoso.com"
+      },
+      "createdDate": "2026-10-29T09:00:00Z",
+      "modifiedBy": {
+        "displayName": "Ada",
+        "uniqueName": "ada@contoso.com"
+      },
+      "modifiedDate": "2026-10-29T09:00:00Z",
+      "url": "https://dev.azure.com/Contoso/Shop/_apis/wit/workItems/12/comments/5"
+    }
+  ],
+  "continuationToken": "page-2"
+}

@@ -54,6 +54,9 @@ type Effective struct {
 	OTLPEndpoint      string // "" means telemetry export is off
 	SecretPatterns    []string
 	WorktreeRoot      string // "" means DefaultWorktreeRoot under the user's home
+	// AzureDevOpsProjects holds the valid entries of
+	// azure-devops-projects.
+	AzureDevOpsProjects []AzureDevOpsProject
 
 	sources map[string]Layer
 	shown   map[string]string
@@ -99,6 +102,34 @@ func resolveList(r resolver, key string, get func(*SettingValues) []string) []st
 	}
 	r.record(key, LayerDefault, showList(nil))
 	return nil
+}
+
+// resolveProjects is resolveList for azure-devops-projects.
+func resolveProjects(r resolver) []AzureDevOpsProject {
+	for _, l := range r.layers {
+		if v := l.values.AzureDevOpsProjects; v != nil {
+			shown := make([]string, len(v))
+			for i, p := range v {
+				shown[i] = p.Project + ": " + p.DefaultRepository
+			}
+			r.record(KeyAzureDevOpsProjects, l.layer, showList(shown))
+			return v
+		}
+	}
+	r.record(KeyAzureDevOpsProjects, LayerDefault, showList(nil))
+	return nil
+}
+
+// DefaultRepository returns the configured default repository of an
+// Azure DevOps project, or "" when none is configured. Project names
+// ignore case.
+func (e Effective) DefaultRepository(project Repository) string {
+	for _, p := range e.AzureDevOpsProjects {
+		if r, err := p.Repository(); err == nil && strings.EqualFold(r.Org, project.Org) && strings.EqualFold(r.Project, project.Project) {
+			return p.DefaultRepository
+		}
+	}
+	return ""
 }
 
 func showString(s string) string {
@@ -223,6 +254,7 @@ func (l ConfigLayers) Resolve() Effective {
 	e.QuestionStaleness = dur(KeyQuestionStaleness, DefaultQuestionStaleness, func(s *SettingValues) *time.Duration { return s.QuestionStaleness })
 	e.OTLPEndpoint = str(KeyOTLPEndpoint, "", func(s *SettingValues) *string { return s.OTLPEndpoint })
 	e.SecretPatterns = resolveList(r, KeySecretPatterns, func(s *SettingValues) []string { return s.SecretPatterns })
+	e.AzureDevOpsProjects = resolveProjects(r)
 	e.WorktreeRoot = resolveValue(r, KeyWorktreeRoot, "", func(s *SettingValues) *string { return s.WorktreeRoot },
 		func(v string) string {
 			if v == "" {
@@ -261,7 +293,7 @@ func (e Effective) ForItem(labels []string) (Effective, []LabelWarning) {
 	e.shown = maps.Clone(e.shown)
 	r := resolver{e: &e}
 	if item.Agent != "" {
-		if runner := Runner(item.Agent); runner.Valid() {
+		if runner := Runner(strings.ToLower(item.Agent)); runner.Valid() {
 			e.Runner = runner
 			r.record(KeyRunner, LayerLabel, string(runner))
 		} else {

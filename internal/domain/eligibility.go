@@ -143,7 +143,10 @@ func (r EligibilityResult) IneligibleMessage() string {
 	return "no longer eligible: " + strings.Join(ids, ", ")
 }
 
-func hasLabel(labels []string, label string) bool {
+// HasLabel reports whether labels contain label. Labels match in any
+// case, because GitHub label names and Azure DevOps tags are both unique
+// regardless of case.
+func HasLabel(labels []string, label string) bool {
 	return slices.ContainsFunc(labels, func(l string) bool { return strings.EqualFold(l, label) })
 }
 
@@ -156,7 +159,7 @@ func orDefault(value, def string) string {
 
 func checkOptedIn(item WorkItem, ctx EligibilityContext) string {
 	label := orDefault(ctx.OptInLabel, DefaultOptInLabel)
-	if hasLabel(item.Labels, label) {
+	if HasLabel(item.Labels, label) {
 		return ""
 	}
 	return fmt.Sprintf("item does not carry the opt-in label %s", label)
@@ -267,7 +270,7 @@ func checkHasDescription(item WorkItem, ctx EligibilityContext) string {
 
 func checkNotExcluded(item WorkItem, ctx EligibilityContext) string {
 	label := orDefault(ctx.HoldLabel, DefaultHoldLabel)
-	if hasLabel(item.Labels, label) {
+	if HasLabel(item.Labels, label) {
 		return fmt.Sprintf("item carries the hold label %s", label)
 	}
 	return ""

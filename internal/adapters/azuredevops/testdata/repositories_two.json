@@ -1,0 +1,29 @@
+{
+  "count": 2,
+  "value": [
+    {
+      "id": "r-web",
+      "name": "Web",
+      "url": "https://dev.azure.com/Contoso/Shop/_apis/git/repositories/r-web",
+      "project": {
+        "id": "p-shop",
+        "name": "Shop",
+        "state": "wellFormed"
+      },
+      "defaultBranch": "refs/heads/main",
+      "webUrl": "https://dev.azure.com/Contoso/Shop/_git/Web"
+    },
+    {
+      "id": "r-api",
+      "name": "API",
+      "url": "https://dev.azure.com/Contoso/Shop/_apis/git/repositories/r-api",
+      "project": {
+        "id": "p-shop",
+        "name": "Shop",
+        "state": "wellFormed"
+      },
+      "defaultBranch": "refs/heads/main",
+      "webUrl": "https://dev.azure.com/Contoso/Shop/_git/API"
+    }
+  ]
+}

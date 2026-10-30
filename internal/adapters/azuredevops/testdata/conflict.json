@@ -1,0 +1,9 @@
+{
+  "$id": "1",
+  "innerException": null,
+  "message": "TF26071: This work item has been changed by someone else since you opened it. Test operation failed.",
+  "typeName": "Microsoft.VisualStudio.Services.WebApi.Patch.TestPatchOperationFailedException",
+  "typeKey": "TestPatchOperationFailedException",
+  "errorCode": 0,
+  "eventId": 3000
+}

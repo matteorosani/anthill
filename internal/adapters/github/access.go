@@ -71,3 +71,14 @@ func (a *Adapter) lookupAccess(ctx context.Context, repo domain.Repository, logi
 	p := level.GetPermission()
 	return p == "admin" || p == "write", nil
 }
+
+// Repositories returns the repository itself: on GitHub an issue's
+// repository is also its code repository (spec work-item-sources,
+// "Repository mapping").
+func (a *Adapter) Repositories(_ context.Context, scope domain.Repository) ([]domain.Repository, error) {
+	scope = Normalize(scope)
+	if err := checkRepo(scope); err != nil {
+		return nil, err
+	}
+	return []domain.Repository{scope}, nil
+}

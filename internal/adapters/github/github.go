@@ -50,6 +50,7 @@ import (
 
 	gh "github.com/google/go-github/v93/github"
 
+	"github.com/matteorosani/anthill/internal/adapters/internal/httpkit"
 	"github.com/matteorosani/anthill/internal/domain"
 	"github.com/matteorosani/anthill/internal/ports"
 )
@@ -117,8 +118,8 @@ type Adapter struct {
 	clock      ports.Clock
 	repoOpts   func(domain.Repository) RepoOptions
 	redactor   *domain.Redactor
-	auth       *authTransport
-	gate       *gate
+	token      *httpkit.Token
+	gate       *httpkit.Gate
 
 	mu sync.Mutex
 	// login is the authenticated user, read once with GET /user.
@@ -172,15 +173,12 @@ func New(o Options) (*Adapter, error) {
 		restURL, graphqlURL = "https://"+o.Host+"/api/v3/", "https://"+o.Host+"/api/graphql"
 	}
 
-	g := &gate{clock: o.Clock, until: map[string]time.Time{}}
-	auth := &authTransport{
-		base:        o.Transport,
-		credentials: o.Credentials,
-		key:         domain.GitHubCredential(o.Host),
-	}
+	g := httpkit.NewGate(o.Clock)
+	token := &httpkit.Token{Credentials: o.Credentials, Key: domain.GitHubCredential(o.Host)}
+	auth := &authTransport{base: o.Transport, token: token}
 	httpClient := &http.Client{
 		Timeout:   o.Timeout,
-		Transport: &gateTransport{base: auth, gate: g, logger: o.Logger},
+		Transport: &gateTransport{base: auth, gate: g, clock: o.Clock, logger: o.Logger},
 	}
 	client, err := gh.NewClient(
 		gh.WithHTTPClient(httpClient),
@@ -201,7 +199,7 @@ func New(o Options) (*Adapter, error) {
 		clock:      o.Clock,
 		repoOpts:   o.Repo,
 		redactor:   o.Redactor,
-		auth:       auth,
+		token:      token,
 		gate:       g,
 		access:     map[accessKey]accessEntry{},
 	}, nil

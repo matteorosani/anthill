@@ -269,6 +269,12 @@ func TestEvaluateScenarios(t *testing.T) {
 			unmet:  []domain.Prerequisite{domain.PrereqNotExcluded},
 			reason: "anthill:hold",
 		},
+		{
+			name:   "hold label in another case",
+			change: func(i *domain.WorkItem, _ *domain.EligibilityContext) { i.Labels = append(i.Labels, "Anthill:Hold") },
+			unmet:  []domain.Prerequisite{domain.PrereqNotExcluded},
+			reason: "anthill:hold",
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -344,5 +350,12 @@ func TestBecameIneligibleInTheMeantime(t *testing.T) {
 	item.State = domain.StateOpen
 	if got := domain.Evaluate(item, ctx).IneligibleMessage(); got != "" {
 		t.Errorf("IneligibleMessage() of an eligible item = %q, want empty", got)
+	}
+}
+
+func TestHasLabelIgnoresCase(t *testing.T) {
+	labels := []string{"Anthill", "bug"}
+	if !domain.HasLabel(labels, "anthill") || !domain.HasLabel(labels, "BUG") || domain.HasLabel(labels, "anthill:hold") {
+		t.Errorf("HasLabel(%v) is case-sensitive or matches too much", labels)
 	}
 }

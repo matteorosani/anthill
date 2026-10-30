@@ -1,0 +1,17 @@
+{
+  "count": 1,
+  "value": [
+    {
+      "id": "6b3c3b7a-0000-0000-0000-000000000001",
+      "descriptor": "Microsoft.IdentityModel.Claims.ClaimsIdentity;contoso\\m.rosani@contoso.com",
+      "providerDisplayName": "Matteo Rosani",
+      "isActive": true,
+      "properties": {
+        "Account": {
+          "$type": "System.String",
+          "$value": "M.Rosani@contoso.com"
+        }
+      }
+    }
+  ]
+}

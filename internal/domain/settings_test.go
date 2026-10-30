@@ -15,6 +15,16 @@ func TestParseSettingLabels(t *testing.T) {
 		warnings []domain.WarningReason
 	}{
 		{
+			name:   "setting prefix in another case: Budget:30",
+			labels: []string{"Anthill", "Budget:30"},
+			want:   domain.ItemSettings{BudgetMinutes: 30},
+		},
+		{
+			name:   "repo: values that differ only in case agree",
+			labels: []string{"repo:Web", "repo:web"},
+			want:   domain.ItemSettings{Repo: "Web"},
+		},
+		{
 			name:   "no setting labels",
 			labels: []string{"anthill", "bug"},
 		},

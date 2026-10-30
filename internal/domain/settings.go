@@ -72,7 +72,7 @@ func ParseSettingLabels(labels []string, maxBudget int) (ItemSettings, []LabelWa
 			continue
 		}
 		sources[prefix] = append(sources[prefix], label)
-		if !slices.Contains(values[prefix], value) {
+		if !slices.ContainsFunc(values[prefix], func(v string) bool { return sameSetting(prefix, v, value) }) {
 			values[prefix] = append(values[prefix], value)
 		}
 	}
@@ -114,6 +114,16 @@ func ParseSettingLabels(labels []string, maxBudget int) (ItemSettings, []LabelWa
 		settings.BudgetMinutes = minutes
 	}
 	return settings, warnings
+}
+
+// sameSetting reports whether two values of a setting label name the same
+// thing. Repository names and runner names ignore case on every provider;
+// branch names do not.
+func sameSetting(prefix, a, b string) bool {
+	if prefix == labelBase {
+		return a == b
+	}
+	return strings.EqualFold(a, b)
 }
 
 // settingPrefix returns the lowercase setting prefix and the trimmed value

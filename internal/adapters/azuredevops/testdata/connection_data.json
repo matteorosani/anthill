@@ -1,0 +1,14 @@
+{
+  "authenticatedUser": {
+    "id": "6b3c3b7a-0000-0000-0000-000000000001",
+    "descriptor": "Microsoft.IdentityModel.Claims.ClaimsIdentity;contoso\\m.rosani@contoso.com",
+    "providerDisplayName": "Matteo Rosani",
+    "properties": {
+      "Account": {
+        "$type": "System.String",
+        "$value": "M.Rosani@contoso.com"
+      }
+    }
+  },
+  "instanceId": "00000000-0000-0000-0000-00000000c0de"
+}

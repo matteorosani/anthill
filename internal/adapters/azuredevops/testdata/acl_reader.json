@@ -1,0 +1,22 @@
+{
+  "count": 1,
+  "value": [
+    {
+      "inheritPermissions": true,
+      "token": "repoV2/p-shop/r-web",
+      "acesDictionary": {
+        "Microsoft.IdentityModel.Claims.ClaimsIdentity;contoso\\m.rosani@contoso.com": {
+          "descriptor": "Microsoft.IdentityModel.Claims.ClaimsIdentity;contoso\\m.rosani@contoso.com",
+          "allow": 0,
+          "deny": 0,
+          "extendedInfo": {
+            "effectiveAllow": 2,
+            "effectiveDeny": 0,
+            "inheritedAllow": 2,
+            "inheritedDeny": 0
+          }
+        }
+      }
+    }
+  ]
+}

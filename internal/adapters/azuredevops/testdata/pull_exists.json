@@ -1,0 +1,7 @@
+{
+  "$id": "1",
+  "message": "TF401179: An active pull request for the source and target branch already exists.",
+  "typeKey": "GitPullRequestExistsException",
+  "errorCode": 0,
+  "eventId": 3000
+}

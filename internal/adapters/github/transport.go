@@ -2,40 +2,32 @@ package github
 
 import (
 	"bytes"
-	"context"
 	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 
-	"github.com/matteorosani/anthill/internal/domain"
+	"github.com/matteorosani/anthill/internal/adapters/internal/httpkit"
 	"github.com/matteorosani/anthill/internal/ports"
 )
 
-// authTransport adds the token to every request. It reads the token from
-// the credential source on first use and keeps it until GitHub answers
-// 401, so that a token refreshed in the gh session or the credential
-// store is picked up by the next request.
+// authTransport adds the token to every request. The token is read from
+// the credential source on first use and kept until GitHub answers 401,
+// so that a token refreshed in the gh session or the credential store is
+// picked up by the next request.
 type authTransport struct {
-	base        http.RoundTripper
-	credentials ports.CredentialSource
-	key         domain.CredentialKey
-
-	mu    sync.Mutex
-	token domain.Secret
-	// last is the last token used, kept after a 401 so that errors can
-	// still be scrubbed of it.
-	last domain.Secret
+	base  http.RoundTripper
+	token *httpkit.Token
 }
 
 func (t *authTransport) RoundTrip(req *http.Request) (*http.Response, error) {
-	token, err := t.get(req.Context())
+	token, err := t.token.Get(req.Context())
 	if err != nil {
-		return nil, err
+		// Credential sources never put a value in their errors.
+		return nil, fmt.Errorf("github token: %w", err)
 	}
 	// A RoundTripper must not change the caller's request, so the header
 	// goes on a copy.
@@ -43,37 +35,9 @@ func (t *authTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 	req.Header.Set("Authorization", "Bearer "+token.Reveal())
 	resp, err := t.base.RoundTrip(req)
 	if err == nil && resp.StatusCode == http.StatusUnauthorized {
-		t.mu.Lock()
-		t.token = domain.Secret{}
-		t.mu.Unlock()
+		t.token.Drop()
 	}
 	return resp, err
-}
-
-func (t *authTransport) get(ctx context.Context) (domain.Secret, error) {
-	t.mu.Lock()
-	defer t.mu.Unlock()
-	if !t.token.Empty() {
-		return t.token, nil
-	}
-	token, err := t.credentials.Credential(ctx, t.key)
-	if err != nil {
-		// Credential sources never put a value in their errors.
-		return domain.Secret{}, fmt.Errorf("github token: %w", err)
-	}
-	t.token, t.last = token, token
-	return token, nil
-}
-
-// scrub replaces the last token used in text.
-func (t *authTransport) scrub(text string) string {
-	t.mu.Lock()
-	last := t.last
-	t.mu.Unlock()
-	if last.Empty() {
-		return text
-	}
-	return strings.ReplaceAll(text, last.Reveal(), domain.Redacted)
 }
 
 // Rate-limit headers (GitHub docs, "Rate limits for the REST API").
@@ -88,45 +52,19 @@ const (
 // gives no Retry-After: "wait for at least one minute" (GitHub docs).
 const secondaryWait = time.Minute
 
-// gate remembers, per rate-limit resource such as core or graphql, until
-// when GitHub refuses requests.
-type gate struct {
-	clock ports.Clock
-	mu    sync.Mutex
-	until map[string]time.Time
-}
-
-// check returns a *ports.RateLimitError while resource is paused.
-func (g *gate) check(resource string) error {
-	g.mu.Lock()
-	defer g.mu.Unlock()
-	if until := g.until[resource]; g.clock.Now().Before(until) {
-		return &ports.RateLimitError{Reset: until}
-	}
-	return nil
-}
-
-// pause refuses requests for resource until the given time.
-func (g *gate) pause(resource string, until time.Time) {
-	g.mu.Lock()
-	defer g.mu.Unlock()
-	if until.After(g.until[resource]) {
-		g.until[resource] = until
-	}
-}
-
 // gateTransport sends a request only when its rate limit is not paused,
 // and pauses the limit when a response says it is exhausted. A refused
 // or rate-limited request fails with a *ports.RateLimitError.
 type gateTransport struct {
 	base   http.RoundTripper
-	gate   *gate
+	gate   *httpkit.Gate
+	clock  ports.Clock
 	logger *slog.Logger
 }
 
 func (t *gateTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 	resource := resourceOf(req)
-	if err := t.gate.check(resource); err != nil {
+	if err := t.gate.Check(resource); err != nil {
 		t.logger.Debug("github request held for rate limit", "method", req.Method, "path", req.URL.Path)
 		return nil, err
 	}
@@ -142,7 +80,7 @@ func (t *gateTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 	if until.IsZero() {
 		return resp, nil
 	}
-	t.gate.pause(resource, until)
+	t.gate.Pause(resource, until)
 	if !limited {
 		// The last request of the window succeeded; the next one would
 		// fail, so it is held instead.
@@ -158,7 +96,7 @@ func (t *gateTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 // be sent again, zero when the limit is not exhausted; limited tells
 // whether this response itself was refused.
 func (t *gateTransport) limit(resp *http.Response) (until time.Time, limited bool) {
-	now := t.gate.clock.Now()
+	now := t.clock.Now()
 	reset := func() time.Time {
 		secs, err := strconv.ParseInt(resp.Header.Get(headerReset), 10, 64)
 		if err != nil {

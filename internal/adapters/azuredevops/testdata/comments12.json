@@ -1,0 +1,25 @@
+{
+  "totalCount": 1,
+  "count": 1,
+  "comments": [
+    {
+      "workItemId": 12,
+      "id": 5,
+      "version": 1,
+      "text": "Also happens on iOS.",
+      "renderedText": "<p>Also happens on iOS.</p>",
+      "format": "markdown",
+      "createdBy": {
+        "displayName": "Ada",
+        "uniqueName": "Ada@contoso.com"
+      },
+      "createdDate": "2026-10-29T09:30:00.123Z",
+      "modifiedBy": {
+        "displayName": "Ada",
+        "uniqueName": "Ada@contoso.com"
+      },
+      "modifiedDate": "2026-10-29T09:30:00.123Z",
+      "url": "https://dev.azure.com/Contoso/Shop/_apis/wit/workItems/12/comments/5"
+    }
+  ]
+}

@@ -34,6 +34,9 @@ capacity: 3
 otlp-endpoint: http://localhost:4318
 secret-patterns:
   - 'ACME-[0-9]{8}'
+azure-devops-projects:
+  - project: contoso/shop
+    default-repository: web
 
 repositories:
   - provider: github
@@ -82,6 +85,7 @@ Your own configuration file never accepts credential keys either. OTLP headers a
 - Intervals are durations with a unit: `poll-interval: 2m`, `question-staleness: 72h`.
 - `extension-allowance` has `minutes` and `times`. When `minutes` is set and `times` is omitted, the allowance applies once.
 - `protected-branches` is a list of glob patterns such as `release/*`. The base branch and the default branch are always protected.
+- `azure-devops-projects` is a list of entries, each with `project` (`organization/project`, in any case) and `default-repository` (the name of a Git repository of that project). An Azure DevOps work item goes to the repository its `repo:<name>` label names, else to its project's default repository, else to the project's only Git repository. Otherwise it is unmapped (spec work-item-sources, "Repository mapping").
 - `secret-patterns` is a list of Go regular expressions (RE2 syntax). A pattern can name a group `secret` to redact only that part. These patterns add to the built-in ones, which cannot be removed.
 
 ## Validation
@@ -100,6 +104,14 @@ Provider credentials and OTLP headers never live in a configuration file. Anthil
    - `azure-devops:<organization>` for an Azure DevOps token;
    - `otlp-headers` for the OTLP headers, written as `key1=value1,key2=value2`.
 2. The provider's own CLI session, when the store has no entry: `gh auth token --hostname <host>` for GitHub, and `az account get-access-token` for Azure DevOps. OTLP headers come only from the store.
+
+An Azure DevOps value shaped like a JWT, such as the token `az` prints, is a Microsoft Entra ID access token. Anthill sends it as a Bearer token and asks for a new one two minutes before it expires. Any other value is a personal access token (PAT), sent with Basic authentication. A PAT needs these scopes:
+
+- Work Items (Read & write), for work items, their tags, comments and claims;
+- Code (Read & write), for repositories and pull requests;
+- Identity (Read) and Security (Manage), to check who has write access. Without them, Anthill treats every user as without write access and logs one warning.
+
+Anthill works with Azure DevOps Services (`dev.azure.com`) only. Azure DevOps Server (on-premises) is not supported.
 
 Credential values never appear in logs, errors, comments, task briefs or telemetry.
 
@@ -140,6 +152,7 @@ Credential values never appear in logs, errors, comments, task briefs or telemet
 | `otlp-endpoint` | global configuration | none | OTLP endpoint for telemetry export; none means export is off. |
 | `secret-patterns` | global configuration | none | Extra secret patterns, added to the built-in ones. |
 | `worktree-root` | global configuration | ~/.anthill/worktrees | Absolute path of the directory that holds the ant worktrees, laid out as `<provider>-<org>-<name>/<branch>`. |
+| `azure-devops-projects` | global configuration | none | Default target repository of each Azure DevOps project, for work items without a `repo:` label: a list of `project` (`organization/project`) and `default-repository`. |
 | `provider` | local repository entry | required | Provider of the repository: `github` or `azure-devops`. |
 | `remote` | local repository entry | required | Repository on the provider: `owner/name` or `organization/project/repository`. |
 | `path` | local repository entry | required | Absolute path of the local clone. |

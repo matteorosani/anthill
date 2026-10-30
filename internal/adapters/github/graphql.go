@@ -9,6 +9,7 @@ import (
 	"io"
 	"net/http"
 
+	"github.com/matteorosani/anthill/internal/adapters/internal/httpkit"
 	"github.com/matteorosani/anthill/internal/ports"
 )
 
@@ -53,7 +54,7 @@ func (a *Adapter) graphql(ctx context.Context, op, query string, vars map[string
 		if ctxErr := ctx.Err(); ctxErr != nil {
 			return fmt.Errorf("github: %s: %w", op, ctxErr)
 		}
-		return &scrubbedError{msg: fmt.Sprintf("github: %s: %s", op, a.scrub(err.Error())), err: err}
+		return &httpkit.ScrubbedError{Msg: fmt.Sprintf("github: %s: %s", op, a.scrub(err.Error())), Err: err}
 	}
 	defer func() { _ = resp.Body.Close() }()
 	data, err := io.ReadAll(io.LimitReader(resp.Body, 32<<20))
@@ -80,7 +81,7 @@ func (a *Adapter) graphql(ctx context.Context, op, query string, vars map[string
 		case "RATE_LIMITED":
 			// GraphQL answers 200 with this error; the gate has paused
 			// the graphql limit from the headers of the same answer.
-			if err := a.gate.check("graphql"); err != nil {
+			if err := a.gate.Check("graphql"); err != nil {
 				return fmt.Errorf("github: %s: %w", op, err)
 			}
 			return fmt.Errorf("github: %s: %w", op, &ports.RateLimitError{Reset: a.clock.Now().Add(secondaryWait)})
