@@ -11,7 +11,7 @@ import (
 	"github.com/matteorosani/anthill/internal/ports"
 )
 
-const antColumns = "id, item, base_ns, budget, runner, session_id, worktree, branch, pr"
+const antColumns = "id, item, base_ns, budget, runner, session_id, worktree, branch, base_branch, pr"
 
 // CreateAnt stores a new ant with its transitions.
 func (s *Store) CreateAnt(ctx context.Context, r ports.AntRecord) (ports.AntID, error) {
@@ -22,8 +22,8 @@ func (s *Store) CreateAnt(ctx context.Context, r ports.AntRecord) (ports.AntID, 
 			return err
 		}
 		res, err := tx.ExecContext(ctx, `INSERT INTO ants
-			(item_key, item, state, base_ns, budget, runner, session_id, worktree, branch, pr)
-			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, row...)
+			(item_key, item, state, base_ns, budget, runner, session_id, worktree, branch, base_branch, pr)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, row...)
 		if err != nil {
 			return err
 		}
@@ -56,7 +56,7 @@ func (s *Store) SaveAnt(ctx context.Context, r ports.AntRecord) error {
 		}
 		res, err := tx.ExecContext(ctx, `UPDATE ants SET
 			item_key = ?, item = ?, state = ?, base_ns = ?, budget = ?, runner = ?,
-			session_id = ?, worktree = ?, branch = ?, pr = ?
+			session_id = ?, worktree = ?, branch = ?, base_branch = ?, pr = ?
 			WHERE id = ?`, append(row, r.ID)...)
 		if err != nil {
 			return err
@@ -85,7 +85,7 @@ func antRow(r ports.AntRecord) ([]any, error) {
 		}
 		pr.Valid = true
 	}
-	return []any{refKey(r.Item), item, string(r.State()), int64(r.Base), budget, r.Runner, r.SessionID, r.Worktree, r.Branch, pr}, nil
+	return []any{refKey(r.Item), item, string(r.State()), int64(r.Base), budget, r.Runner, r.SessionID, r.Worktree, r.Branch, r.BaseBranch, pr}, nil
 }
 
 func insertTransitions(ctx context.Context, tx *sql.Tx, ant ports.AntID, history []domain.Transition, first int) error {
@@ -151,7 +151,7 @@ func (s *Store) ants(ctx context.Context, where string, args ...any) ([]ports.An
 			base         int64
 			pr           sql.NullString
 		)
-		if err := rows.Scan(&r.ID, &item, &base, &budget, &r.Runner, &r.SessionID, &r.Worktree, &r.Branch, &pr); err != nil {
+		if err := rows.Scan(&r.ID, &item, &base, &budget, &r.Runner, &r.SessionID, &r.Worktree, &r.Branch, &r.BaseBranch, &pr); err != nil {
 			_ = rows.Close()
 			return nil, err
 		}

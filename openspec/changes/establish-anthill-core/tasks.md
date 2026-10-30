@@ -92,13 +92,13 @@ Terms follow `openspec/glossary.md`. Every group lands its own tests and docs. U
 
 ## 12. Ant tools
 
-- [ ] 12.1 Implement `anthill mcp --ant <token>` as a stdio MCP server (`modelcontextprotocol/go-sdk`) that relays calls to the daemon, and verify a test with an MCP client listing the tools of each role
-- [ ] 12.2 Implement tool tokens per run, revoked when the run ends, and verify the "token reused after the run" test
-- [ ] 12.3 Implement `get_task`, `time_remaining` and `request_extension` (waiting up to the extension wait, returning `approved`, `reduced`, `denied` or `pending`), and verify the ant-tools scenarios for each
+- [x] 12.1 Implement `anthill mcp --ant <token>` as a stdio MCP server (`modelcontextprotocol/go-sdk`) that relays calls to the daemon, and verify a test with an MCP client listing the tools of each role
+- [x] 12.2 Implement tool tokens per run, revoked when the run ends, and verify the "token reused after the run" test
+- [x] 12.3 Implement `get_task`, `time_remaining` and `request_extension` (waiting up to the extension wait, returning `approved`, `reduced`, `denied` or `pending`), and verify the ant-tools scenarios for each
 - [ ] 12.4 Implement `ask_question`, `report_progress`, `comment` and `reply_to_thread`, with markers and redaction on all posted text, and verify the "agent replies to a review thread" and "comment containing a secret" tests
 - [ ] 12.5 Implement `push`, `open_pull_request` and `update_pull_request` through the push policy and the code host, and verify the "push rejected because the remote moved", "agent opens a ready PR" and "second PR for the same item" tests
 - [ ] 12.6 Implement `finish` with status checks against new commits, `submit_review` and `finish_fixes`, and verify the "complete without commits" and "no-change with commits" tests
-- [ ] 12.7 Implement role tool sets and the check of every call against the ant's state, claim and the branching policy, and verify the "fix agent cannot push", "review agent tool list" and "call while waiting for an extension" tests
+- [x] 12.7 Implement role tool sets and the check of every call against the ant's state, claim and the branching policy, and verify the "fix agent cannot push", "review agent tool list" and "call while waiting for an extension" tests
 - [ ] 12.8 Implement message delivery (live input, hook, or notice on the next ant-tool result), and verify with fakes that each runner capability gets the right means
 - [ ] 12.9 Write `docs/ant-tools.md` describing every tool, its role and its refusals, and verify every tool in the code is documented by a test that compares the two lists
 

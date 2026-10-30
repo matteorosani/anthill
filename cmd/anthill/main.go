@@ -151,7 +151,7 @@ func newRootCommand(env *environment) *cobra.Command {
 	root.SetFlagErrorFunc(func(_ *cobra.Command, err error) error {
 		return &usageError{err}
 	})
-	root.AddCommand(newVersionCommand(), newDaemonCommand(env), newStatusCommand(env))
+	root.AddCommand(newVersionCommand(), newDaemonCommand(env), newStatusCommand(env), newMCPCommand(env))
 	return root
 }
 
