@@ -335,3 +335,33 @@ func RewritePaths(text, worktree, home string) string {
 	}
 	return text
 }
+
+// DeliveryMeans is how Anthill gives an agent a message during its run,
+// such as the budget warning, a late extension decision or a ticket
+// update (spec ant-tools, "Messages during a run"; design D5).
+type DeliveryMeans string
+
+// The delivery means, from the first choice to the last resort.
+const (
+	// DeliverLiveInput sends the message to the running agent as input.
+	DeliverLiveInput DeliveryMeans = "live-input"
+	// DeliverHook queues it for the runner's hook, which adds it as
+	// context after the agent's next tool use.
+	DeliverHook DeliveryMeans = "hook"
+	// DeliverToolResult attaches it to the result of the agent's next
+	// ant-tool call.
+	DeliverToolResult DeliveryMeans = "tool-result"
+)
+
+// ChooseDelivery picks the first means the runner supports: live input,
+// then a hook, then a notice on the next ant-tool result, which every
+// runner supports.
+func ChooseDelivery(liveInput, hooks bool) DeliveryMeans {
+	switch {
+	case liveInput:
+		return DeliverLiveInput
+	case hooks:
+		return DeliverHook
+	}
+	return DeliverToolResult
+}

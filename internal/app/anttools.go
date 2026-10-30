@@ -33,6 +33,9 @@ type ToolSession struct {
 	Branch   string
 	// Findings are the ids of the findings given to a fix agent.
 	Findings []string
+	// Channel reaches the agent of a run, for messages during the run.
+	// Its zero value has no live input and no hooks.
+	Channel RunChannel
 }
 
 // ToolDefinition is one tool as the agent sees it in its tool list.
@@ -272,6 +275,11 @@ func (t *AntTools) Issue(s ToolSession) (string, error) {
 func (t *AntTools) Revoke(token string) {
 	key := sha256.Sum256([]byte(token))
 	t.mu.Lock()
+	// Messages not delivered during the run are dropped with it: the next
+	// run gets what it needs in its own input.
+	if s, ok := t.sessions[key]; ok && s.Role.IsRun() {
+		delete(t.notices, s.Ant)
+	}
 	delete(t.sessions, key)
 	delete(t.statuses, key)
 	delete(t.done, key)
@@ -409,13 +417,6 @@ func (t *AntTools) antLock(id ports.AntID) *sync.Mutex {
 		t.locks[id] = m
 	}
 	return m
-}
-
-// notify queues a message for the ant's next tool result.
-func (t *AntTools) notify(id ports.AntID, text string) {
-	t.mu.Lock()
-	t.notices[id] = append(t.notices[id], text)
-	t.mu.Unlock()
 }
 
 func (t *AntTools) takeNotices(id ports.AntID) []string {

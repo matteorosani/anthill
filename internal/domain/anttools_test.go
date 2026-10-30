@@ -184,3 +184,21 @@ func TestRewritePaths(t *testing.T) {
 		t.Errorf("empty or root paths must be skipped, got %q", got)
 	}
 }
+
+// Spec ant-tools, "Messages during a run": the first means the runner
+// supports.
+func TestChooseDelivery(t *testing.T) {
+	for _, tt := range []struct {
+		live, hooks bool
+		want        domain.DeliveryMeans
+	}{
+		{true, true, domain.DeliverLiveInput},
+		{true, false, domain.DeliverLiveInput},
+		{false, true, domain.DeliverHook},
+		{false, false, domain.DeliverToolResult},
+	} {
+		if got := domain.ChooseDelivery(tt.live, tt.hooks); got != tt.want {
+			t.Errorf("ChooseDelivery(%v, %v) = %s, want %s", tt.live, tt.hooks, got, tt.want)
+		}
+	}
+}
