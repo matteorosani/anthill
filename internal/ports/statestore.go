@@ -44,6 +44,10 @@ type AntRecord struct {
 	SessionID string
 	Worktree  string
 	Branch    string
+	// BaseBranch is the branch the ant branch was made from: its PR's
+	// target and where new commits are counted from (spec ant-tools,
+	// "Finish tool").
+	BaseBranch string
 	// PR is the ant PR, or nil before it is opened.
 	PR *domain.Ref
 }

@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"sync"
 	"syscall"
+	"time"
 
 	"github.com/spf13/cobra"
 
@@ -55,7 +56,9 @@ type daemon struct {
 	// get: the desktop one behind the notifications setting.
 	notifier ports.Notifier
 	health   *app.Health
-	control  *control.Server
+	// tools executes the ant tools that anthill mcp relays.
+	tools   *app.AntTools
+	control *control.Server
 }
 
 // runDaemon takes the daemon lock, loads the configuration, and serves
@@ -88,7 +91,13 @@ func runDaemon(ctx context.Context, env *environment) error {
 		health:   app.NewHealth(env.clock, version, os.Getpid()),
 		control:  control.NewServer(logger),
 	}
-	registerAPI(d.control, d.health)
+	// No run starts yet, so no tool token is issued and the ant tools
+	// need no store, claims or providers: every call is refused as an
+	// unknown token. Ant supervision wires them when it starts runs.
+	d.tools = app.NewAntTools(nil, nil, nil, nil, env.clock, app.AntToolsOptions{
+		ExtensionWait: func() time.Duration { return config.Current().Global.ExtensionWait },
+	})
+	registerAPI(d.control, d.health, d.tools)
 
 	ln, err := control.Listen(env.address)
 	if err != nil {

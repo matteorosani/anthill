@@ -103,12 +103,13 @@ func notFound(t *testing.T, what string, err error) {
 func Ant(n int, states ...domain.AntState) ports.AntRecord {
 	policy := domain.DefaultBudgetPolicy()
 	r := ports.AntRecord{
-		Item:     Item(n),
-		Base:     time.Hour,
-		Budget:   domain.NewBudget(time.Hour, policy),
-		Runner:   "claude",
-		Worktree: fmt.Sprintf("/work/gh-%d", n),
-		Branch:   fmt.Sprintf("ant/gh-%d-fix", n),
+		Item:       Item(n),
+		Base:       time.Hour,
+		Budget:     domain.NewBudget(time.Hour, policy),
+		Runner:     "claude",
+		Worktree:   fmt.Sprintf("/work/gh-%d", n),
+		Branch:     fmt.Sprintf("ant/gh-%d-fix", n),
+		BaseBranch: "main",
 	}
 	from := domain.AntState("")
 	for i, s := range states {
