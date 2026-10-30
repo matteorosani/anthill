@@ -3,6 +3,7 @@
   "rev": 7,
   "fields": {
     "System.TeamProject": "Shop",
-    "System.Rev": 7
+    "System.Rev": 7,
+    "System.Tags": "anthill; anthill:claimed"
   }
 }

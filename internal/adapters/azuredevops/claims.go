@@ -14,11 +14,13 @@ import (
 	"github.com/matteorosani/anthill/internal/ports"
 )
 
-// Claims reads the claim comments of a work item or a PR in creation
-// order, with Azure DevOps' time as the now for lease checks (design D3).
-// For a work item, Revision is its System.Rev, read before the comments:
-// a change between the two reads then makes Mark fail, never pass on a
-// stale view. A PR has no revision.
+// Claims reads the claim comments and /anthill release commands of a
+// work item or a PR in creation order, its labels, and Azure DevOps' time
+// as the now for lease checks (design D3). The labels are read before the
+// comments, so a label removed before a claim comment was read is never
+// missed. For a work item, Revision is its System.Rev, read with the
+// tags: a change between the two reads then makes Mark fail, never pass
+// on a stale view. A PR has no revision.
 func (a *Adapter) Claims(ctx context.Context, ref domain.Ref) (ports.ClaimPage, error) {
 	ref = normalizeRef(ref)
 	if err := a.checkRef(ref); err != nil {
@@ -27,6 +29,15 @@ func (a *Adapter) Claims(ctx context.Context, ref domain.Ref) (ports.ClaimPage, 
 	var page ports.ClaimPage
 	var comments []domain.Comment
 	if ref.Kind == domain.KindPR {
+		p, _, err := a.readPR(ctx, ref)
+		if err != nil {
+			return ports.ClaimPage{}, err
+		}
+		for _, l := range p.Labels {
+			if l.Active == nil || *l.Active {
+				page.Labels = append(page.Labels, l.Name)
+			}
+		}
 		threads, resp, err := a.threads(ctx, ref)
 		if err != nil {
 			return ports.ClaimPage{}, err
@@ -38,11 +49,11 @@ func (a *Adapter) Claims(ctx context.Context, ref domain.Ref) (ports.ClaimPage, 
 		}
 		page.ServerTime = a.serverTime(resp)
 	} else {
-		w, _, err := a.readWorkItem(ctx, ref, url.Values{"fields": {"System.Rev,System.TeamProject"}}, "read the revision of "+ref.Full())
+		w, _, err := a.readWorkItem(ctx, ref, url.Values{"fields": {"System.Rev,System.Tags,System.TeamProject"}}, "read the revision of "+ref.Full())
 		if err != nil {
 			return ports.ClaimPage{}, err
 		}
-		page.Revision = strconv.Itoa(w.Rev)
+		page.Revision, page.Labels = strconv.Itoa(w.Rev), splitTags(w.Fields.Tags)
 		list, resp, err := a.workItemComments(ctx, ref)
 		if err != nil {
 			return ports.ClaimPage{}, err
@@ -51,7 +62,7 @@ func (a *Adapter) Claims(ctx context.Context, ref domain.Ref) (ports.ClaimPage, 
 		page.ServerTime = a.serverTime(resp)
 	}
 	for _, c := range comments {
-		if m, ok := domain.FindMarker(c.Body); ok && m.Kind == domain.CommentClaim {
+		if domain.IsClaimComment(c) {
 			page.Comments = append(page.Comments, c)
 		}
 	}

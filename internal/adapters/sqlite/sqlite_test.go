@@ -53,7 +53,7 @@ func TestMigrationsOnANewDatabase(t *testing.T) {
 		t.Errorf("foreign_keys = %d, %v", fk, err)
 	}
 	for _, table := range []string{"ants", "transitions", "runs", "rounds", "poll_state", "hashes", "outbox",
-		"stored_changes", "questions", "extension_requests", "hidden_proposals"} {
+		"stored_changes", "questions", "extension_requests", "hidden_proposals", "held_claims"} {
 		var n int
 		if err := s.db.QueryRow("SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = ?", table).Scan(&n); err != nil || n != 1 {
 			t.Errorf("table %s: %d, %v", table, n, err)
@@ -71,6 +71,13 @@ func TestReopenKeepsDataAndSchema(t *testing.T) {
 	if err := s.Hide(ctx, ports.HiddenProposal{Item: storetest.Item(1), HiddenAt: storetest.T0}); err != nil {
 		t.Fatal(err)
 	}
+	// Whether Anthill made the assignment survives a restart, so that the
+	// release still unassigns only then (spec work-claiming, "Release").
+	held := ports.HeldClaim{Ref: storetest.Item(1), Kind: domain.ClaimTask, Instance: "mrosani@LAPTOP-42", CommentID: "100",
+		Label: domain.DefaultClaimLabel, Assigned: true, Lease: domain.DefaultLease, UpdatedAt: storetest.T0}
+	if err := s.SaveClaim(ctx, held); err != nil {
+		t.Fatal(err)
+	}
 	_ = s.Close()
 	s, err = Open(ctx, path)
 	if err != nil {
@@ -79,6 +86,9 @@ func TestReopenKeepsDataAndSchema(t *testing.T) {
 	defer func() { _ = s.Close() }()
 	if hidden, err := s.Hidden(ctx); err != nil || len(hidden) != 1 {
 		t.Errorf("Hidden() after reopen = %v, %v", hidden, err)
+	}
+	if claims, err := s.HeldClaims(ctx); err != nil || len(claims) != 1 || claims[0] != held {
+		t.Errorf("HeldClaims() after reopen = %+v, %v", claims, err)
 	}
 }
 

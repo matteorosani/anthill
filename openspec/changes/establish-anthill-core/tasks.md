@@ -79,9 +79,9 @@ Terms follow `openspec/glossary.md`. Every group lands its own tests and docs. U
 
 ## 10. Claiming
 
-- [ ] 10.1 Implement claim acquisition: check, post, re-read after the delay, earliest live claim wins, only the winner adds the claim label and assignee, the loser retracts its comment, and verify the "two instances claim simultaneously" test with the racing fake provider
-- [ ] 10.2 Implement renewal by editing the claim comment, parking while the ant is between runs, release with unassignment only when Anthill assigned, and verify tests for each work-claiming release case
-- [ ] 10.3 Detect force-release (`/anthill release` or removed claim label) and a lost claim, ending any active run and making the ant `abandoned` with reason "claim lost", and verify the "holder returns after expiry" and "stuck claim released" tests
+- [x] 10.1 Implement claim acquisition: check, post, re-read after the delay, earliest live claim wins, only the winner adds the claim label and assignee, the loser retracts its comment, and verify the "two instances claim simultaneously" test with the racing fake provider
+- [x] 10.2 Implement renewal by editing the claim comment, parking while the ant is between runs, release with unassignment only when Anthill assigned, and verify tests for each work-claiming release case
+- [x] 10.3 Detect force-release (`/anthill release` or removed claim label) and a lost claim, ending any active run and making the ant `abandoned` with reason "claim lost", and verify the "holder returns after expiry" and "stuck claim released" tests
 
 ## 11. Daemon, control interface and notifications
 

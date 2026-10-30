@@ -9,9 +9,13 @@ import (
 
 // ClaimPage is what ClaimStore.Claims reads for one item or PR.
 type ClaimPage struct {
-	// Comments holds at least every comment that carries a claim marker,
-	// in provider creation order. domain.ResolveClaim finds the holder.
+	// Comments holds at least every comment that carries a claim marker
+	// or an /anthill release command (domain.IsClaimComment), in provider
+	// creation order. domain.ResolveClaim finds the holder.
 	Comments []domain.Comment
+	// Labels are the item's or PR's current labels, for the claim label
+	// rules of domain.ClaimView.
+	Labels []string
 	// Revision is the item's provider revision, the precondition for Mark
 	// on Azure DevOps. It is empty where the provider has none.
 	Revision string
@@ -58,4 +62,49 @@ type ClaimStore interface {
 	// set, which callers do only if Mark reported that Anthill made the
 	// assignment (spec work-claiming, "Release").
 	Unmark(ctx context.Context, ref domain.Ref, label string, unassign bool) error
+}
+
+// HeldClaim is a claim this instance holds, as kept in the local store
+// (spec work-claiming; spec queen-console, "Health and status").
+type HeldClaim struct {
+	Ref       domain.Ref
+	Kind      domain.ClaimKind
+	Instance  string
+	CommentID string
+	// Label is the claim label Mark added, which the release removes.
+	Label string
+	// Assigned is set when Mark made the assignment, so that the release
+	// unassigns the developer only then (spec work-claiming, "Release").
+	Assigned bool
+	Parked   bool
+	Lease    time.Duration
+	// UpdatedAt is the provider's last-update time of the claim comment,
+	// from which the lease runs (design D3).
+	UpdatedAt time.Time
+}
+
+// ExpiresAt is when the lease runs out unless renewed. A parked claim
+// does not expire.
+func (h HeldClaim) ExpiresAt() time.Time {
+	return h.UpdatedAt.Add(h.Lease)
+}
+
+// HeldClaims keeps the claims this instance holds, so that renewal and
+// release survive a restart.
+type HeldClaims interface {
+	// SaveClaim stores or replaces the claim of c.Kind on c.Ref.
+	SaveClaim(ctx context.Context, c HeldClaim) error
+	// DeleteClaim removes a claim. Deleting a missing claim does nothing.
+	DeleteClaim(ctx context.Context, ref domain.Ref, kind domain.ClaimKind) error
+	// HeldClaims lists every held claim, by ref and then kind.
+	HeldClaims(ctx context.Context) ([]HeldClaim, error)
+}
+
+// ClaimLossHandler ends the work behind a claim this instance lost or a
+// developer force-released (spec work-claiming, "Holder returns after
+// expiry" and "Manual override"). The ant supervisor implements it by
+// ending any active run of the item's ant; the worktree is kept. Calls
+// must be idempotent: after a failure, the next renewal calls again.
+type ClaimLossHandler interface {
+	ClaimLost(ctx context.Context, ref domain.Ref, kind domain.ClaimKind, reason string) error
 }

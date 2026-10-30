@@ -555,8 +555,9 @@ func (c *ProviderClient) CanWrite(_ context.Context, repo domain.Repository, log
 	return p.writers[repo][login], nil
 }
 
-// Claims returns all visible comments of the item or PR, its revision
-// and the provider's time.
+// Claims returns the visible claim and release-command comments of the
+// item or PR, its labels, its revision for an Azure DevOps work item, and
+// the provider's time.
 func (c *ProviderClient) Claims(ctx context.Context, ref domain.Ref) (ports.ClaimPage, error) {
 	p := c.p
 	p.mu.Lock()
@@ -576,8 +577,19 @@ func (p *Provider) claims(login string, ref domain.Ref) (ports.ClaimPage, error)
 	if err != nil {
 		return ports.ClaimPage{}, err
 	}
-	page := ports.ClaimPage{Comments: p.visible(*list), ServerTime: p.clock.Now()}
-	if e, ok := p.items[ref]; ok {
+	labels, _, err := p.labels(ref)
+	if err != nil {
+		return ports.ClaimPage{}, err
+	}
+	page := ports.ClaimPage{Labels: slices.Clone(*labels), ServerTime: p.clock.Now()}
+	for _, c := range p.visible(*list) {
+		if domain.IsClaimComment(c) {
+			page.Comments = append(page.Comments, c)
+		}
+	}
+	// Like the adapters, only Azure DevOps work items have a revision
+	// for Mark's precondition; GitHub has none (design D3).
+	if e, ok := p.items[ref]; ok && ref.Repo.Provider == domain.AzureDevOps {
 		page.Revision = e.item.Revision
 	}
 	return page, nil

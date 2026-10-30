@@ -28,6 +28,12 @@ type StateStore struct {
 	questions  map[string]ports.QuestionRecord
 	extensions []ports.ExtensionRecord
 	hidden     map[domain.Ref]ports.HiddenProposal
+	claims     map[claimKey]ports.HeldClaim
+}
+
+type claimKey struct {
+	ref  domain.Ref
+	kind domain.ClaimKind
 }
 
 type outboxEntry struct {
@@ -50,6 +56,7 @@ func NewStateStore() *StateStore {
 		texts:     map[domain.Ref]map[string]string{},
 		questions: map[string]ports.QuestionRecord{},
 		hidden:    map[domain.Ref]ports.HiddenProposal{},
+		claims:    map[claimKey]ports.HeldClaim{},
 	}
 }
 
@@ -478,6 +485,33 @@ func (s *StateStore) Hidden(_ context.Context) ([]ports.HiddenProposal, error) {
 	out := slices.Collect(maps.Values(s.hidden))
 	slices.SortFunc(out, func(a, b ports.HiddenProposal) int {
 		return cmp.Or(a.HiddenAt.Compare(b.HiddenAt), cmp.Compare(refKey(a.Item), refKey(b.Item)))
+	})
+	return out, nil
+}
+
+// SaveClaim stores or replaces a held claim.
+func (s *StateStore) SaveClaim(_ context.Context, c ports.HeldClaim) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.claims[claimKey{c.Ref, c.Kind}] = c
+	return nil
+}
+
+// DeleteClaim removes a held claim.
+func (s *StateStore) DeleteClaim(_ context.Context, ref domain.Ref, kind domain.ClaimKind) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	delete(s.claims, claimKey{ref, kind})
+	return nil
+}
+
+// HeldClaims lists the held claims by ref and kind.
+func (s *StateStore) HeldClaims(_ context.Context) ([]ports.HeldClaim, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	out := slices.Collect(maps.Values(s.claims))
+	slices.SortFunc(out, func(a, b ports.HeldClaim) int {
+		return cmp.Or(cmp.Compare(refKey(a.Ref), refKey(b.Ref)), cmp.Compare(a.Kind, b.Kind))
 	})
 	return out, nil
 }

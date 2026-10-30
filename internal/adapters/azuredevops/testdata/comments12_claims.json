@@ -1,6 +1,6 @@
 {
-  "totalCount": 4,
-  "count": 4,
+  "totalCount": 5,
+  "count": 5,
   "comments": [
     {
       "workItemId": 12,
@@ -77,6 +77,25 @@
       },
       "modifiedDate": "2026-10-29T09:59:00Z",
       "url": "https://dev.azure.com/Contoso/Shop/_apis/wit/workItems/12/comments/7"
+    },
+    {
+      "workItemId": 12,
+      "id": 10,
+      "version": 1,
+      "text": "Bob's machine is gone.\n/anthill release",
+      "renderedText": "<p>Bob's machine is gone.<br>/anthill release</p>",
+      "format": "markdown",
+      "createdBy": {
+        "displayName": "Ada",
+        "uniqueName": "ada@contoso.com"
+      },
+      "createdDate": "2026-10-29T10:00:00Z",
+      "modifiedBy": {
+        "displayName": "Ada",
+        "uniqueName": "ada@contoso.com"
+      },
+      "modifiedDate": "2026-10-29T10:00:00Z",
+      "url": "https://dev.azure.com/Contoso/Shop/_apis/wit/workItems/12/comments/10"
     }
   ],
   "continuationToken": null
