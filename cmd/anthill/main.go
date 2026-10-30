@@ -34,6 +34,7 @@ func main() {
 // uses the real one; tests build their own with temporary paths, a fake
 // clock and a fake notifier.
 type environment struct {
+	stdin          io.Reader
 	stdout, stderr io.Writer
 	// home is <anthill-home>, which holds the daemon lock.
 	home string
@@ -54,6 +55,7 @@ type environment struct {
 // the control socket or pipe of the user.
 func defaultEnvironment() *environment {
 	env := &environment{
+		stdin:  os.Stdin,
 		stdout: os.Stdout,
 		stderr: os.Stderr,
 		clock:  systemclock.Clock{},
@@ -146,12 +148,15 @@ func newRootCommand(env *environment) *cobra.Command {
 		},
 	}
 	root.SetVersionTemplate("anthill {{.Version}}\n")
+	if env.stdin != nil {
+		root.SetIn(env.stdin)
+	}
 	root.SetOut(env.stdout)
 	root.SetErr(env.stderr)
 	root.SetFlagErrorFunc(func(_ *cobra.Command, err error) error {
 		return &usageError{err}
 	})
-	root.AddCommand(newVersionCommand(), newDaemonCommand(env), newStatusCommand(env), newMCPCommand(env))
+	root.AddCommand(newVersionCommand(), newDaemonCommand(env), newStatusCommand(env), newMCPCommand(env), newHookCommand(env), newRunnerSmokeCommand(env))
 	return root
 }
 

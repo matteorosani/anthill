@@ -27,13 +27,14 @@ type RunScript struct {
 // AgentRunner is a ports.AgentRunner whose runs follow scripts instead of
 // starting a process. Queue scripts with Script; a run without a queued
 // script stays active until ended. StartErr, when set, fails Start and
-// Resume.
+// Resume, and Unavailable fails Available.
 type AgentRunner struct {
-	mu       sync.Mutex
-	caps     ports.Capabilities
-	scripts  []RunScript
-	runs     []*FakeRun
-	StartErr error
+	mu          sync.Mutex
+	caps        ports.Capabilities
+	scripts     []RunScript
+	runs        []*FakeRun
+	StartErr    error
+	Unavailable error
 }
 
 var _ ports.AgentRunner = (*AgentRunner)(nil)
@@ -60,6 +61,13 @@ func (r *AgentRunner) Runs() []*FakeRun {
 // Capabilities returns the capabilities given to NewAgentRunner.
 func (r *AgentRunner) Capabilities() ports.Capabilities {
 	return r.caps
+}
+
+// Available returns Unavailable.
+func (r *AgentRunner) Available(context.Context) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.Unavailable
 }
 
 // Start starts a run with a new session.

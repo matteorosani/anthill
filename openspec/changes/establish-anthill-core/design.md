@@ -170,7 +170,7 @@ If the index is lost, it is rebuilt from claim comments and `ant/` branches (spe
 
 ### D18. OpenTelemetry, linked to agent telemetry
 
-Anthill uses the OpenTelemetry SDK for its own traces, metrics and logs, exported over OTLP only when a local endpoint is configured (spec: observability). Each run is one trace. When export is on, Anthill also switches on the runner's own OTel export (for example `CLAUDE_CODE_ENABLE_TELEMETRY=1` with the same endpoint) and sets `OTEL_RESOURCE_ATTRIBUTES` with `anthill.item`, `anthill.ant_id` and `anthill.instance`, plus `TRACEPARENT` where the runner honours it. Agent spans and metrics can then be joined to the Anthill run even when the runner does not propagate trace context. Prompt and content capture in the runner stays off.
+Anthill uses the OpenTelemetry SDK for its own traces, metrics and logs, exported over OTLP only when a local endpoint is configured (spec: observability). Each run is one trace. When export is on, Anthill also switches on the runner's own OTel export (for example `CLAUDE_CODE_ENABLE_TELEMETRY=1` with the same endpoint) and sets `OTEL_RESOURCE_ATTRIBUTES` with `anthill.item`, `anthill.ant_id` and `anthill.instance`, plus `TRACEPARENT` where the runner honours it. Agent spans and metrics can then be joined to the Anthill run even when the runner does not propagate trace context. Prompt and content capture in the runner stays off. The agent also gets the OTLP headers, through `OTEL_EXPORTER_OTLP_HEADERS`, so it can export to an endpoint that needs authentication. The agent can therefore read a credential, but one that is only for telemetry, never a provider or git credential (D4).
 
 *Alternative:* scrape agent transcripts into Anthill's own telemetry. Duplicates what the runners already export and risks leaking content. Rejected.
 
@@ -212,6 +212,6 @@ Not applicable (greenfield). Rollout: one developer first, with shepherd scope `
 - Optional local verification before opening a PR. See D16.
 - GUI technology. Deferrable: the GUI is just another client of the control API.
 - Whether stacked ant branches (working on top of an unmerged dependency PR) should be supported later. The current specs forbid it.
-- Per-runner details such as headless permission flags, which hooks are used, how session ids are captured (D17) and which OTel variables each runner honours (D18). Fixed when each runner adapter is built.
+- Per-runner details such as headless permission flags, which hooks are used, how session ids are captured (D17) and which OTel variables each runner honours (D18). Fixed for Claude Code in `docs/runners.md`; for Codex and OpenCode when their adapters are built.
 - Stronger agent isolation (separate OS user or container) to close the credential gap in D4.
 - Agents left running after the daemon itself crashes or is killed. On Windows, the Job Object ends them when the daemon's handle to it closes. On Unix, the process group survives the daemon, so an agent could keep working while restart reconciliation (ant-execution) resumes its session or marks it failed. Reconciliation should find and end such processes first, for example from a process group id recorded with the run.
