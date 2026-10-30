@@ -19,8 +19,10 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/matteorosani/anthill/internal/adapters/claudecode"
+	"github.com/matteorosani/anthill/internal/adapters/codex"
 	"github.com/matteorosani/anthill/internal/adapters/control"
 	"github.com/matteorosani/anthill/internal/adapters/lockfile"
+	"github.com/matteorosani/anthill/internal/adapters/opencode"
 	"github.com/matteorosani/anthill/internal/domain"
 	"github.com/matteorosani/anthill/internal/ports"
 )
@@ -31,15 +33,19 @@ const smokeStopGrace = 10 * time.Second
 // smokeTool is the one ant tool of a smoke run.
 const smokeTool = "smoke_ping"
 
-// agentRunners builds the runner adapters of this build. exe is the
-// anthill program, which the hooks run, and log receives the agents'
-// activity.
-func agentRunners(exe string, log io.Writer) (map[domain.Runner]ports.AgentRunner, error) {
-	claude, err := claudecode.New(claudecode.Options{Anthill: exe, Log: log})
+// agentRunners builds the runner adapters. exe is the anthill program,
+// which the hooks run, log receives the agents' activity, and commands
+// replace a runner's CLI, for tests.
+func agentRunners(exe string, log io.Writer, commands map[domain.Runner]string) (map[domain.Runner]ports.AgentRunner, error) {
+	claude, err := claudecode.New(claudecode.Options{Anthill: exe, Command: commands[domain.RunnerClaudeCode], Log: log})
 	if err != nil {
 		return nil, err
 	}
-	return map[domain.Runner]ports.AgentRunner{domain.RunnerClaudeCode: claude}, nil
+	return map[domain.Runner]ports.AgentRunner{
+		domain.RunnerClaudeCode: claude,
+		domain.RunnerCodex:      codex.New(codex.Options{Command: commands[domain.RunnerCodex], Log: log}),
+		domain.RunnerOpenCode:   opencode.New(opencode.Options{Command: commands[domain.RunnerOpenCode], Log: log}),
+	}, nil
 }
 
 // newRunnerSmokeCommand returns anthill runner-smoke, which starts one
@@ -87,7 +93,7 @@ func newRunnerSmokeCommand(env *environment) *cobra.Command {
 	f.StringVar(&send, "send", "", "live input to send to the agent after --send-after")
 	f.DurationVar(&sendAfter, "send-after", 20*time.Second, "when to send --send")
 	f.DurationVar(&stopAfter, "stop-after", 0, "stop the run after this long (0: let it end)")
-	f.StringArrayVar(&notices, "notice", nil, "a notice for the hook to add as context (repeatable)")
+	f.StringArrayVar(&notices, "notice", nil, "a notice for the agent, taken by the hook or the next tool result (repeatable)")
 	f.StringVar(&command, "command", "", "the agent CLI to run instead of the runner's own (for tests)")
 	_ = f.MarkHidden("command")
 	return cmd
@@ -153,21 +159,11 @@ func (s *smokeRun) run(ctx context.Context, o smokeOptions) error {
 		}
 	}()
 
-	runners, err := agentRunners(exe, &lockedWriter{mu: &s.out, w: s.env.stderr})
+	runners, err := agentRunners(exe, &lockedWriter{mu: &s.out, w: s.env.stderr}, map[domain.Runner]string{o.runner: o.command})
 	if err != nil {
 		return err
 	}
-	if o.command != "" && o.runner == domain.RunnerClaudeCode {
-		claude, err := claudecode.New(claudecode.Options{Anthill: exe, Command: o.command, Log: &lockedWriter{mu: &s.out, w: s.env.stderr}})
-		if err != nil {
-			return err
-		}
-		runners[o.runner] = claude
-	}
-	r, ok := runners[o.runner]
-	if !ok {
-		return fmt.Errorf("runner %s is not supported by this build yet", o.runner)
-	}
+	r := runners[o.runner]
 	if err := r.Available(ctx); err != nil {
 		return fmt.Errorf("runner %s not available: %w", o.runner, err)
 	}
@@ -284,21 +280,33 @@ func (s *smokeRun) register(srv *control.Server) {
 		if p.Tool != smokeTool {
 			return antCallResult{Text: "unknown tool " + p.Tool, IsError: true}, nil
 		}
-		return antCallResult{Text: "pong"}, nil
+		// Like the ant tools, a notice the hook has not taken goes with
+		// the next tool result.
+		n := s.takeNotices()
+		if len(n) > 0 {
+			s.say("the tool result carries %d notice(s)", len(n))
+		}
+		return antCallResult{Text: "pong", Notices: n}, nil
 	})
 	srv.Handle(methodAntNotices, func(_ context.Context, raw json.RawMessage, _ control.Stream) (any, error) {
 		if err := check(raw); err != nil {
 			return nil, err
 		}
-		s.mu.Lock()
-		n := s.notices
-		s.notices = nil
-		s.mu.Unlock()
+		n := s.takeNotices()
 		if len(n) > 0 {
 			s.say("the hook took %d notice(s)", len(n))
 		}
 		return antNoticesResult{Notices: append([]string{}, n...)}, nil
 	})
+}
+
+// takeNotices takes the queued notices, once.
+func (s *smokeRun) takeNotices() []string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	n := s.notices
+	s.notices = nil
+	return n
 }
 
 // lockedWriter writes to w under mu, so the agent's log lines and the

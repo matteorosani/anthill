@@ -107,8 +107,8 @@ Terms follow `openspec/glossary.md`. Every group lands its own tests and docs. U
 - [x] 13.1 Implement the `AgentRunner` process layer: a process group on Unix and a Job Object on Windows, stop with grace then kill of the whole tree, and verify with the fake agent that stopping leaves no child process on each OS in CI
 - [x] 13.2 Build the fake agent in `internal/testkit` that follows a script (call tools, commit, print usage, exit or crash), and verify it runs headless and connects to `anthill mcp`
 - [x] 13.3 Implement the Claude Code adapter: headless streaming JSON, session id capture, resume, live input, MCP server injection, hooks that refuse `git push`, `gh` and `az`, usage parsing and telemetry variables, and verify tests against recorded output plus a manual smoke run documented in `docs/runners.md`
-- [ ] 13.4 Implement the Codex adapter with the same capabilities where Codex supports them, and verify tests against recorded output plus a documented manual smoke run
-- [ ] 13.5 Implement the OpenCode adapter with the same capabilities where OpenCode supports them, and verify tests against recorded output plus a documented manual smoke run
+- [x] 13.4 Implement the Codex adapter with the same capabilities where Codex supports them, and verify tests against recorded output plus a documented manual smoke run
+- [x] 13.5 Implement the OpenCode adapter with the same capabilities where OpenCode supports them, and verify tests against recorded output plus a documented manual smoke run
 - [x] 13.6 Implement runner selection (repository, `agent:` label, global default) and the availability check, and verify the "label overrides repository default" and "runner not installed" tests
 
 ## 14. Ant supervision
