@@ -8,6 +8,7 @@
 //   - AgentRunner: runs follow scripts instead of starting processes.
 //   - SourceControl: clones, branches and worktrees in memory.
 //   - Notifier: records notifications.
+//   - ClaimLossHandler: records the claims reported lost.
 //   - StateStore: the local store in memory; package storetest checks it
 //     against the same contract as the SQLite store.
 //   - ConfigSource and CredentialStore: configuration and credentials.
