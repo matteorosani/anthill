@@ -6,6 +6,11 @@
 //   - Provider: one in-memory provider playing tracker, code host and
 //     claim store; each instance talks to it through Provider.Client.
 //   - AgentRunner: runs follow scripts instead of starting processes.
+//   - The fake agent: a real process for the tests of the runner
+//     adapters. A test binary whose TestMain calls
+//     RunFakeAgentIfRequested runs it when started with FakeAgentArgs:
+//     it follows an AgentScript (call ant tools over MCP, commit, print
+//     usage, start a child process, exit or crash) without a terminal.
 //   - SourceControl: clones, branches and worktrees in memory.
 //   - Notifier: records notifications.
 //   - ClaimLossHandler: records the claims reported lost.

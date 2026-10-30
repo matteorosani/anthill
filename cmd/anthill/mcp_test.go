@@ -1,10 +1,14 @@
 package main
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"io"
 	"log/slog"
+	"os"
+	"os/exec"
 	"slices"
 	"strings"
 	"testing"
@@ -171,6 +175,48 @@ func TestMCPRelaysACall(t *testing.T) {
 	}
 	if !res.IsError || res.Content[0].(*mcp.TextContent).Text != "unknown or revoked tool token" {
 		t.Errorf("call after revoke = %+v", res.Content[0])
+	}
+}
+
+// Task 13.2: the fake agent, run headless as a separate process, starts
+// anthill mcp as a runner does and calls a tool through it.
+func TestFakeAgentCallsToolsThroughAnthillMCP(t *testing.T) {
+	te := newTestEnv(t)
+	tools, ant := serveAntTools(t, te)
+	token, err := tools.Issue(app.ToolSession{Role: domain.RoleTaskRun, Ant: ant, Run: 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	te.clock.Advance(20 * time.Minute)
+	exe, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	cmd := exec.Command(exe, testkit.FakeAgentArgs(testkit.AgentScript{
+		MCPCommand: []string{exe, anthillFlag, "mcp", "--ant", token, "--address", te.address},
+		Steps: []testkit.AgentStep{
+			{Op: testkit.StepTool, Tool: domain.ToolTimeRemaining, Args: json.RawMessage(`{}`)},
+		},
+	})...)
+	cmd.Dir = t.TempDir()
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+	out, err := cmd.Output()
+	if err != nil {
+		t.Fatalf("fake agent: %v: %s", err, stderr.String())
+	}
+	var call *testkit.AgentEvent
+	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+		var e testkit.AgentEvent
+		if err := json.Unmarshal([]byte(line), &e); err != nil {
+			t.Fatalf("output line %q: %v", line, err)
+		}
+		if e.Event == "tool" {
+			call = &e
+		}
+	}
+	if call == nil || call.IsError || !strings.Contains(call.Text, `"remaining_minutes":40`) {
+		t.Errorf("tool event = %+v; stderr: %s", call, stderr.String())
 	}
 }
 
