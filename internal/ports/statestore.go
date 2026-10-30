@@ -9,9 +9,9 @@ import (
 
 // StateStore is the local, machine-private store (design D2): the session
 // index, runs and usage, poll state and hashes, the outbox, stored
-// changes, questions, extension requests and hidden proposals. It is made
-// of smaller interfaces so that each service depends only on the part it
-// uses. Lookups of a missing record return ErrNotFound.
+// changes, questions, extension requests, hidden proposals and held
+// claims. It is made of smaller interfaces so that each service depends
+// only on the part it uses. Lookups of a missing record return ErrNotFound.
 type StateStore interface {
 	SessionIndex
 	RunLog
@@ -21,6 +21,7 @@ type StateStore interface {
 	Questions
 	Extensions
 	Proposals
+	HeldClaims
 }
 
 // AntID identifies one ant. An item can have several ants over time, such

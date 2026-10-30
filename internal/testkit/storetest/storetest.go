@@ -49,6 +49,7 @@ func Run(t *testing.T, open Open) {
 		{"Questions", testQuestions},
 		{"Extensions", testExtensions},
 		{"Proposals", testProposals},
+		{"HeldClaims", testHeldClaims},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -371,4 +372,25 @@ func testProposals(t *testing.T, s ports.StateStore) {
 	check(t, s.Unhide(ctx, Item(2)))
 	check(t, s.Unhide(ctx, Item(9)))
 	equal(t, "Hidden after changes", must(s.Hidden(ctx)), []ports.HiddenProposal{declined})
+}
+
+func testHeldClaims(t *testing.T, s ports.StateStore) {
+	ctx := context.Background()
+	task := ports.HeldClaim{Ref: Item(2), Kind: domain.ClaimTask, Instance: "mrosani@LAPTOP-42", CommentID: "100",
+		Label: domain.DefaultClaimLabel, Assigned: true, Lease: domain.DefaultLease, UpdatedAt: T0}
+	review := ports.HeldClaim{Ref: PR(3), Kind: domain.ClaimReview, Instance: "mrosani@LAPTOP-42", CommentID: "200",
+		Label: domain.DefaultClaimLabel, Lease: domain.DefaultLease, UpdatedAt: T0.Add(time.Minute)}
+	other := ports.HeldClaim{Ref: Item(1), Kind: domain.ClaimTask, Instance: "mrosani@LAPTOP-42", CommentID: "50",
+		Label: "anthill:mine", Lease: time.Hour, UpdatedAt: T0}
+	check(t, s.SaveClaim(ctx, review))
+	check(t, s.SaveClaim(ctx, task))
+	check(t, s.SaveClaim(ctx, other))
+	equal(t, "HeldClaims", must(s.HeldClaims(ctx)), []ports.HeldClaim{other, task, review})
+
+	task.Parked, task.UpdatedAt = true, T0.Add(5*time.Minute)
+	check(t, s.SaveClaim(ctx, task))
+	check(t, s.DeleteClaim(ctx, Item(1), domain.ClaimTask))
+	check(t, s.DeleteClaim(ctx, Item(9), domain.ClaimTask))
+	check(t, s.DeleteClaim(ctx, PR(3), domain.ClaimTask))
+	equal(t, "after changes", must(s.HeldClaims(ctx)), []ports.HeldClaim{task, review})
 }

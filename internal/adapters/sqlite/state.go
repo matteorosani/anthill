@@ -362,3 +362,53 @@ func (s *Store) Hidden(ctx context.Context) ([]ports.HiddenProposal, error) {
 	}
 	return out, rows.Err()
 }
+
+// SaveClaim stores or replaces a held claim.
+func (s *Store) SaveClaim(ctx context.Context, c ports.HeldClaim) error {
+	ref, err := toJSON(c.Ref)
+	if err != nil {
+		return err
+	}
+	_, err = s.db.ExecContext(ctx, `INSERT INTO held_claims
+			(ref_key, kind, ref, instance, comment_id, label, assigned, parked, lease_ns, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		ON CONFLICT (ref_key, kind) DO UPDATE SET ref = excluded.ref, instance = excluded.instance,
+			comment_id = excluded.comment_id, label = excluded.label, assigned = excluded.assigned,
+			parked = excluded.parked, lease_ns = excluded.lease_ns, updated_at = excluded.updated_at`,
+		refKey(c.Ref), string(c.Kind), ref, c.Instance, c.CommentID, c.Label, c.Assigned, c.Parked, int64(c.Lease), unixNano(c.UpdatedAt))
+	return err
+}
+
+// DeleteClaim removes a held claim.
+func (s *Store) DeleteClaim(ctx context.Context, ref domain.Ref, kind domain.ClaimKind) error {
+	_, err := s.db.ExecContext(ctx, "DELETE FROM held_claims WHERE ref_key = ? AND kind = ?", refKey(ref), string(kind))
+	return err
+}
+
+// HeldClaims lists the held claims by ref and kind.
+func (s *Store) HeldClaims(ctx context.Context) ([]ports.HeldClaim, error) {
+	rows, err := s.db.QueryContext(ctx, `SELECT ref, kind, instance, comment_id, label, assigned, parked, lease_ns, updated_at
+		FROM held_claims ORDER BY ref_key, kind`)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+	var out []ports.HeldClaim
+	for rows.Next() {
+		var (
+			c         ports.HeldClaim
+			ref, kind string
+			lease     int64
+			updated   sql.NullInt64
+		)
+		if err := rows.Scan(&ref, &kind, &c.Instance, &c.CommentID, &c.Label, &c.Assigned, &c.Parked, &lease, &updated); err != nil {
+			return nil, err
+		}
+		if err := fromJSON(ref, &c.Ref); err != nil {
+			return nil, err
+		}
+		c.Kind, c.Lease, c.UpdatedAt = domain.ClaimKind(kind), time.Duration(lease), fromUnixNano(updated)
+		out = append(out, c)
+	}
+	return out, rows.Err()
+}
