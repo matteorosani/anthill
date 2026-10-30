@@ -87,14 +87,18 @@ type SourceControl interface {
 	// changes. The branch stays.
 	RemoveWorktree(ctx context.Context, c Clone, path string, force bool) error
 	// Push pushes the local branch to the same branch on the remote, never
-	// with force, and returns git's output. When the remote rejects it,
+	// with force, and returns git's output. It runs from worktree, the
+	// ant's worktree or a fix pass's, so that the repository's pre-push
+	// hook checks that code, with the developer's credentials and the
+	// repository's hooks given back for this one push; an empty worktree
+	// pushes from the clone. When the remote rejects it,
 	// Push fetches the remote branch, so that the ant can merge it. The
 	// rejection is ErrHistoryRewritten when the remote branch has commits
 	// of owner, the pusher's item and instance, that the local branch
 	// lacks, which means owner rewrote what it had already pushed (spec
 	// branching-policy, "History rewriting"). Otherwise someone else
 	// pushed, and it is ErrConflict (spec ant-tools, "Push tool").
-	Push(ctx context.Context, c Clone, branch string, owner domain.BranchOwner) (string, error)
+	Push(ctx context.Context, c Clone, worktree, branch string, owner domain.BranchOwner) (string, error)
 	// NewCommits lists, oldest first, the commits of the worktree's HEAD
 	// that are not on the fetched remote branch base (spec ant-tools,
 	// "Finish tool").

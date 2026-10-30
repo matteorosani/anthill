@@ -7,8 +7,7 @@ import (
 )
 
 // toolSpec is one ant tool: what the agent is told about it, its input
-// schema, and the code that executes it once the call checks passed. A
-// nil handler means the tool is not implemented yet.
+// schema, and the code that executes it once the call checks passed.
 type toolSpec struct {
 	description string
 	input       schema
@@ -76,11 +75,13 @@ var toolCatalogue = map[string]toolSpec{
 			required("text", str("The question, with the options you see and what you would choose.")),
 			optional("where", str("Where to post it: the item, or your pull request. The default is the item in a task run and the pull request in a follow-up run.", whereItem, wherePR)),
 		),
+		handler: (*AntTools).askQuestion,
 	},
 	domain.ToolReportProgress: {
 		description: "Report your progress in the one status comment of this run, on the item. " +
 			"Each call replaces the previous report.",
-		input: object(required("text", str("What is done and what is next, in a few lines."))),
+		input:   object(required("text", str("What is done and what is next, in a few lines."))),
+		handler: (*AntTools).reportProgress,
 	},
 	domain.ToolComment: {
 		description: "Post a comment on the item or on your pull request. Anthill marks it as written by your ant and redacts secrets.",
@@ -88,6 +89,7 @@ var toolCatalogue = map[string]toolSpec{
 			required("where", str("Where to post it.", whereItem, wherePR)),
 			required("body", str("The comment, in Markdown.")),
 		),
+		handler: (*AntTools).comment,
 	},
 	domain.ToolReplyToThread: {
 		description: "Reply in a review thread of your pull request, and resolve it when the reply settles it.",
@@ -96,11 +98,13 @@ var toolCatalogue = map[string]toolSpec{
 			required("body", str("The reply, in Markdown, such as what you changed and in which commit.")),
 			optional("resolve", boolean("Resolve the thread after replying. The default is false.")),
 		),
+		handler: (*AntTools).replyToThread,
 	},
 	domain.ToolPush: {
 		description: "Push the current branch of your worktree. This is the only way to push: git push is disabled. " +
 			"It never force-pushes. When the remote branch has commits you lack, they are fetched: merge them and push again.",
-		input: object(),
+		input:   object(),
+		handler: (*AntTools).push,
 	},
 	domain.ToolOpenPullRequest: {
 		description: "Open the pull request of your branch against the base branch, after pushing. Write your own title and body; " +
@@ -110,6 +114,7 @@ var toolCatalogue = map[string]toolSpec{
 			required("body", str("The pull request's description, in Markdown.")),
 			optional("draft", boolean("Open it as a draft. The default is false.")),
 		),
+		handler: (*AntTools).openPullRequest,
 	},
 	domain.ToolUpdatePullRequest: {
 		description: "Change the title, the body or the draft state of your pull request. Give only what changes.",
@@ -118,6 +123,7 @@ var toolCatalogue = map[string]toolSpec{
 			optional("body", str("The new description, in Markdown.")),
 			optional("draft", boolean("true to make it a draft, false to mark it ready for review.")),
 		),
+		handler: (*AntTools).updatePullRequest,
 	},
 	domain.ToolFinish: {
 		description: "End your run. complete: the item is done. partial: some points stay open, listed in open_points. " +
@@ -128,6 +134,7 @@ var toolCatalogue = map[string]toolSpec{
 			required("summary", str("What was done, or why nothing needed to change.")),
 			optional("open_points", array("The points still open, for partial.", str("One open point."))),
 		),
+		handler: (*AntTools).finish,
 	},
 	domain.ToolSubmitReview: {
 		description: "Report the result of your review: a summary and the findings. This is the only way to report; " +
@@ -136,6 +143,7 @@ var toolCatalogue = map[string]toolSpec{
 			required("summary", str("The overall assessment of the change.")),
 			required("findings", array("The problems found; empty when there are none.", findingSchema)),
 		),
+		handler: (*AntTools).submitReview,
 	},
 	domain.ToolFinishFixes: {
 		description: "End your fix pass: for each finding you were given, report fixed with the commit that fixes it, or skipped with a reason. " +
@@ -143,5 +151,6 @@ var toolCatalogue = map[string]toolSpec{
 		input: object(
 			required("results", array("One result for each finding you were given.", fixResultSchema)),
 		),
+		handler: (*AntTools).finishFixes,
 	},
 }

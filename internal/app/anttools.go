@@ -26,6 +26,13 @@ type ToolSession struct {
 	// PR and Round are set for a review or fix agent.
 	PR    domain.Ref
 	Round ports.RoundID
+	// Worktree is the temporary worktree of a review or fix agent, whose
+	// path is taken out of posted text. A fix agent's new commits are
+	// counted there from Branch, the PR's source branch on the remote.
+	Worktree string
+	Branch   string
+	// Findings are the ids of the findings given to a fix agent.
+	Findings []string
 }
 
 // ToolDefinition is one tool as the agent sees it in its tool list.
@@ -58,7 +65,9 @@ var ErrUnknownToken = errors.New(domain.MessageUnknownToken)
 // AntToolsStore is the part of the local store the ant tools use.
 type AntToolsStore interface {
 	ports.SessionIndex
+	ports.RunLog
 	ports.Extensions
+	ports.Questions
 }
 
 // HeldClaimLister lists the claims this instance holds; Claiming
@@ -70,11 +79,95 @@ type HeldClaimLister interface {
 }
 
 // TrackerRoute finds the tracker of an item, and CodeHostRoute the code
-// host of a PR. The daemon builds them from the provider connections.
+// host of a code repository. The daemon builds them from the provider
+// connections.
 type (
 	TrackerRoute  func(ctx context.Context, item domain.Ref) (ports.TrackerPort, error)
-	CodeHostRoute func(ctx context.Context, pr domain.Ref) (ports.CodeHostPort, error)
+	CodeHostRoute func(ctx context.Context, repo domain.Repository) (ports.CodeHostPort, error)
 )
+
+// ToolWorkspace is where the work of an ant or a fix pass is pushed: the
+// developer's clone, the code repository and its effective settings.
+type ToolWorkspace struct {
+	Clone    ports.Clone
+	Repo     domain.Repository
+	Settings domain.Effective
+}
+
+// WorkspaceRoute finds the workspace of an item's ant, or of a PR's fix
+// pass. The daemon builds it from the configuration and the item's
+// target repository.
+type WorkspaceRoute func(ctx context.Context, ref domain.Ref) (ToolWorkspace, error)
+
+// RunEnder ends a run whose agent asked a question, with its session
+// saved (spec ant-tools, "Conversation tools"). Ant supervision
+// implements it.
+type RunEnder interface {
+	EndRun(ctx context.Context, ant ports.AntID, run ports.RunID, reason string) error
+}
+
+// FinishRequest is a finish call that passed its checks, with its text
+// already made safe to post.
+type FinishRequest struct {
+	Ant        ports.AntID
+	Run        ports.RunID
+	Role       domain.AgentRole
+	Status     domain.FinishStatus
+	Summary    string
+	OpenPoints []string
+	// NewCommits is the number of commits on the branch after the base.
+	NewCommits int
+}
+
+// FinishHandler ends the run and acts on its outcome: the PR, the claim
+// and the ant's next state (spec ant-execution). Ant supervision
+// implements it.
+type FinishHandler interface {
+	Finish(ctx context.Context, f FinishRequest) error
+}
+
+// ReviewReport is a review agent's submit_review.
+type ReviewReport struct {
+	PR       domain.Ref
+	Round    ports.RoundID
+	Summary  string
+	Findings []domain.Finding
+}
+
+// ReviewSink posts a round's result (spec pr-shepherd). The shepherd
+// implements it.
+type ReviewSink interface {
+	SubmitReview(ctx context.Context, r ReviewReport) error
+}
+
+// FixReport is a fix agent's finish_fixes.
+type FixReport struct {
+	PR      domain.Ref
+	Round   ports.RoundID
+	Results []domain.FixResult
+}
+
+// FixSink verifies, pushes and replies after a fix pass (spec
+// pr-shepherd). The shepherd implements it.
+type FixSink interface {
+	FinishFixes(ctx context.Context, r FixReport) error
+}
+
+// AntToolsDeps are the ports and services the ant tools use.
+type AntToolsDeps struct {
+	Store     AntToolsStore
+	Claims    HeldClaimLister
+	Tracker   TrackerRoute
+	CodeHost  CodeHostRoute
+	Workspace WorkspaceRoute
+	Git       ports.SourceControl
+	Clock     ports.Clock
+	Notifier  ports.Notifier
+	Runs      RunEnder
+	Finishes  FinishHandler
+	Reviews   ReviewSink
+	Fixes     FixSink
+}
 
 // AntToolsOptions are the settings of the ant tools.
 type AntToolsOptions struct {
@@ -82,6 +175,14 @@ type AntToolsOptions struct {
 	// queen: the configured extension-wait. Nil means
 	// domain.DefaultExtensionWait.
 	ExtensionWait func() time.Duration
+	// Redactor returns the redactor of the configuration in use. Nil
+	// means the built-in patterns.
+	Redactor func() *domain.Redactor
+	// Home is the user's home directory, written as ~ in posted text.
+	Home string
+	// SummaryLimit is the length of summaries and progress reports;
+	// 0 means domain.DefaultSummaryLimit.
+	SummaryLimit int
 }
 
 // AntTools executes the ant tools: it issues and revokes tool tokens,
@@ -93,38 +194,52 @@ type AntToolsOptions struct {
 // is safe because restart reconciliation ends or resumes every run that
 // was active (spec ant-execution, "Restart resilience").
 type AntTools struct {
+	deps     AntToolsDeps
 	store    AntToolsStore
 	claims   HeldClaimLister
 	tracker  TrackerRoute
 	codeHost CodeHostRoute
 	clock    ports.Clock
 	opts     AntToolsOptions
+	builtin  *domain.Redactor
 
 	mu sync.Mutex
 	// sessions is keyed by the SHA-256 of the token, so the tokens
 	// themselves are not kept.
-	sessions map[[sha256.Size]byte]ToolSession
+	sessions map[tokenKey]ToolSession
 	// locks serialize the calls of one ant.
 	locks map[ports.AntID]*sync.Mutex
 	// waiters holds the request_extension calls waiting for the queen.
 	waiters map[ports.AntID]chan domain.ExtensionRequest
 	// notices holds the messages for an ant's next tool result.
 	notices map[ports.AntID][]string
+	// statuses holds the status comment of each run, by session.
+	statuses map[tokenKey]string
+	// done holds the review and fix sessions that reported already.
+	done map[tokenKey]bool
 }
 
+// tokenKey is the SHA-256 of a token.
+type tokenKey = [sha256.Size]byte
+
 // NewAntTools returns the ant tools service.
-func NewAntTools(store AntToolsStore, claims HeldClaimLister, tracker TrackerRoute, codeHost CodeHostRoute, clock ports.Clock, opts AntToolsOptions) *AntTools {
+func NewAntTools(deps AntToolsDeps, opts AntToolsOptions) *AntTools {
+	builtin, _ := domain.NewRedactor(nil)
 	return &AntTools{
-		store:    store,
-		claims:   claims,
-		tracker:  tracker,
-		codeHost: codeHost,
-		clock:    clock,
+		deps:     deps,
+		store:    deps.Store,
+		claims:   deps.Claims,
+		tracker:  deps.Tracker,
+		codeHost: deps.CodeHost,
+		clock:    deps.Clock,
 		opts:     opts,
-		sessions: map[[sha256.Size]byte]ToolSession{},
+		builtin:  builtin,
+		sessions: map[tokenKey]ToolSession{},
 		locks:    map[ports.AntID]*sync.Mutex{},
 		waiters:  map[ports.AntID]chan domain.ExtensionRequest{},
 		notices:  map[ports.AntID][]string{},
+		statuses: map[tokenKey]string{},
+		done:     map[tokenKey]bool{},
 	}
 }
 
@@ -155,23 +270,27 @@ func (t *AntTools) Issue(s ToolSession) (string, error) {
 // Revoke ends a token, when its run or agent ends. Revoking an unknown
 // token does nothing.
 func (t *AntTools) Revoke(token string) {
+	key := sha256.Sum256([]byte(token))
 	t.mu.Lock()
-	delete(t.sessions, sha256.Sum256([]byte(token)))
+	delete(t.sessions, key)
+	delete(t.statuses, key)
+	delete(t.done, key)
 	t.mu.Unlock()
 }
 
-func (t *AntTools) session(token string) (ToolSession, bool) {
+func (t *AntTools) session(token string) (ToolSession, tokenKey, bool) {
+	key := sha256.Sum256([]byte(token))
 	t.mu.Lock()
 	defer t.mu.Unlock()
-	s, ok := t.sessions[sha256.Sum256([]byte(token))]
-	return s, ok
+	s, ok := t.sessions[key]
+	return s, key, ok
 }
 
 // Tools lists the tools of the token's role, for the agent's tool list
 // (spec ant-tools, "Tool sets per agent role"). It returns
 // ErrUnknownToken for an unknown or revoked token.
 func (t *AntTools) Tools(token string) ([]ToolDefinition, error) {
-	s, ok := t.session(token)
+	s, _, ok := t.session(token)
 	if !ok {
 		return nil, ErrUnknownToken
 	}
@@ -190,7 +309,11 @@ func (t *AntTools) Tools(token string) ([]ToolDefinition, error) {
 // toolCall is one call being executed.
 type toolCall struct {
 	session ToolSession
+	key     tokenKey
 	args    json.RawMessage
+	// claim is the claim the call was checked against. Its instance signs
+	// what the call posts.
+	claim ports.HeldClaim
 	// ant is the ant's record, read under its lock, for a run's call.
 	ant ports.AntRecord
 	// lock and unlock take and give back the ant's lock, which a call
@@ -205,18 +328,18 @@ type toolCall struct {
 // call is checked and returns a reason"). The calls of one ant run one at
 // a time.
 func (t *AntTools) Call(ctx context.Context, token, tool string, args json.RawMessage) ToolResult {
-	s, ok := t.session(token)
+	s, key, ok := t.session(token)
 	if !ok {
 		return errorResult(domain.MessageUnknownToken)
 	}
-	result := t.call(ctx, s, tool, args)
+	result := t.call(ctx, s, key, tool, args)
 	if s.Role.IsRun() {
 		result.Notices = t.takeNotices(s.Ant)
 	}
 	return result
 }
 
-func (t *AntTools) call(ctx context.Context, s ToolSession, tool string, args json.RawMessage) ToolResult {
+func (t *AntTools) call(ctx context.Context, s ToolSession, key tokenKey, tool string, args json.RawMessage) ToolResult {
 	if err := domain.CheckToolRole(s.Role, tool); err != nil {
 		return failure(err)
 	}
@@ -224,7 +347,7 @@ func (t *AntTools) call(ctx context.Context, s ToolSession, tool string, args js
 	if err := spec.input.validate(args); err != nil {
 		return errorResult(err.Error())
 	}
-	c := &toolCall{session: s, args: args, lock: func() {}, unlock: func() {}}
+	c := &toolCall{session: s, key: key, args: args, lock: func() {}, unlock: func() {}}
 	if s.Role.IsRun() {
 		m := t.antLock(s.Ant)
 		locked := true
@@ -243,15 +366,17 @@ func (t *AntTools) call(ctx context.Context, s ToolSession, tool string, args js
 		if err := domain.CheckToolState(rec.State(), tool); err != nil {
 			return failure(err)
 		}
-		if err := t.checkClaim(ctx, rec.Item, domain.ClaimTask); err != nil {
+		claim, err := t.checkClaim(ctx, rec.Item, domain.ClaimTask)
+		if err != nil {
 			return failure(err)
 		}
-		c.ant = rec
-	} else if err := t.checkClaim(ctx, s.PR, domain.ClaimReview); err != nil {
-		return failure(err)
-	}
-	if spec.handler == nil {
-		return errorResult(tool + " is not implemented yet")
+		c.ant, c.claim = rec, claim
+	} else {
+		claim, err := t.checkClaim(ctx, s.PR, domain.ClaimReview)
+		if err != nil {
+			return failure(err)
+		}
+		c.claim = claim
 	}
 	data, err := spec.handler(t, ctx, c)
 	if err != nil {
@@ -260,18 +385,19 @@ func (t *AntTools) call(ctx context.Context, s ToolSession, tool string, args js
 	return dataResult(data)
 }
 
-// checkClaim refuses a call whose claim this instance does not hold.
-func (t *AntTools) checkClaim(ctx context.Context, ref domain.Ref, kind domain.ClaimKind) error {
+// checkClaim returns the claim of a call, and refuses the call when this
+// instance does not hold it.
+func (t *AntTools) checkClaim(ctx context.Context, ref domain.Ref, kind domain.ClaimKind) (ports.HeldClaim, error) {
 	held, err := t.claims.Held(ctx)
 	if err != nil {
-		return fmt.Errorf("reading the held claims: %w", err)
+		return ports.HeldClaim{}, fmt.Errorf("reading the held claims: %w", err)
 	}
 	for _, h := range held {
 		if h.Ref == ref && h.Kind == kind {
-			return nil
+			return h, nil
 		}
 	}
-	return domain.RefuseTool("%s", domain.MessageClaimNotHeld(ref))
+	return ports.HeldClaim{}, domain.RefuseTool("%s", domain.MessageClaimNotHeld(ref))
 }
 
 func (t *AntTools) antLock(id ports.AntID) *sync.Mutex {

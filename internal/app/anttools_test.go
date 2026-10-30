@@ -4,8 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"slices"
 	"strings"
+	"sync"
 	"testing"
 	"testing/synctest"
 	"time"
@@ -16,16 +18,31 @@ import (
 	"github.com/matteorosani/anthill/internal/testkit"
 )
 
-// toolsEnv is the ant tools over fakes: a GitHub provider with issue #12
-// and its ant, which holds the task claim and has an active run.
+// toolsEnv is the ant tools over fakes: a GitHub provider with issue #12,
+// a clone of acme/shop with the ant's branch and worktree, and the ant,
+// which holds the task claim and has an active run.
 type toolsEnv struct {
-	t     *testing.T
-	clock *testkit.Clock
-	gh    *testkit.Provider
-	store *testkit.StateStore
-	tools *app.AntTools
-	ant   ports.AntID
+	t        *testing.T
+	clock    *testkit.Clock
+	gh       *testkit.Provider
+	store    *testkit.StateStore
+	git      *testkit.SourceControl
+	clone    ports.Clone
+	tools    *app.AntTools
+	ant      ports.AntID
+	runs     *fakeRunEnder
+	finishes *fakeFinishes
+	reviews  *fakeReviews
+	fixes    *fakeFixes
+	notifier *testkit.Notifier
 }
+
+// The ant's worktree and branch, and the user's home.
+const (
+	antWorktree = "/home/ann/.anthill/worktrees/gh-acme-shop/ant/gh-12-fix-login"
+	antBranch   = "ant/gh-12-fix-login"
+	userHome    = "/home/ann"
+)
 
 // storeClaims lists the held claims of a local store, as Claiming.Held
 // does.
@@ -33,6 +50,41 @@ type storeClaims struct{ store *testkit.StateStore }
 
 func (c storeClaims) Held(ctx context.Context) ([]ports.HeldClaim, error) {
 	return c.store.HeldClaims(ctx)
+}
+
+// fakeRunEnder records the runs it is asked to end.
+type fakeRunEnder struct {
+	mu    sync.Mutex
+	ended []string
+}
+
+func (f *fakeRunEnder) EndRun(_ context.Context, ant ports.AntID, run ports.RunID, reason string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.ended = append(f.ended, fmt.Sprintf("%d/%d: %s", ant, run, reason))
+	return nil
+}
+
+// fakeFinishes, fakeReviews and fakeFixes record what is handed over.
+type (
+	fakeFinishes struct{ got []app.FinishRequest }
+	fakeReviews  struct{ got []app.ReviewReport }
+	fakeFixes    struct{ got []app.FixReport }
+)
+
+func (f *fakeFinishes) Finish(_ context.Context, r app.FinishRequest) error {
+	f.got = append(f.got, r)
+	return nil
+}
+
+func (f *fakeReviews) SubmitReview(_ context.Context, r app.ReviewReport) error {
+	f.got = append(f.got, r)
+	return nil
+}
+
+func (f *fakeFixes) FinishFixes(_ context.Context, r app.FixReport) error {
+	f.got = append(f.got, r)
+	return nil
 }
 
 // newToolsEnv makes the ant for #12 with a 60-minute budget and the
@@ -46,6 +98,18 @@ func newToolsEnv(t *testing.T, policy domain.BudgetPolicy) *toolsEnv {
 		Ref: ghRef(12), URL: "https://github.com/acme/shop/issues/12",
 		Title: "Fix login", Body: "Logins time out on Safari.", State: domain.StateOpen, Labels: []string{"anthill"},
 	})
+	git := testkit.NewSourceControl()
+	clone := git.AddClone("/src/shop", shop, "main")
+	if err := git.Fetch(ctx, clone); err != nil {
+		t.Fatal(err)
+	}
+	if err := git.CreateBranch(ctx, clone, antBranch, "main"); err != nil {
+		t.Fatal(err)
+	}
+	trailers := domain.Trailers{Item: "gh-12", Agent: "claude-code", Instance: instanceA}
+	if err := git.AddWorktree(ctx, clone, antWorktree, antBranch, trailers); err != nil {
+		t.Fatal(err)
+	}
 	store := testkit.NewStateStore()
 	ant, err := domain.NewAnt(ghRef(12), domain.AntStarting, time.Hour, policy, t0, "accepted")
 	if err != nil {
@@ -56,20 +120,46 @@ func newToolsEnv(t *testing.T, policy domain.BudgetPolicy) *toolsEnv {
 	}
 	id, err := store.CreateAnt(ctx, ports.AntRecord{
 		Item: ghRef(12), Base: time.Hour, Budget: ant.Budget, History: ant.History(),
-		Runner: "claude", Worktree: "/work/gh-12", Branch: "ant/gh-12-fix-login", BaseBranch: "main",
+		Runner: "claude", Worktree: antWorktree, Branch: antBranch, BaseBranch: "main",
 	})
 	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.StartRun(ctx, ports.RunRecord{Ant: id, Kind: ports.RunTask, StartedAt: t0}); err != nil {
 		t.Fatal(err)
 	}
 	if err := store.SaveClaim(ctx, ports.HeldClaim{Ref: ghRef(12), Kind: domain.ClaimTask, Instance: instanceA, CommentID: "1", Lease: 15 * time.Minute, UpdatedAt: t0}); err != nil {
 		t.Fatal(err)
 	}
-	tracker := func(context.Context, domain.Ref) (ports.TrackerPort, error) { return gh.Client("mrosani"), nil }
-	codeHost := func(context.Context, domain.Ref) (ports.CodeHostPort, error) { return gh.Client("mrosani"), nil }
-	tools := app.NewAntTools(store, storeClaims{store}, tracker, codeHost, clock, app.AntToolsOptions{
+	e := &toolsEnv{
+		t: t, clock: clock, gh: gh, store: store, git: git, clone: clone, ant: id,
+		runs: &fakeRunEnder{}, finishes: &fakeFinishes{}, reviews: &fakeReviews{}, fixes: &fakeFixes{}, notifier: &testkit.Notifier{},
+	}
+	redactor, err := domain.NewRedactor([]string{`ACME-[0-9]{8}`})
+	if err != nil {
+		t.Fatal(err)
+	}
+	e.tools = app.NewAntTools(app.AntToolsDeps{
+		Store:    store,
+		Claims:   storeClaims{store},
+		Tracker:  func(context.Context, domain.Ref) (ports.TrackerPort, error) { return gh.Client("mrosani"), nil },
+		CodeHost: func(context.Context, domain.Repository) (ports.CodeHostPort, error) { return gh.Client("mrosani"), nil },
+		Workspace: func(context.Context, domain.Ref) (app.ToolWorkspace, error) {
+			return app.ToolWorkspace{Clone: clone, Repo: shop, Settings: domain.Effective{OptInLabel: "anthill", ProtectedBranches: []string{"release/*"}}}, nil
+		},
+		Git:      git,
+		Clock:    clock,
+		Notifier: e.notifier,
+		Runs:     e.runs,
+		Finishes: e.finishes,
+		Reviews:  e.reviews,
+		Fixes:    e.fixes,
+	}, app.AntToolsOptions{
 		ExtensionWait: func() time.Duration { return domain.DefaultExtensionWait },
+		Redactor:      func() *domain.Redactor { return redactor },
+		Home:          userHome,
 	})
-	return &toolsEnv{t: t, clock: clock, gh: gh, store: store, tools: tools, ant: id}
+	return e
 }
 
 // issue returns a token for the ant's run in the given role.
@@ -219,7 +309,7 @@ func TestReviewAgentToolList(t *testing.T) {
 // Spec ant-tools, "Fix agent cannot push".
 func TestFixAgentCannotPush(t *testing.T) {
 	e := newToolsEnv(t, domain.DefaultBudgetPolicy())
-	if err := e.store.SaveClaim(context.Background(), ports.HeldClaim{Ref: ghPR(34), Kind: domain.ClaimReview, Instance: instanceA, CommentID: "2", Lease: 15 * time.Minute, UpdatedAt: t0}); err != nil {
+	if err := e.store.SaveClaim(context.Background(), heldReview()); err != nil {
 		t.Fatal(err)
 	}
 	before := len(e.gh.Requests())
@@ -530,8 +620,7 @@ func TestToolCallChecks(t *testing.T) {
 	refused(t, e.call(token, domain.ToolRequestExtension, `{"reason":"x"}`), "the arguments: minutes is required")
 	refused(t, e.call(token, domain.ToolGetTask, `{"verbose":true}`), `the arguments: unknown argument "verbose"`)
 	refused(t, e.call(token, domain.ToolComment, `{"where":"wiki","body":"x"}`), "where must be one of item, pr, not \"wiki\"")
-	// Tools of a later group are listed but not executed yet.
-	refused(t, e.call(token, domain.ToolPush, `{}`), "push is not implemented yet")
+	refused(t, e.call(token, domain.ToolUpdatePullRequest, `{}`), "give at least one of title, body and draft")
 
 	// The role check comes before the arguments.
 	refused(t, e.call(e.issue(domain.RoleFixAgent), domain.ToolPush, `{"force":true}`), "push is not available to the fix agent")
@@ -559,4 +648,9 @@ func TestToolCallFailure(t *testing.T) {
 	if !res.IsError || !strings.Contains(res.Text, "GitHub is down") {
 		t.Errorf("result = %+v, want the failure", res)
 	}
+}
+
+// heldReview is this instance's review claim on PR 34.
+func heldReview() ports.HeldClaim {
+	return ports.HeldClaim{Ref: ghPR(34), Kind: domain.ClaimReview, Instance: instanceA, CommentID: "2", Lease: 15 * time.Minute, UpdatedAt: t0}
 }

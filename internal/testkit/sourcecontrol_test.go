@@ -130,7 +130,7 @@ func newPushed(t *testing.T) (*testkit.SourceControl, ports.Clone) {
 	_ = s.CreateBranch(ctx, c, "ant/gh-12-x", "main")
 	_ = s.AddWorktree(ctx, c, "/wt", "ant/gh-12-x", alice)
 	s.Commit("/wt", "fix")
-	if _, err := s.Push(ctx, c, "ant/gh-12-x", aliceOwn); err != nil {
+	if _, err := s.Push(ctx, c, "", "ant/gh-12-x", aliceOwn); err != nil {
 		t.Fatal(err)
 	}
 	return s, c
@@ -151,7 +151,7 @@ func TestSourceControlPush(t *testing.T) {
 	// remote branch is fetched so that it can be merged.
 	moved := s.SetRemoteBranch("/clone", "ant/gh-12-x", domain.BranchOwner{}, "someone else")
 	s.Commit("/wt", "more")
-	out, err := s.Push(ctx, c, "ant/gh-12-x", aliceOwn)
+	out, err := s.Push(ctx, c, "", "ant/gh-12-x", aliceOwn)
 	if !errors.Is(err, ports.ErrConflict) || out == "" {
 		t.Errorf("Push() = %q, %v", out, err)
 	}
@@ -167,7 +167,7 @@ func TestSourceControlPushAfterAmend(t *testing.T) {
 	ctx := context.Background()
 	s, c := newPushed(t)
 	s.Amend("/wt", "fix, amended")
-	if _, err := s.Push(ctx, c, "ant/gh-12-x", aliceOwn); !errors.Is(err, ports.ErrHistoryRewritten) {
+	if _, err := s.Push(ctx, c, "", "ant/gh-12-x", aliceOwn); !errors.Is(err, ports.ErrHistoryRewritten) {
 		t.Errorf("Push() after amend = %v", err)
 	}
 	if got := s.RemoteCommits("/clone", "ant/gh-12-x"); got[len(got)-1].Subject != "fix" {

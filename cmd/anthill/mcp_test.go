@@ -55,10 +55,13 @@ func serveAntTools(t *testing.T, te *testEnv) (*app.AntTools, ports.AntID) {
 			t.Fatal(err)
 		}
 	}
-	tools := app.NewAntTools(store, heldClaims{store},
-		func(context.Context, domain.Ref) (ports.TrackerPort, error) { return gh.Client("mrosani"), nil },
-		func(context.Context, domain.Ref) (ports.CodeHostPort, error) { return gh.Client("mrosani"), nil },
-		te.clock, app.AntToolsOptions{})
+	tools := app.NewAntTools(app.AntToolsDeps{
+		Store:    store,
+		Claims:   heldClaims{store},
+		Tracker:  func(context.Context, domain.Ref) (ports.TrackerPort, error) { return gh.Client("mrosani"), nil },
+		CodeHost: func(context.Context, domain.Repository) (ports.CodeHostPort, error) { return gh.Client("mrosani"), nil },
+		Clock:    te.clock,
+	}, app.AntToolsOptions{})
 
 	srv := control.NewServer(testLogger(t))
 	registerAPI(srv, app.NewHealth(te.clock, version, 1), tools)

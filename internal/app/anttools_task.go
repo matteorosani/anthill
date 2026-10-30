@@ -84,7 +84,7 @@ func (t *AntTools) getTask(ctx context.Context, c *toolCall) (any, error) {
 	budget := rec.Budget
 	out.Budget = budgetView{TotalMinutes: minutes(budget.Total()), RemainingMinutes: minutes(budget.Remaining(now))}
 	if rec.PR != nil {
-		host, err := t.codeHost(ctx, *rec.PR)
+		host, err := t.codeHost(ctx, rec.PR.Repo)
 		if err != nil {
 			return nil, err
 		}

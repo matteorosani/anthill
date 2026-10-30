@@ -374,3 +374,79 @@ func TestWorktreeStatusAndRemove(t *testing.T) {
 		t.Error("AddWorktree() without trailers succeeded")
 	}
 }
+
+// The repository's pre-push hook, decided for PR #133: Anthill pushes
+// from the ant's worktree with the repository's hooks given back, so
+// the hook runs on the ant's code and can block the push.
+func TestPushRunsRepositoryPrePushHookOnAntCode(t *testing.T) {
+	f := newFixture(t)
+	ant := f.prepare()
+	seen := filepath.Join(f.tmp, "pre-push-seen")
+	// The hook records where it runs, which file it sees and whether the
+	// environment is Anthill's (GH_TOKEN present) or an agent's (removed
+	// by domain.AgentEnv), and refuses when the code holds a BLOCK file.
+	writeFile(t, filepath.Join(f.clone, ".git", "hooks", "pre-push"), "#!/bin/sh\n"+
+		"{ pwd; cat ant.txt 2>/dev/null; echo \"token=${GH_TOKEN:-none}\"; } > '"+filepath.ToSlash(seen)+"'\n"+
+		"if [ -f BLOCK ]; then echo 'blocked by the repository hook' >&2; exit 1; fi\n")
+	if err := os.Chmod(filepath.Join(f.clone, ".git", "hooks", "pre-push"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("GH_TOKEN", "anthill-env")
+
+	f.commitIn(ant.Worktree, "ant.txt", "the ant's code")
+	if out, err := f.push(ant); err != nil {
+		t.Fatalf("Push() = %v\n%s", err, out)
+	}
+	lines := strings.Split(strings.TrimSpace(readFile(t, seen)), "\n")
+	if len(lines) != 3 || !sameDir(lines[0], ant.Worktree) || lines[1] != "the ant's code" || lines[2] != "token=anthill-env" {
+		t.Errorf("the hook saw %q, want the worktree %s, the ant's file and Anthill's environment", lines, ant.Worktree)
+	}
+
+	pushed := f.remoteTip(ant.Branch)
+	f.commitIn(ant.Worktree, "BLOCK", "x")
+	out, err := f.push(ant)
+	if err == nil || !strings.Contains(out, "blocked by the repository hook") {
+		t.Errorf("Push() with BLOCK = %v\n%s", err, out)
+	}
+	if f.remoteTip(ant.Branch) != pushed {
+		t.Error("the blocked commit reached the remote")
+	}
+}
+
+// sameDir compares two directories as the OS sees them: on Windows the
+// hook's pwd is a POSIX path of git's sh, and on macOS the temporary
+// directory has a symlinked prefix.
+func sameDir(a, b string) bool {
+	if a == b || filepath.ToSlash(a) == filepath.ToSlash(b) {
+		return true
+	}
+	ia, errA := os.Stat(a)
+	ib, errB := os.Stat(b)
+	if errA == nil && errB == nil {
+		return os.SameFile(ia, ib)
+	}
+	return strings.HasSuffix(filepath.ToSlash(a), filepath.Base(b))
+}
+
+// The developer's credentials are given back for Anthill's push from the
+// worktree, while the agent's own push from the same worktree gets none.
+func TestPushRestoresCredentials(t *testing.T) {
+	f := newFixture(t)
+	ant := f.prepare()
+	server := newAuthServer(t)
+	called := credentialHelper(t, f.tmp)
+	gitIn(t, f.clone, "remote", "add", "web", server.URL+"/acme/web.git")
+	f.commitIn(ant.Worktree, "a.txt", "work")
+
+	out, err := f.git.Push(f.ctx, ports.Clone{Path: f.clone, Remote: "web"}, ant.Worktree, ant.Branch, trailers.Owner())
+	skipWithoutHTTP(t, out)
+	if err == nil {
+		t.Fatalf("Push() to a server that refuses everyone succeeded\n%s", out)
+	}
+	if !exists(called) {
+		t.Errorf("the developer's credential helper was not called\n%s", out)
+	}
+	if _, authorized := server.counts(); authorized == 0 {
+		t.Error("the push sent no credentials")
+	}
+}

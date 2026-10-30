@@ -196,7 +196,7 @@ func (w *Workspace) Push(ctx context.Context, req PushRequest) (string, error) {
 	if err := domain.CheckPush(policy); err != nil {
 		return "", err
 	}
-	out, err := w.git.Push(ctx, req.Clone, status.Branch, req.Owner)
+	out, err := w.git.Push(ctx, req.Clone, req.Worktree, status.Branch, req.Owner)
 	if errors.Is(err, ports.ErrHistoryRewritten) {
 		return out, fmt.Errorf("%s: %w", domain.MessageHistoryRewritten, err)
 	}
