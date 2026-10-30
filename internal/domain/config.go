@@ -111,6 +111,9 @@ const (
 	// KeyProviderPollIntervals overrides poll-interval per provider
 	// connection (spec work-item-sources, "Polling cadence").
 	KeyProviderPollIntervals = "provider-poll-intervals"
+	// KeyNotifications turns desktop notifications on or off per kind
+	// (spec queen-console, "Notifications").
+	KeyNotifications = "notifications"
 
 	KeyProvider = "provider"
 	KeyRemote   = "remote"
@@ -187,6 +190,7 @@ var settingInfos = []SettingInfo{
 	{KeyWorktreeRoot, globalOnly},
 	{KeyAzureDevOpsProjects, globalOnly},
 	{KeyProviderPollIntervals, globalOnly},
+	{KeyNotifications, globalOnly},
 	{KeyProvider, entryOnly},
 	{KeyRemote, entryOnly},
 	{KeyPath, entryOnly},
@@ -300,9 +304,9 @@ func CheckKey(layer Layer, path []string) string {
 		}
 		return "unknown key " + quote(strings.Join(path, "."))
 	}
-	if len(path) == 2 && path[0] == KeyProviderPollIntervals {
-		// The keys are connection names, which are checked with the
-		// values.
+	if len(path) == 2 && (path[0] == KeyProviderPollIntervals || path[0] == KeyNotifications) {
+		// The keys are connection names or notification kinds, which
+		// are checked with the values.
 		return ""
 	}
 	if len(path) > 1 {
@@ -424,6 +428,10 @@ type SettingValues struct {
 	// azure-devops/contoso, to their poll interval. It is nil when the
 	// layer does not set it.
 	ProviderPollIntervals map[string]time.Duration `yaml:"provider-poll-intervals"`
+	// Notifications maps notification kinds to whether they are shown.
+	// A kind without an entry is shown. It is nil when the layer does not
+	// set it.
+	Notifications map[string]bool `yaml:"notifications"`
 }
 
 // AzureDevOpsProject is one entry of azure-devops-projects: the target
