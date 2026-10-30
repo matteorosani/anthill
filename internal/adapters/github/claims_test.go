@@ -10,18 +10,22 @@ import (
 	"github.com/matteorosani/anthill/internal/ports"
 )
 
-// Claims returns only the claim comments, in creation order, with
-// GitHub's time (design D3).
+// Claims returns the claim comments and the /anthill release commands,
+// in creation order, with the labels and GitHub's time (design D3).
 func TestClaims(t *testing.T) {
 	e := newEnv(t)
-	e.srv.fixture("GET /repos/matteorosani/anthill/issues/12/comments", http.StatusOK, "issue12_comments.json")
+	e.srv.fixture("GET /repos/matteorosani/anthill/issues/12/labels", http.StatusOK, "labels.json")
+	e.srv.fixture("GET /repos/matteorosani/anthill/issues/12/comments", http.StatusOK, "issue12_claims.json")
 
 	page, err := e.a.Claims(ctx(t), gh12)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(page.Comments) != 1 || page.Comments[0].ID != "9002" {
-		t.Errorf("claims = %+v, want only the claim comment 9002", page.Comments)
+	if len(page.Comments) != 2 || page.Comments[0].ID != "9002" || page.Comments[1].ID != "9003" {
+		t.Errorf("claims = %+v, want the claim comment 9002 and the release command 9003", page.Comments)
+	}
+	if !slices.Equal(page.Labels, []string{"anthill", "anthill:claimed"}) {
+		t.Errorf("labels = %v", page.Labels)
 	}
 	if !page.ServerTime.Equal(serverDate) || page.Revision != "" {
 		t.Errorf("server time, revision = %v, %q", page.ServerTime, page.Revision)

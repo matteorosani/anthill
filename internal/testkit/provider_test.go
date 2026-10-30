@@ -41,7 +41,7 @@ func claim(ctx context.Context, store ports.ClaimStore, instance string, writers
 	if err != nil {
 		return false, err
 	}
-	if _, held := domain.ResolveClaim(page.Comments, item12, domain.ClaimTask, writers, page.ServerTime); held {
+	if _, held := domain.ResolveClaim(domain.ClaimView{Comments: page.Comments, Labels: page.Labels, Writers: writers, Now: page.ServerTime}, item12, domain.ClaimTask); held {
 		return false, nil
 	}
 	mine, err := store.Post(ctx, item12, claimComment(instance))
@@ -52,7 +52,7 @@ func claim(ctx context.Context, store ports.ClaimStore, instance string, writers
 	if err != nil {
 		return false, err
 	}
-	winner, _ := domain.ResolveClaim(page.Comments, item12, domain.ClaimTask, writers, page.ServerTime)
+	winner, _ := domain.ResolveClaim(domain.ClaimView{Comments: page.Comments, Labels: page.Labels, Writers: writers, Now: page.ServerTime}, item12, domain.ClaimTask)
 	if winner.Instance != instance {
 		return false, store.Retract(ctx, item12, mine.ID)
 	}
@@ -113,7 +113,8 @@ func TestProviderCommentOrderAndTimes(t *testing.T) {
 	alice := p.Client("alice")
 	a, _ := alice.Post(ctx, item12, claimComment("alice@laptop"))
 	clock.Advance(time.Minute)
-	b := p.Comment(item12, "carol", "a human comment")
+	b := p.Comment(item12, "carol", "/anthill release")
+	p.Comment(item12, "carol", "a human comment")
 	if !a.CreatedAt.Equal(t0) || !b.CreatedAt.Equal(t0.Add(time.Minute)) || a.Author != "alice" || b.Author != "carol" {
 		t.Errorf("comments = %+v, %+v", a, b)
 	}
@@ -126,7 +127,8 @@ func TestProviderCommentOrderAndTimes(t *testing.T) {
 		t.Errorf("Edit() = %+v, %v", edited, err)
 	}
 	page, _ := alice.Claims(ctx, item12)
-	if !page.ServerTime.Equal(t0.Add(2*time.Minute)) || len(page.Comments) != 2 || page.Revision == "" {
+	// The claim and the release command, not the other human comment.
+	if !page.ServerTime.Equal(t0.Add(2*time.Minute)) || len(page.Comments) != 2 || page.Revision != "" || !slices.Equal(page.Labels, []string{"anthill"}) {
 		t.Errorf("Claims() = %+v", page)
 	}
 	if _, err := alice.Edit(ctx, item12, "999", claimComment("x")); !errors.Is(err, ports.ErrNotFound) {
@@ -166,15 +168,21 @@ func TestProviderMarkAndUnmark(t *testing.T) {
 	ctx := context.Background()
 	p, _ := newProvider(t)
 	alice := p.Client("alice")
-	page, _ := alice.Claims(ctx, item12)
 
-	// A revision that moved is a lost race.
-	p.EditItem(item12, func(i *domain.WorkItem) { i.Body = "edited" })
-	if _, err := alice.Mark(ctx, item12, ports.ClaimMark{Label: "anthill:claimed", Assign: true, Revision: page.Revision}); !errors.Is(err, ports.ErrConflict) {
-		t.Errorf("Mark with an old revision: %v", err)
+	// On an Azure DevOps work item, a revision that moved is a lost race.
+	ado12 := domain.Ref{Repo: domain.Repository{Provider: domain.AzureDevOps, Org: "contoso", Project: "shop"}, Kind: domain.KindItem, Number: 12}
+	p.PutItem(domain.WorkItem{Ref: ado12, Title: "Fix login", State: domain.StateOpen})
+	page, _ := alice.Claims(ctx, ado12)
+	p.EditItem(ado12, func(i *domain.WorkItem) { i.Body = "edited" })
+	if _, err := alice.Mark(ctx, ado12, ports.ClaimMark{Label: "anthill:claimed", Assign: true, Revision: page.Revision}); page.Revision == "" || !errors.Is(err, ports.ErrConflict) {
+		t.Errorf("Mark with an old revision %q: %v", page.Revision, err)
 	}
-	page, _ = alice.Claims(ctx, item12)
-	assigned, err := alice.Mark(ctx, item12, ports.ClaimMark{Label: "anthill:claimed", Assign: true, Revision: page.Revision})
+	page, _ = alice.Claims(ctx, ado12)
+	if _, err := alice.Mark(ctx, ado12, ports.ClaimMark{Label: "anthill:claimed", Revision: page.Revision}); err != nil {
+		t.Errorf("Mark with the current revision: %v", err)
+	}
+
+	assigned, err := alice.Mark(ctx, item12, ports.ClaimMark{Label: "anthill:claimed", Assign: true})
 	if err != nil || !assigned {
 		t.Errorf("Mark() = %v, %v", assigned, err)
 	}

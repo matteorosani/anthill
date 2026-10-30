@@ -1,0 +1,26 @@
+[
+  {
+    "id": 9001,
+    "user": {"login": "alice"},
+    "html_url": "https://github.com/MatteoRosani/Anthill/issues/12#issuecomment-9001",
+    "body": "Happens only on Safari 17.",
+    "created_at": "2026-10-21T09:00:00Z",
+    "updated_at": "2026-10-21T09:00:00Z"
+  },
+  {
+    "id": 9002,
+    "user": {"login": "mrosani"},
+    "html_url": "https://github.com/MatteoRosani/Anthill/issues/12#issuecomment-9002",
+    "body": "🐜 Ant (mrosani@LAPTOP-42)\n\nClaimed until 11:30 UTC.\n\n<!-- anthill {\"v\":1,\"instance\":\"mrosani@LAPTOP-42\",\"kind\":\"claim\",\"ref\":\"gh-12\",\"claim\":\"task\",\"lease_minutes\":15,\"parked\":false,\"released\":false} -->",
+    "created_at": "2026-10-29T09:30:00Z",
+    "updated_at": "2026-10-29T09:30:00Z"
+  },
+  {
+    "id": 9003,
+    "user": {"login": "alice"},
+    "html_url": "https://github.com/MatteoRosani/Anthill/issues/12#issuecomment-9003",
+    "body": "This machine is offline.\n/anthill release",
+    "created_at": "2026-10-29T10:00:00Z",
+    "updated_at": "2026-10-29T10:00:00Z"
+  }
+]

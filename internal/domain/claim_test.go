@@ -38,6 +38,16 @@ func claimComment(id, author string, c domain.Claim, created, updated time.Time)
 	}
 }
 
+// view is a read of an item that carries the claim label.
+func view(comments []domain.Comment, now time.Time) domain.ClaimView {
+	return domain.ClaimView{Comments: comments, Labels: []string{"anthill", domain.DefaultClaimLabel}, Writers: writers, Now: now}
+}
+
+// human returns a comment without a marker.
+func human(id, author, body string, at time.Time) domain.Comment {
+	return domain.Comment{ID: id, Author: author, Body: body, CreatedAt: at, UpdatedAt: at}
+}
+
 func TestClaimStatus(t *testing.T) {
 	tests := []struct {
 		name  string
@@ -173,7 +183,7 @@ func TestResolveClaim(t *testing.T) {
 			if kind == "" {
 				kind = domain.ClaimTask
 			}
-			got, found := domain.ResolveClaim(tt.comments, item, kind, writers, tt.now)
+			got, found := domain.ResolveClaim(view(tt.comments, tt.now), item, kind)
 			if found != (tt.want != "") || got.Instance != tt.want {
 				t.Errorf("ResolveClaim() = %q, %v; want %q", got.Instance, found, tt.want)
 			}
@@ -186,11 +196,11 @@ func TestReviewClaimIndependentOfTaskClaim(t *testing.T) {
 	comments := []domain.Comment{
 		claimComment("200", "lbianchi", domain.Claim{Instance: instanceB, Kind: domain.ClaimReview, Ref: "gh-pr-34"}, t0, t0),
 	}
-	got, found := domain.ResolveClaim(comments, pr, domain.ClaimReview, writers, t0)
+	got, found := domain.ResolveClaim(view(comments, t0), pr, domain.ClaimReview)
 	if !found || got.Instance != instanceB {
 		t.Errorf("review claim = %q, %v; want %q", got.Instance, found, instanceB)
 	}
-	if _, found := domain.ResolveClaim(comments, pr, domain.ClaimTask, writers, t0); found {
+	if _, found := domain.ResolveClaim(view(comments, t0), pr, domain.ClaimTask); found {
 		t.Error("a review claim was reported as a task claim")
 	}
 }
@@ -200,7 +210,7 @@ func TestTwoInstancesClaimSimultaneouslyLoserLoses(t *testing.T) {
 		claimComment("100", "mrosani", domain.Claim{Instance: instanceA}, t0, t0),
 		claimComment("101", "lbianchi", domain.Claim{Instance: instanceB}, t0.Add(time.Second), t0.Add(time.Second)),
 	}
-	winner, found := domain.ResolveClaim(comments, ghItem(12), domain.ClaimTask, writers, t0.Add(3*time.Second))
+	winner, found := domain.ResolveClaim(view(comments, t0.Add(3*time.Second)), ghItem(12), domain.ClaimTask)
 	if domain.ClaimLost(winner, found, instanceA) {
 		t.Error("A lost its claim, want A to hold it")
 	}
@@ -216,7 +226,7 @@ func TestHolderReturnsAfterExpiry(t *testing.T) {
 		claimComment("101", "lbianchi", domain.Claim{Instance: instanceB}, t0.Add(30*time.Minute), t0.Add(30*time.Minute)),
 	}
 	now := t0.Add(2 * time.Hour)
-	winner, found := domain.ResolveClaim(comments, ghItem(12), domain.ClaimTask, writers, now)
+	winner, found := domain.ResolveClaim(view(comments, now), ghItem(12), domain.ClaimTask)
 	if !domain.ClaimLost(winner, found, instanceA) {
 		t.Fatal("A still holds the claim, want it lost")
 	}
@@ -276,5 +286,162 @@ func TestClaimCommentText(t *testing.T) {
 				t.Errorf("marker is not valid: %v", err)
 			}
 		})
+	}
+}
+
+// Scenario "Stuck claim released by a colleague": an /anthill release
+// after the claim releases it for every instance, even a parked claim
+// whose holder has been offline for days.
+func TestStuckClaimReleasedByAColleague(t *testing.T) {
+	parked := claimComment("100", "mrosani", domain.Claim{Instance: instanceA, Parked: true}, t0, t0)
+	later := t0.Add(72 * time.Hour)
+	tests := []struct {
+		name    string
+		command domain.Comment
+		held    bool
+	}{
+		{"release by a user with write access", human("101", "lbianchi", "Stuck since Monday.\n/anthill release", later), false},
+		{"release by an outside user is ignored", human("101", "outsider", "/anthill release", later), true},
+		{"a release before the claim does not release it", human("99", "lbianchi", "/anthill release", t0.Add(-time.Hour)), true},
+		{"a quoted release is ignored", human("101", "lbianchi", "> /anthill release", later), true},
+		{"another command does not release", human("101", "lbianchi", "/anthill stop", later), true},
+		{"a marker comment never holds a command", domain.Comment{ID: "101", Author: "lbianchi", Body: "/anthill release " + domain.Marker{Version: domain.MarkerVersion, Instance: instanceB, Kind: domain.CommentStatus, Ref: "gh-12"}.String(), CreatedAt: later}, true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			v := view([]domain.Comment{parked, tt.command}, later)
+			if _, held := domain.ResolveClaim(v, ghItem(12), domain.ClaimTask); held != tt.held {
+				t.Errorf("held = %v, want %v", held, tt.held)
+			}
+		})
+	}
+}
+
+// A release counts from its own position in provider order, so a claim
+// posted after it is not released by it.
+func TestReleaseCommandOrderedByComment(t *testing.T) {
+	comments := []domain.Comment{
+		claimComment("100", "mrosani", domain.Claim{Instance: instanceA}, t0, t0),
+		human("101", "lbianchi", "/anthill release", t0),
+		claimComment("102", "lbianchi", domain.Claim{Instance: instanceB}, t0, t0),
+	}
+	got, found := domain.ResolveClaim(view(comments, t0), ghItem(12), domain.ClaimTask)
+	if !found || got.Instance != instanceB {
+		t.Errorf("ResolveClaim() = %q, %v; want %q, which came after the release", got.Instance, found, instanceB)
+	}
+}
+
+// Removing the claim label releases a parked claim for every instance,
+// but not a live one: the label is legitimately missing between the
+// re-read and the mark.
+func TestClaimLabelRemoved(t *testing.T) {
+	tests := []struct {
+		name   string
+		parked bool
+		held   bool
+	}{
+		{"parked claim without the label is released", true, false},
+		{"live claim without the label still holds", false, true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			v := view([]domain.Comment{claimComment("100", "mrosani", domain.Claim{Instance: instanceA, Parked: tt.parked}, t0, t0)}, t0)
+			v.Labels = []string{"anthill"}
+			if _, held := domain.ResolveClaim(v, ghItem(12), domain.ClaimTask); held != tt.held {
+				t.Errorf("held = %v, want %v", held, tt.held)
+			}
+		})
+	}
+	v := view([]domain.Comment{claimComment("100", "mrosani", domain.Claim{Instance: instanceA, Parked: true}, t0, t0)}, t0)
+	v.Labels, v.ClaimLabel = []string{"ANTHILL:Mine"}, "anthill:mine"
+	if _, held := domain.ResolveClaim(v, ghItem(12), domain.ClaimTask); !held {
+		t.Error("a configured claim label, in another case, was not found")
+	}
+}
+
+func TestCheckClaim(t *testing.T) {
+	own := claimComment("100", "mrosani", domain.Claim{Instance: instanceA}, t0, t0)
+	tests := []struct {
+		name     string
+		comments []domain.Comment
+		labels   []string
+		now      time.Time
+		lost     domain.ClaimLoss
+		reason   string
+		other    string // another instance whose claim holds
+	}{
+		{name: "held", comments: []domain.Comment{own}, now: t0.Add(time.Minute)},
+		{
+			name:     "holder returns after expiry: claimed by another instance",
+			comments: []domain.Comment{own, claimComment("101", "lbianchi", domain.Claim{Instance: instanceB}, t0.Add(30*time.Minute), t0.Add(30*time.Minute))},
+			now:      t0.Add(35 * time.Minute),
+			lost:     domain.LossTaken,
+			reason:   "claimed by " + instanceB,
+			other:    instanceB,
+		},
+		{name: "lease expired, nobody else", comments: []domain.Comment{own}, now: t0.Add(time.Hour), lost: domain.LossExpired, reason: "lease expired"},
+		{
+			name:     "force-released",
+			comments: []domain.Comment{own, human("101", "lbianchi", "/anthill release", t0.Add(time.Minute))},
+			now:      t0.Add(2 * time.Minute),
+			lost:     domain.LossForceReleased,
+			reason:   "released by lbianchi",
+		},
+		{
+			name: "force-released, then claimed by another instance",
+			comments: []domain.Comment{own, human("101", "lbianchi", "/anthill release", t0.Add(time.Minute)),
+				claimComment("102", "lbianchi", domain.Claim{Instance: instanceB}, t0.Add(2*time.Minute), t0.Add(2*time.Minute))},
+			now:    t0.Add(3 * time.Minute),
+			lost:   domain.LossForceReleased,
+			reason: "released by lbianchi",
+			other:  instanceB,
+		},
+		{name: "live claim, label removed", comments: []domain.Comment{own}, labels: []string{"anthill"}, now: t0.Add(time.Minute), lost: domain.LossLabelRemoved, reason: "claim label removed"},
+		{name: "comment deleted", now: t0, lost: domain.LossCommentGone, reason: "claim comment removed"},
+		{
+			name:     "comment marked released",
+			comments: []domain.Comment{claimComment("100", "mrosani", domain.Claim{Instance: instanceA, Released: true}, t0, t0)},
+			now:      t0,
+			lost:     domain.LossCommentGone,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			v := view(tt.comments, tt.now)
+			if tt.labels != nil {
+				v.Labels = tt.labels
+			}
+			got := domain.CheckClaim(v, ghItem(12), domain.ClaimTask, instanceA, "100")
+			if got.Lost != tt.lost || got.Held() != (tt.lost == "") {
+				t.Errorf("Lost = %q, want %q", got.Lost, tt.lost)
+			}
+			if tt.reason != "" && got.Reason() != tt.reason {
+				t.Errorf("Reason() = %q, want %q", got.Reason(), tt.reason)
+			}
+			if got.OtherHolds() != (tt.other != "") || got.Winner.Instance != tt.other {
+				t.Errorf("Winner = %q, want %q", got.Winner.Instance, tt.other)
+			}
+		})
+	}
+	if got := domain.CheckClaim(view([]domain.Comment{own}, t0), ghItem(12), domain.ClaimTask, instanceB, "100"); got.Lost != domain.LossCommentGone {
+		t.Errorf("another instance's comment: Lost = %q", got.Lost)
+	}
+}
+
+func TestIsClaimComment(t *testing.T) {
+	tests := []struct {
+		name string
+		c    domain.Comment
+		want bool
+	}{
+		{"claim", claimComment("1", "mrosani", domain.Claim{Instance: instanceA}, t0, t0), true},
+		{"release command", human("2", "lbianchi", "/anthill release", t0), true},
+		{"other human comment", human("3", "lbianchi", "/anthill review", t0), false},
+		{"status comment", domain.Comment{Body: domain.Marker{Version: domain.MarkerVersion, Instance: instanceA, Kind: domain.CommentStatus, Ref: "gh-12"}.String()}, false},
+	}
+	for _, tt := range tests {
+		if got := domain.IsClaimComment(tt.c); got != tt.want {
+			t.Errorf("%s: IsClaimComment() = %v, want %v", tt.name, got, tt.want)
+		}
 	}
 }

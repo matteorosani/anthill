@@ -8,25 +8,38 @@ import (
 	"strconv"
 	"strings"
 
+	gh "github.com/google/go-github/v93/github"
+
 	"github.com/matteorosani/anthill/internal/domain"
 	"github.com/matteorosani/anthill/internal/ports"
 )
 
-// Claims reads the claim comments of an item or PR in creation order,
-// with GitHub's time as the now for lease checks (design D3). GitHub has
-// no revision, so Revision is empty.
+// Claims reads the claim comments and /anthill release commands of an
+// item or PR in creation order, its labels, and GitHub's time as the now
+// for lease checks (design D3). The labels are read first, so a label
+// removed before a claim comment was read is never missed. GitHub has no
+// revision, so Revision is empty.
 func (a *Adapter) Claims(ctx context.Context, ref domain.Ref) (ports.ClaimPage, error) {
 	ref = normalizeRef(ref)
 	if err := checkRepo(ref.Repo); err != nil {
 		return ports.ClaimPage{}, err
+	}
+	labels, resp, err := collect(func(o gh.ListOptions) ([]*gh.Label, *gh.Response, error) {
+		return a.client.Issues.ListLabelsByIssue(ctx, ref.Repo.Org, ref.Repo.Name, ref.Number, &o)
+	})
+	if err != nil {
+		return ports.ClaimPage{}, a.apiError("list labels of "+ref.Full(), resp, err)
 	}
 	comments, resp, err := a.issueComments(ctx, ref)
 	if err != nil {
 		return ports.ClaimPage{}, err
 	}
 	page := ports.ClaimPage{ServerTime: a.serverTime(resp)}
+	for _, l := range labels {
+		page.Labels = append(page.Labels, l.GetName())
+	}
 	for _, c := range comments {
-		if m, ok := domain.FindMarker(c.Body); ok && m.Kind == domain.CommentClaim {
+		if domain.IsClaimComment(c) {
 			page.Comments = append(page.Comments, c)
 		}
 	}

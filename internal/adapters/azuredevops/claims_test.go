@@ -3,14 +3,16 @@ package azuredevops_test
 import (
 	"errors"
 	"net/http"
+	"slices"
 	"testing"
 
 	"github.com/matteorosani/anthill/internal/domain"
 	"github.com/matteorosani/anthill/internal/ports"
 )
 
-// Claims lists only claim comments, by creation time and then comment ID,
-// with the item's revision read first and Azure DevOps' time.
+// Claims lists only claim comments and /anthill release commands, by
+// creation time and then comment ID, with the item's revision and tags
+// read first and Azure DevOps' time.
 func TestClaims(t *testing.T) {
 	e := newEnv(t)
 	e.srv.fixture("GET "+itemPath, http.StatusOK, "workitem12_rev.json")
@@ -19,12 +21,16 @@ func TestClaims(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if page.Revision != "7" || !page.ServerTime.Equal(serverDate) || len(page.Comments) != 2 {
+	if page.Revision != "7" || !page.ServerTime.Equal(serverDate) || len(page.Comments) != 3 {
 		t.Fatalf("page = %+v", page)
 	}
-	// Both were created at the same second; comment 8 comes before 9.
-	if page.Comments[0].ID != "8" || page.Comments[1].ID != "9" {
-		t.Errorf("order = %s, %s", page.Comments[0].ID, page.Comments[1].ID)
+	// Both claims were created at the same second; comment 8 comes before
+	// 9. The release command 10 comes last.
+	if page.Comments[0].ID != "8" || page.Comments[1].ID != "9" || page.Comments[2].ID != "10" {
+		t.Errorf("order = %s, %s, %s", page.Comments[0].ID, page.Comments[1].ID, page.Comments[2].ID)
+	}
+	if !slices.Equal(page.Labels, []string{"anthill", "anthill:claimed"}) {
+		t.Errorf("labels = %v", page.Labels)
 	}
 	sent := e.srv.sent()
 	if sent[0].Path != itemPath || sent[1].Path != commentsPath {
@@ -137,6 +143,7 @@ func TestPostAndRetractOnWorkItem(t *testing.T) {
 // revision and no assignee.
 func TestClaimsOnPullRequest(t *testing.T) {
 	e := newEnv(t)
+	e.srv.fixture("GET "+prPath, http.StatusOK, "pull34.json")
 	e.srv.fixture("GET "+prPath+"/threads", http.StatusOK, "threads34_claims.json")
 	e.srv.fixture("POST "+prPath+"/labels", http.StatusOK, "label_created.json")
 	e.srv.handle("DELETE "+prPath+"/threads/20/comments/1", func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusOK) })
@@ -146,6 +153,9 @@ func TestClaimsOnPullRequest(t *testing.T) {
 	}
 	if page.Revision != "" || len(page.Comments) != 2 || page.Comments[0].ID != "20.1" || page.Comments[1].ID != "21.1" {
 		t.Fatalf("page = %+v", page)
+	}
+	if !slices.Equal(page.Labels, []string{"anthill"}) {
+		t.Errorf("labels = %v", page.Labels)
 	}
 	if assigned, err := e.a.Mark(ctx(t), pr34, ports.ClaimMark{Label: "anthill:claimed"}); err != nil || assigned {
 		t.Errorf("Mark() = %v, %v", assigned, err)
