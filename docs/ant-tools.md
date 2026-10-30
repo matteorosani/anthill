@@ -22,7 +22,17 @@ The daemon keeps tokens in memory only, never on disk. Restarting the daemon the
 
 A successful call returns its result as JSON text, and as structured content for clients that read it. A refused or failed call returns an error result whose text is the reason, in words the agent can act on. A refused call has no effect.
 
-Messages for the agent, such as a late extension decision, are attached to the result of its next call as notices that start with `Anthill notice:`.
+### Messages during a run
+
+Anthill gives the agent of an active run three kinds of message: the budget warning, a decision on an extension request that came after `request_extension` returned `pending`, and ticket updates. It uses the first means the runner supports (design D5):
+
+| Runner supports | Means |
+|-----------------|-------|
+| live input | The message is sent to the agent at once, as input. If sending fails, the next means is used. |
+| hooks | The message is queued. The runner's hook takes it with the control method `ant.notices` and adds it as context after the agent's next tool use. |
+| neither | The message is queued and attached to the result of the agent's next ant-tool call, refused calls included, as a notice that starts with `Anthill notice:`. |
+
+A queued message is delivered once, by the hook or by the next tool result, whichever comes first. Messages a run did not take are dropped when its token is revoked; the next run gets what it needs in its own input. As design D5 sets out, the task brief (task 14.3) asks the agent to call `time_remaining` from time to time, so a runner without live input or hooks still sees the warning soon.
 
 ## Roles
 
@@ -104,6 +114,7 @@ Writes the run's single `status` comment on the item. The first call of a run po
 
 - Arguments: `text` (string).
 - Result: `url` of the status comment.
+- Refusals: only the checks on every call.
 
 ### `comment`
 

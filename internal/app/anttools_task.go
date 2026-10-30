@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/matteorosani/anthill/internal/domain"
@@ -329,7 +330,14 @@ func (t *AntTools) DecideExtension(ctx context.Context, id ports.AntID, minutes 
 	case ch != nil:
 		ch <- req
 	case effect == domain.EffectBudgetGrown || effect == domain.EffectWrapUp:
-		t.notify(id, "extension "+string(req.Status)+": "+req.Message)
+		// The run may have ended meanwhile; then there is nobody to tell.
+		text := req.Message
+		if !strings.HasPrefix(text, "extension ") {
+			text = "extension " + string(req.Status) + ": " + text
+		}
+		if _, err := t.Deliver(ctx, id, text); err != nil && !errors.Is(err, ErrNoActiveRun) {
+			return req, effect, err
+		}
 	}
 	return req, effect, nil
 }

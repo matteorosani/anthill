@@ -18,6 +18,9 @@ const (
 	methodAntTools = "ant.tools"
 	// methodAntCall executes one ant-tool call.
 	methodAntCall = "ant.call"
+	// methodAntNotices takes the messages queued for a run, for the
+	// runner's hook (design D5).
+	methodAntNotices = "ant.notices"
 )
 
 // codeUnknownToken is the JSON-RPC error code of ant.tools for a token
@@ -66,6 +69,11 @@ type antCallResult struct {
 	Notices []string        `json:"notices,omitempty"`
 }
 
+// antNoticesResult is the result of ant.notices.
+type antNoticesResult struct {
+	Notices []string `json:"notices"`
+}
+
 // registerAPI registers the handler of every control method on srv.
 func registerAPI(srv *control.Server, health *app.Health, tools *app.AntTools) {
 	srv.Handle(methodStatus, func(context.Context, json.RawMessage, control.Stream) (any, error) {
@@ -111,6 +119,26 @@ func registerAPI(srv *control.Server, health *app.Health, tools *app.AntTools) {
 		}
 		return out, nil
 	})
+	srv.Handle(methodAntNotices, handleAntNotices(tools))
+}
+
+// handleAntNotices answers ant.notices, with the same params as
+// ant.tools.
+func handleAntNotices(tools *app.AntTools) control.Handler {
+	return func(_ context.Context, raw json.RawMessage, _ control.Stream) (any, error) {
+		var p antToolsParams
+		if err := decodeParams(raw, &p); err != nil {
+			return nil, err
+		}
+		notices, err := tools.Notices(p.Token)
+		if errors.Is(err, app.ErrUnknownToken) {
+			return nil, &control.Error{Code: codeUnknownToken, Message: err.Error()}
+		}
+		if err != nil {
+			return nil, err
+		}
+		return antNoticesResult{Notices: append([]string{}, notices...)}, nil
+	}
 }
 
 // decodeParams decodes a method's params, refusing missing or invalid
