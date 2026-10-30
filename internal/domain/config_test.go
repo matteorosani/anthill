@@ -111,6 +111,7 @@ var emptyConfigurationDefaults = map[string]string{
 	"secret-patterns":             "none",
 	"worktree-root":               "~/.anthill/worktrees",
 	"azure-devops-projects":       "none",
+	"provider-poll-intervals":     "none",
 }
 
 // Scenario "Empty configuration": with only a repository entry, every
@@ -172,6 +173,28 @@ func copyExported(dst *domain.Effective, src domain.Effective) {
 		if sv.Type().Field(i).IsExported() {
 			dv.Field(i).Set(sv.Field(i))
 		}
+	}
+}
+
+// provider-poll-intervals overrides poll-interval per connection, in any
+// case; other connections keep poll-interval (spec work-item-sources,
+// "Polling cadence").
+func TestPollIntervalForConnection(t *testing.T) {
+	e := domain.ConfigLayers{Global: &domain.SettingValues{
+		PollInterval:          ptr(3 * time.Minute),
+		ProviderPollIntervals: map[string]time.Duration{"Azure-DevOps/Contoso": 5 * time.Minute},
+	}}.Resolve()
+	if got := e.PollIntervalFor("azure-devops/contoso"); got != 5*time.Minute {
+		t.Errorf("azure-devops/contoso: %v", got)
+	}
+	if got := e.PollIntervalFor("github"); got != 3*time.Minute {
+		t.Errorf("github: %v", got)
+	}
+	if got := domain.Defaults().PollIntervalFor("github"); got != domain.DefaultPollInterval {
+		t.Errorf("default: %v", got)
+	}
+	if e.Source(domain.KeyProviderPollIntervals) != domain.LayerGlobal {
+		t.Errorf("source = %q", e.Source(domain.KeyProviderPollIntervals))
 	}
 }
 
@@ -355,6 +378,9 @@ func TestCheckKey(t *testing.T) {
 		{domain.LayerLocalEntry, "azure-devops-projects", `key "azure-devops-projects" can be set only in the global configuration`},
 		{domain.LayerGlobal, "azure-devops-projects.default-repository", ""},
 		{domain.LayerGlobal, "azure-devops-projects.repo", `unknown key "azure-devops-projects.repo"`},
+		{domain.LayerGlobal, "provider-poll-intervals.azure-devops/contoso", ""},
+		{domain.LayerLocalEntry, "provider-poll-intervals", `key "provider-poll-intervals" can be set only in the global configuration`},
+		{domain.LayerRepositoryFile, "provider-poll-intervals", `forbidden key "provider-poll-intervals": machine settings belong in the local configuration`},
 		// Scenario "OTLP headers in a configuration file".
 		{domain.LayerGlobal, "otlp-headers", "OTLP headers belong in the OS credential store, not in a configuration file"},
 		{domain.LayerLocalEntry, "otlp-headers", "OTLP headers belong in the OS credential store, not in a configuration file"},
@@ -437,6 +463,9 @@ func TestValidateSettings(t *testing.T) {
 		{"azure devops project twice", domain.SettingValues{AzureDevOpsProjects: []domain.AzureDevOpsProject{
 			{Project: "contoso/shop", DefaultRepository: "web"}, {Project: "Contoso/Shop", DefaultRepository: "api"},
 		}}, `project "Contoso/Shop" is listed more than once`},
+		{"provider poll interval too short", domain.SettingValues{ProviderPollIntervals: map[string]time.Duration{"github": 10 * time.Second}}, `poll interval of "github" must be at least 30s`},
+		{"provider poll interval empty name", domain.SettingValues{ProviderPollIntervals: map[string]time.Duration{" ": time.Minute}}, "provider connection name must not be empty"},
+		{"provider poll interval twice", domain.SettingValues{ProviderPollIntervals: map[string]time.Duration{"GitHub": time.Minute, "github": time.Minute}}, `provider connection "github" is listed more than once`},
 		{"worktree root relative", domain.SettingValues{WorktreeRoot: ptr("worktrees")}, `worktree root "worktrees" must be an absolute path`},
 		{"budget over maximum", domain.SettingValues{Budget: ptr(200), MaxBaseBudget: ptr(100)}, domain.MessageBudgetOverMaximum},
 	}
@@ -452,16 +481,17 @@ func TestValidateSettings(t *testing.T) {
 
 func TestValidateSettingsAcceptsValidValues(t *testing.T) {
 	v := domain.SettingValues{
-		OptInLabel:          ptr("ai"),
-		Budget:              ptr(45),
-		WarningThreshold:    ptr(99),
-		ProtectedBranches:   []string{"release/*", "main"},
-		AgentInstructions:   ptr("docs/AGENTS.md"),
-		OTLPEndpoint:        ptr("https://collector.example.com:4318"),
-		SecretPatterns:      []string{`ACME-[0-9]{8}`},
-		VerificationCommand: ptr("go test ./..."),
-		Reviewing:           ptr(false),
-		ExtensionAllowance:  &domain.ExtensionAllowanceSetting{Minutes: 15},
+		OptInLabel:            ptr("ai"),
+		Budget:                ptr(45),
+		WarningThreshold:      ptr(99),
+		ProtectedBranches:     []string{"release/*", "main"},
+		AgentInstructions:     ptr("docs/AGENTS.md"),
+		OTLPEndpoint:          ptr("https://collector.example.com:4318"),
+		SecretPatterns:        []string{`ACME-[0-9]{8}`},
+		VerificationCommand:   ptr("go test ./..."),
+		Reviewing:             ptr(false),
+		ExtensionAllowance:    &domain.ExtensionAllowanceSetting{Minutes: 15},
+		ProviderPollIntervals: map[string]time.Duration{"github": 30 * time.Second, "azure-devops/contoso": 5 * time.Minute},
 	}
 	if errs := domain.ValidateSettings("f", &v); errs != nil {
 		t.Errorf("errors = %v", errs)

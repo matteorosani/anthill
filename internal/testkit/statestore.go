@@ -22,6 +22,7 @@ type StateStore struct {
 	rounds     []ports.RoundRecord
 	polls      map[string]ports.PollStatus
 	hashes     map[domain.Ref]map[string]string
+	texts      map[domain.Ref]map[string]string
 	outbox     []outboxEntry
 	changes    []changeEntry
 	questions  map[string]ports.QuestionRecord
@@ -46,6 +47,7 @@ func NewStateStore() *StateStore {
 	return &StateStore{
 		polls:     map[string]ports.PollStatus{},
 		hashes:    map[domain.Ref]map[string]string{},
+		texts:     map[domain.Ref]map[string]string{},
 		questions: map[string]ports.QuestionRecord{},
 		hidden:    map[domain.Ref]ports.HiddenProposal{},
 	}
@@ -262,6 +264,14 @@ func (s *StateStore) RecordPoll(_ context.Context, p ports.PollResult) error {
 			s.hashes[h.Ref] = map[string]string{}
 		}
 		s.hashes[h.Ref][h.Group] = h.Value
+		if s.texts[h.Ref] == nil {
+			s.texts[h.Ref] = map[string]string{}
+		}
+		if h.Text == "" {
+			delete(s.texts[h.Ref], h.Group)
+		} else {
+			s.texts[h.Ref][h.Group] = h.Text
+		}
 	}
 	for _, e := range p.Events {
 		id := ports.OutboxID(len(s.outbox) + 1)
@@ -304,6 +314,17 @@ func (s *StateStore) Hashes(_ context.Context, ref domain.Ref) (map[string]strin
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return maps.Clone(s.hashes[ref]), nil
+}
+
+// Texts returns the stored texts of an item or PR.
+func (s *StateStore) Texts(_ context.Context, ref domain.Ref) (map[string]string, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	out := maps.Clone(s.texts[ref])
+	if out == nil {
+		out = map[string]string{}
+	}
+	return out, nil
 }
 
 // Pending lists the events not yet done.

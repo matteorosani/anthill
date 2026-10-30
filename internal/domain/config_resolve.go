@@ -3,6 +3,7 @@ package domain
 import (
 	"fmt"
 	"maps"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -57,6 +58,9 @@ type Effective struct {
 	// AzureDevOpsProjects holds the valid entries of
 	// azure-devops-projects.
 	AzureDevOpsProjects []AzureDevOpsProject
+	// ProviderPollIntervals overrides PollInterval per connection, keyed
+	// by the lowercased connection name. Use PollIntervalFor.
+	ProviderPollIntervals map[string]time.Duration
 
 	sources map[string]Layer
 	shown   map[string]string
@@ -118,6 +122,36 @@ func resolveProjects(r resolver) []AzureDevOpsProject {
 	}
 	r.record(KeyAzureDevOpsProjects, LayerDefault, showList(nil))
 	return nil
+}
+
+// resolveIntervals is resolveList for provider-poll-intervals. Keys are
+// lowercased.
+func resolveIntervals(r resolver) map[string]time.Duration {
+	for _, l := range r.layers {
+		if v := l.values.ProviderPollIntervals; v != nil {
+			out := make(map[string]time.Duration, len(v))
+			for k, d := range v {
+				out[strings.ToLower(k)] = d
+			}
+			var shown []string
+			for _, k := range slices.Sorted(maps.Keys(out)) {
+				shown = append(shown, k+": "+showDuration(out[k]))
+			}
+			r.record(KeyProviderPollIntervals, l.layer, showList(shown))
+			return out
+		}
+	}
+	r.record(KeyProviderPollIntervals, LayerDefault, showList(nil))
+	return nil
+}
+
+// PollIntervalFor returns the poll interval of a provider connection: its
+// provider-poll-intervals entry, else poll-interval.
+func (e Effective) PollIntervalFor(connection string) time.Duration {
+	if d, ok := e.ProviderPollIntervals[strings.ToLower(connection)]; ok {
+		return d
+	}
+	return e.PollInterval
 }
 
 // DefaultRepository returns the configured default repository of an
@@ -255,6 +289,7 @@ func (l ConfigLayers) Resolve() Effective {
 	e.OTLPEndpoint = str(KeyOTLPEndpoint, "", func(s *SettingValues) *string { return s.OTLPEndpoint })
 	e.SecretPatterns = resolveList(r, KeySecretPatterns, func(s *SettingValues) []string { return s.SecretPatterns })
 	e.AzureDevOpsProjects = resolveProjects(r)
+	e.ProviderPollIntervals = resolveIntervals(r)
 	e.WorktreeRoot = resolveValue(r, KeyWorktreeRoot, "", func(s *SettingValues) *string { return s.WorktreeRoot },
 		func(v string) string {
 			if v == "" {

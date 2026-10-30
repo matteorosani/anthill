@@ -112,6 +112,10 @@ func TestEditComment(t *testing.T) {
 	if _, err := e.a.EditComment(ctx(t), gh12, "x1", c); !errors.Is(err, ports.ErrNotFound) {
 		t.Errorf("invalid id: err = %v", err)
 	}
+	// A review summary is never edited.
+	if _, err := e.a.EditComment(ctx(t), pr34, "v456", c); !errors.Is(err, ports.ErrNotFound) {
+		t.Errorf("review summary: err = %v", err)
+	}
 }
 
 // Task 7.4: labels are added and removed; removing a missing label does

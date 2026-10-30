@@ -18,6 +18,23 @@ const (
 	ChangeLabelRemoved    ChangeKind = "label-removed"
 	ChangeStateChanged    ChangeKind = "state-changed"
 	ChangeCommitsPushed   ChangeKind = "commits-pushed"
+	// ChangeItemIngested is an item seen opted in for the first time, or
+	// opted in again after losing the opt-in label, so that eligibility
+	// evaluates it (spec work-item-sources, "Opt-in label added later").
+	ChangeItemIngested ChangeKind = "item-ingested"
+	// ChangePRIngested is an open PR seen for the first time.
+	ChangePRIngested       ChangeKind = "pr-ingested"
+	ChangeAssigneesChanged ChangeKind = "assignees-changed"
+	// ChangeLinksChanged covers dependency, parent and child links.
+	ChangeLinksChanged ChangeKind = "links-changed"
+	// ChangeDraftChanged is a PR marked as draft or ready for review.
+	ChangeDraftChanged ChangeKind = "draft-changed"
+)
+
+// The State of a ChangeDraftChanged event.
+const (
+	PRDraft = "draft"
+	PRReady = "ready"
 )
 
 // ItemField is a field of a ticket whose edits are always actionable.
@@ -50,15 +67,26 @@ type ChangeEvent struct {
 	Actor  string
 	At     time.Time
 	Origin Origin
-	// Field is set for ChangeItemEdited.
+	// Field is set for ChangeItemEdited, with Old and Body holding the
+	// field's text before and after the edit, so that the change can be
+	// delivered as a diff (spec change-reaction, "Delivery to an active
+	// run").
 	Field ItemField
-	// CommentID and Body are set for comments and reviews.
+	Old   string
+	// CommentID and Body are set for comments and reviews. ThreadID is
+	// also set for a comment in a PR review thread.
 	CommentID string
+	ThreadID  string
 	Body      string
 	// Review is set for ChangeReviewSubmitted.
 	Review ReviewState
 	// Label is set for label changes.
 	Label string
+	// State is set for ChangeStateChanged (an ItemState) and for
+	// ChangeDraftChanged (PRDraft or PRReady).
+	State string
+	// Head is the new head commit of a ChangeCommitsPushed event.
+	Head string
 }
 
 // Relevance is how a change is classified (spec change-reaction).

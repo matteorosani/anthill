@@ -25,9 +25,9 @@ func (s *Store) RecordPoll(ctx context.Context, p ports.PollResult) error {
 			return err
 		}
 		for _, h := range p.Hashes {
-			_, err := tx.ExecContext(ctx, `INSERT INTO hashes (ref_key, field_group, hash) VALUES (?, ?, ?)
-				ON CONFLICT (ref_key, field_group) DO UPDATE SET hash = excluded.hash`,
-				refKey(h.Ref), h.Group, h.Value)
+			_, err := tx.ExecContext(ctx, `INSERT INTO hashes (ref_key, field_group, hash, text) VALUES (?, ?, ?, ?)
+				ON CONFLICT (ref_key, field_group) DO UPDATE SET hash = excluded.hash, text = excluded.text`,
+				refKey(h.Ref), h.Group, h.Value, h.Text)
 			if err != nil {
 				return err
 			}
@@ -107,6 +107,24 @@ func (s *Store) Hashes(ctx context.Context, ref domain.Ref) (map[string]string, 
 			return nil, err
 		}
 		out[group] = hash
+	}
+	return out, rows.Err()
+}
+
+// Texts returns the stored texts of an item or PR.
+func (s *Store) Texts(ctx context.Context, ref domain.Ref) (map[string]string, error) {
+	rows, err := s.db.QueryContext(ctx, "SELECT field_group, text FROM hashes WHERE ref_key = ? AND text <> ''", refKey(ref))
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+	out := map[string]string{}
+	for rows.Next() {
+		var group, text string
+		if err := rows.Scan(&group, &text); err != nil {
+			return nil, err
+		}
+		out[group] = text
 	}
 	return out, rows.Err()
 }
