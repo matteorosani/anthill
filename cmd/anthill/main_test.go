@@ -68,6 +68,7 @@ func newTestEnv(t *testing.T) *testEnv {
 	clock := testkit.NewClock(time.Date(2026, 10, 30, 9, 0, 0, 0, time.UTC))
 	te := &testEnv{dir: dir, clock: clock, stdout: &syncBuffer{}, stderr: &syncBuffer{}}
 	te.environment = &environment{
+		stdin:      strings.NewReader(""),
 		stdout:     te.stdout,
 		stderr:     te.stderr,
 		home:       home,
@@ -82,7 +83,13 @@ func newTestEnv(t *testing.T) *testEnv {
 // command runs one command line in a fresh copy of the environment, with
 // its own output buffers, and returns the exit code and output.
 func (te *testEnv) command(args ...string) (code int, stdout, stderr string) {
+	return te.commandWithInput("", args...)
+}
+
+// commandWithInput runs command with input as its standard input.
+func (te *testEnv) commandWithInput(input string, args ...string) (code int, stdout, stderr string) {
 	env := *te.environment
+	env.stdin = strings.NewReader(input)
 	var out, errOut bytes.Buffer
 	env.stdout, env.stderr = &out, &errOut
 	code = run(context.Background(), args, &env)

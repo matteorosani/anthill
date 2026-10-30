@@ -31,8 +31,35 @@ type RunSpec struct {
 	// MCPCommand is the command line of the ant tools server, such as
 	// anthill mcp --ant <token> (design D5).
 	MCPCommand []string
+	// ToolToken is the run's tool token, which MCPCommand also carries.
+	// A runner with hooks gives it to the hook that takes the run's
+	// notices (design D5). It never goes in the brief.
+	ToolToken string
 	// Env is the agent's environment, without provider tokens (design D4).
 	Env []string
+	// Telemetry switches on the agent's own telemetry export, for a
+	// runner that supports it (spec observability, "Agent telemetry is
+	// switched on and linked"). It is nil when export is off.
+	Telemetry *AgentTelemetry
+}
+
+// AgentTelemetry is where an agent exports its telemetry, and what links
+// it to the Anthill run (design D18).
+type AgentTelemetry struct {
+	// Endpoint is the OTLP endpoint, and Protocol its protocol, such as
+	// grpc or http/protobuf.
+	Endpoint string
+	Protocol string
+	// Headers are the OTLP headers from the OS credential store, such as
+	// an authentication token for the endpoint. The agent can read them:
+	// they are a telemetry credential, never a provider or git one
+	// (design D18).
+	Headers map[string]string
+	// ResourceAttributes are anthill.item, anthill.ant_id and
+	// anthill.instance.
+	ResourceAttributes map[string]string
+	// TraceParent is the run's W3C trace context, or empty.
+	TraceParent string
 }
 
 // Usage is what a runner reported for a run or round. A nil field is
@@ -55,6 +82,10 @@ type Exit struct {
 // (design D6).
 type AgentRunner interface {
 	Capabilities() Capabilities
+	// Available returns an error when the runner's CLI cannot be started
+	// on this machine, such as when it is not installed (spec
+	// ant-execution, "Runner not installed").
+	Available(ctx context.Context) error
 	// Start starts a run with a new session.
 	Start(ctx context.Context, spec RunSpec) (Run, error)
 	// Resume starts a run that continues sessionID with spec.Brief as its

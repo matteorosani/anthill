@@ -1,0 +1,3 @@
+{"type":"system","subtype":"init","cwd":"/home/ann/.anthill/worktrees/gh-12-fix-login","session_id":"7f3c2a9e-5d1b-4c8e-9a6f-2b1d0e4c3a58","tools":["Bash"],"mcp_servers":[{"name":"anthill","status":"failed"}],"permissionMode":"acceptEdits","slash_commands":[],"apiKeySource":"none","output_style":"default","uuid":"b06394d5-15d2-4456-b7de-c34455667788"}
+not json: Claude Code printed a warning on standard output
+{"type":"result","subtype":"error_during_execution","is_error":true,"duration_ms":312,"duration_api_ms":0,"num_turns":0,"session_id":"7f3c2a9e-5d1b-4c8e-9a6f-2b1d0e4c3a58","total_cost_usd":0,"usage":{"input_tokens":0,"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"output_tokens":0},"permission_denials":[],"uuid":"c174a5e6-26e3-4567-88ef-d45566778899"}
