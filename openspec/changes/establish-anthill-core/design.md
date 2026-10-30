@@ -69,7 +69,7 @@ Ants edit files and commit inside their worktree. Everything that leaves the mac
 
 Agents get no provider tokens: Anthill strips `GH_TOKEN`, `GITHUB_TOKEN`, `AZURE_DEVOPS_EXT_PAT` and similar from the environment, sets `GIT_TERMINAL_PROMPT=0` and disables the git credential helper for the worktree, so a direct `git push` fails. Where the runner supports hooks, a pre-tool hook refuses `git push`, `gh` and `az` with a pointer to the right tool.
 
-This is a **guard, not a sandbox**. The agent runs as the developer's OS user, so a determined agent could still read the developer's `gh` config or OS credential store. The design stops accidents and casual prompt-injection, not a hostile agent (see Risks).
+This is a **guard, not a sandbox**. The agent runs as the developer's OS user, so a determined agent could still read the developer's `gh` config or OS credential store. The design stops accidents and casual prompt-injection, not a hostile agent (see Risks). The same holds for stopping a run (D6): on Unix, a process the agent starts in a process group or session of its own, with `setsid` for example, is out of reach of the stop and keeps running.
 
 *Alternatives:* let agents use `gh`/`az` directly (simple, but the policy becomes advisory and comments lose markers and redaction), or have agents only report intent through `finish` while Anthill writes the PR itself (safe, but the agent loses control of the PR text and draft state). Both rejected.
 
@@ -214,3 +214,4 @@ Not applicable (greenfield). Rollout: one developer first, with shepherd scope `
 - Whether stacked ant branches (working on top of an unmerged dependency PR) should be supported later. The current specs forbid it.
 - Per-runner details such as headless permission flags, which hooks are used, how session ids are captured (D17) and which OTel variables each runner honours (D18). Fixed when each runner adapter is built.
 - Stronger agent isolation (separate OS user or container) to close the credential gap in D4.
+- Agents left running after the daemon itself crashes or is killed. On Windows, the Job Object ends them when the daemon's handle to it closes. On Unix, the process group survives the daemon, so an agent could keep working while restart reconciliation (ant-execution) resumes its session or marks it failed. Reconciliation should find and end such processes first, for example from a process group id recorded with the run.
