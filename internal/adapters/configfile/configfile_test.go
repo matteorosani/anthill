@@ -3,6 +3,7 @@ package configfile_test
 import (
 	"context"
 	"errors"
+	"maps"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -134,7 +135,7 @@ agent-instructions: docs/AGENTS.md
 	for _, row := range e.Inspect() {
 		switch row.Key {
 		case domain.KeyRunner, domain.KeyCapacity, domain.KeyReviewing, domain.KeyPollInterval, domain.KeyLease,
-			domain.KeyGracePeriod, domain.KeyExtensionWait, domain.KeyQuestionStaleness, domain.KeyOTLPEndpoint, domain.KeySecretPatterns, domain.KeyWorktreeRoot, domain.KeyAzureDevOpsProjects:
+			domain.KeyGracePeriod, domain.KeyExtensionWait, domain.KeyQuestionStaleness, domain.KeyOTLPEndpoint, domain.KeySecretPatterns, domain.KeyWorktreeRoot, domain.KeyAzureDevOpsProjects, domain.KeyProviderPollIntervals:
 			continue
 		}
 		if row.Source != domain.LayerRepositoryFile {
@@ -189,6 +190,9 @@ budget: 30
 azure-devops-projects:
   - project: contoso/shop
     default-repository: web
+provider-poll-intervals:
+  GitHub: 1m
+  azure-devops/contoso: 5m
 repositories:
   - provider: github
     remote: matteorosani/anthill
@@ -209,7 +213,8 @@ repositories:
 		*g.Lease != 20*time.Minute || *g.GracePeriod != 5*time.Minute || *g.ExtensionWait != 2*time.Minute ||
 		*g.QuestionStaleness != 48*time.Hour || *g.OTLPEndpoint != "http://localhost:4318" ||
 		!slices.Equal(g.SecretPatterns, []string{"ACME-[0-9]{8}"}) || *g.Budget != 30 ||
-		!slices.Equal(g.AzureDevOpsProjects, []domain.AzureDevOpsProject{{Project: "contoso/shop", DefaultRepository: "web"}}) {
+		!slices.Equal(g.AzureDevOpsProjects, []domain.AzureDevOpsProject{{Project: "contoso/shop", DefaultRepository: "web"}}) ||
+		!maps.Equal(g.ProviderPollIntervals, map[string]time.Duration{"GitHub": time.Minute, "azure-devops/contoso": 5 * time.Minute}) {
 		t.Errorf("global = %+v", g)
 	}
 	if len(cfg.Repositories) != 2 {

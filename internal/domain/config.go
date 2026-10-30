@@ -11,7 +11,10 @@ import (
 // labels, budgets, lease and branch prefix keep their defaults next to
 // the rules that use them.
 const (
-	DefaultPollInterval      = 2 * time.Minute
+	DefaultPollInterval = 2 * time.Minute
+	// MinProviderPollInterval is the shortest interval
+	// provider-poll-intervals accepts.
+	MinProviderPollInterval  = 30 * time.Second
 	DefaultCapacity          = 2
 	DefaultRoundLimit        = 3
 	DefaultFollowUpLimit     = 5
@@ -105,6 +108,9 @@ const (
 	// KeyAzureDevOpsProjects maps Azure DevOps projects to their default
 	// target repository (spec work-item-sources, "Repository mapping").
 	KeyAzureDevOpsProjects = "azure-devops-projects"
+	// KeyProviderPollIntervals overrides poll-interval per provider
+	// connection (spec work-item-sources, "Polling cadence").
+	KeyProviderPollIntervals = "provider-poll-intervals"
 
 	KeyProvider = "provider"
 	KeyRemote   = "remote"
@@ -180,6 +186,7 @@ var settingInfos = []SettingInfo{
 	{KeySecretPatterns, globalOnly},
 	{KeyWorktreeRoot, globalOnly},
 	{KeyAzureDevOpsProjects, globalOnly},
+	{KeyProviderPollIntervals, globalOnly},
 	{KeyProvider, entryOnly},
 	{KeyRemote, entryOnly},
 	{KeyPath, entryOnly},
@@ -292,6 +299,11 @@ func CheckKey(layer Layer, path []string) string {
 			return ""
 		}
 		return "unknown key " + quote(strings.Join(path, "."))
+	}
+	if len(path) == 2 && path[0] == KeyProviderPollIntervals {
+		// The keys are connection names, which are checked with the
+		// values.
+		return ""
 	}
 	if len(path) > 1 {
 		return "unknown key " + quote(strings.Join(path, "."))
@@ -408,6 +420,10 @@ type SettingValues struct {
 	WorktreeRoot      *string        `yaml:"worktree-root"`
 	// AzureDevOpsProjects is nil when the layer does not set it.
 	AzureDevOpsProjects []AzureDevOpsProject `yaml:"azure-devops-projects"`
+	// ProviderPollIntervals maps connection names, such as github or
+	// azure-devops/contoso, to their poll interval. It is nil when the
+	// layer does not set it.
+	ProviderPollIntervals map[string]time.Duration `yaml:"provider-poll-intervals"`
 }
 
 // AzureDevOpsProject is one entry of azure-devops-projects: the target

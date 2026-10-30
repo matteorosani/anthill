@@ -167,6 +167,10 @@ type Hash struct {
 	Ref   domain.Ref
 	Group string
 	Value string
+	// Text is the group's text, kept for the groups whose old value a
+	// change event carries, such as a title or body, and "" for the
+	// others. It stays on this machine and is never logged.
+	Text string
 }
 
 // PollResult is what one successful poll of a provider connection found.
@@ -211,6 +215,9 @@ type PollState interface {
 	PollStatuses(ctx context.Context) ([]PollStatus, error)
 	// Hashes are the stored hashes of an item or PR by group.
 	Hashes(ctx context.Context, ref domain.Ref) (map[string]string, error)
+	// Texts are the stored texts of an item or PR by group, for the
+	// groups whose text is not empty.
+	Texts(ctx context.Context, ref domain.Ref) (map[string]string, error)
 }
 
 // OutboxID identifies one change event in the outbox.

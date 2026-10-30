@@ -2,10 +2,12 @@ package domain
 
 import (
 	"fmt"
+	"maps"
 	"net/url"
 	"path"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 	"time"
 )
@@ -198,6 +200,22 @@ var settingChecks = []settingCheck{
 				return fmt.Sprintf("project %q is listed more than once", p.Project)
 			}
 			seen[r] = true
+		}
+		return ""
+	}},
+	{KeyProviderPollIntervals, func(s *SettingValues) string {
+		seen := map[string]bool{}
+		for _, name := range slices.Sorted(maps.Keys(s.ProviderPollIntervals)) {
+			key := strings.ToLower(name)
+			switch {
+			case strings.TrimSpace(name) == "":
+				return "provider connection name must not be empty"
+			case seen[key]:
+				return fmt.Sprintf("provider connection %q is listed more than once", key)
+			case s.ProviderPollIntervals[name] < MinProviderPollInterval:
+				return fmt.Sprintf("poll interval of %q must be at least %s", name, showDuration(MinProviderPollInterval))
+			}
+			seen[key] = true
 		}
 		return ""
 	}},

@@ -262,6 +262,22 @@ func testPollState(t *testing.T, s ports.StateStore) {
 	check(t, s.RecordPoll(ctx, ports.PollResult{Connection: "github", Cursor: "c2", At: T0.Add(2 * time.Hour), Hashes: []ports.Hash{{Ref: Item(1), Group: "body", Value: "h3"}}}))
 	equal(t, "status after success", must(s.PollStatus(ctx, "github")), ports.PollStatus{Connection: "github", Cursor: "c2", LastSuccess: T0.Add(2 * time.Hour)})
 	equal(t, "updated hashes", must(s.Hashes(ctx, Item(1))), map[string]string{"body": "h3", "comments": "h2"})
+
+	// Texts are kept next to their hash, replaced with it, and dropped
+	// when the new hash has none.
+	equal(t, "no texts", len(must(s.Texts(ctx, Item(2)))), 0)
+	check(t, s.RecordPoll(ctx, ports.PollResult{Connection: "github", Cursor: "c3", At: T0.Add(3 * time.Hour), Hashes: []ports.Hash{
+		{Ref: Item(2), Group: "title", Value: "t1", Text: "Fix login"},
+		{Ref: Item(2), Group: "body", Value: "b1", Text: "Steps\nmore"},
+		{Ref: Item(2), Group: "state", Value: "s1"},
+	}}))
+	equal(t, "texts", must(s.Texts(ctx, Item(2))), map[string]string{"title": "Fix login", "body": "Steps\nmore"})
+	check(t, s.RecordPoll(ctx, ports.PollResult{Connection: "github", Cursor: "c4", At: T0.Add(4 * time.Hour), Hashes: []ports.Hash{
+		{Ref: Item(2), Group: "title", Value: "t2", Text: "Fix login on Safari"},
+		{Ref: Item(2), Group: "body", Value: "b2"},
+	}}))
+	equal(t, "updated texts", must(s.Texts(ctx, Item(2))), map[string]string{"title": "Fix login on Safari"})
+	equal(t, "texts of another ref", len(must(s.Texts(ctx, Item(1)))), 0)
 }
 
 func testOutbox(t *testing.T, s ports.StateStore) {
