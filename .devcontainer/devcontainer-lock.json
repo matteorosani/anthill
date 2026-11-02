@@ -1,0 +1,9 @@
+{
+  "features": {
+    "ghcr.io/jrussellsmyth/devcontainer-features/openspec:1": {
+      "version": "1.0.0",
+      "resolved": "ghcr.io/jrussellsmyth/devcontainer-features/openspec@sha256:4d77d7e69fcd1eca3956b3f7b44567c0a1b13967e841744a7f2b85ac64eb36f7",
+      "integrity": "sha256:4d77d7e69fcd1eca3956b3f7b44567c0a1b13967e841744a7f2b85ac64eb36f7"
+    }
+  }
+}

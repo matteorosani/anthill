@@ -9,6 +9,10 @@
 - GNU make, for the `make` targets. It ships with macOS (Xcode command line tools) and most Linux distributions. On Windows, install it with `winget install GnuWin32.Make`, `choco install make` or `scoop install make`, or run the commands listed under each target in the `Makefile` directly.
 - On Windows, a C compiler such as MinGW-w64 `gcc` on `PATH`, because the race detector used by `make test` needs cgo there.
 
+### Dev container
+
+Instead of installing the tools above, you can open the repository in the dev container defined in `.devcontainer/devcontainer.json`, for example with the VS Code Dev Containers extension and Docker. It provides Go 1.27, golangci-lint, GNU make, gcc and the OpenSpec CLI.
+
 ### Build
 
 ```bash
