@@ -15,9 +15,17 @@ const (
 	HookPostToolUse = "post-tool-use"
 )
 
+// The shell tools of Claude Code, whose commands the PreToolUse hook
+// checks: Bash everywhere, and PowerShell, which Claude Code offers on
+// Windows besides Bash (issue #146).
+const (
+	ToolBash       = "Bash"
+	ToolPowerShell = "PowerShell"
+)
+
 // hookSettings is the --settings file:
-//   - PreToolUse on Bash runs anthill hook pre-tool-use, which refuses
-//     git push, gh and az;
+//   - PreToolUse on Bash and PowerShell runs anthill hook pre-tool-use,
+//     which refuses git push, gh and az;
 //   - PostToolUse on every tool runs anthill hook post-tool-use --ant
 //     <token>, which adds the run's queued notices as context.
 func hookSettings(anthill, token string) any {
@@ -28,7 +36,7 @@ func hookSettings(anthill, token string) any {
 	post := shellQuote(anthill) + " hook " + HookPostToolUse + " --ant " + shellQuote(token)
 	return map[string]any{
 		"hooks": map[string]any{
-			"PreToolUse":  []map[string]any{{"matcher": "Bash", "hooks": hook(pre)}},
+			"PreToolUse":  []map[string]any{{"matcher": ToolBash + "|" + ToolPowerShell, "hooks": hook(pre)}},
 			"PostToolUse": []map[string]any{{"matcher": "*", "hooks": hook(post)}},
 		},
 	}
@@ -52,16 +60,22 @@ type hookInput struct {
 }
 
 // PreToolUse decides on a PreToolUse hook input: when the agent is about
-// to run a Bash command that the redirect hooks refuse, it returns the
-// message for the agent. The hook then exits with code 2, which blocks
-// the tool call and shows the message to the agent. An input it cannot
-// read is not refused.
+// to run a Bash or PowerShell command that the redirect hooks refuse, it
+// returns the message for the agent. The hook then exits with code 2,
+// which blocks the tool call and shows the message to the agent. An
+// input it cannot read is not refused.
 func PreToolUse(input []byte) (message string, refused bool) {
 	var in hookInput
-	if err := json.Unmarshal(input, &in); err != nil || in.ToolName != "Bash" {
+	if err := json.Unmarshal(input, &in); err != nil {
 		return "", false
 	}
-	return domain.RefuseCommand(in.ToolInput.Command)
+	switch in.ToolName {
+	case ToolBash:
+		return domain.RefuseCommand(in.ToolInput.Command)
+	case ToolPowerShell:
+		return domain.RefusePowerShellCommand(in.ToolInput.Command)
+	}
+	return "", false
 }
 
 // PostToolUseOutput is the output of a PostToolUse hook that adds the

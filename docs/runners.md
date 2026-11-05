@@ -30,22 +30,23 @@ In the worktree, Anthill runs:
 claude -p --input-format stream-json --output-format stream-json --verbose \
   --mcp-config <run dir>/mcp.json --strict-mcp-config \
   --settings <run dir>/settings.json \
-  --permission-mode acceptEdits --allowedTools Bash,Edit,Write,Read,Glob,Grep,mcp__anthill \
+  --permission-mode acceptEdits --allowedTools Bash,PowerShell,Edit,Write,Read,Glob,Grep,mcp__anthill \
   [--resume <session id>]
 ```
 
 - **The brief.** The brief, then each live input, is written to standard input as one JSON line: `{"type":"user","message":{"role":"user","content":[{"type":"text","text":"…"}]},"parent_tool_use_id":null}`. Nothing of the brief goes on the command line. On Windows, cmd.exe would mangle it there.
-- **When the run ends on its own.** Each answered message ends with a `result` event. Once every message written has its result, Anthill closes standard input, and Claude Code exits. A `Send` after that fails, and the message goes to the next means of delivery (design D5).
+- **When the run ends on its own.** A turn ends with a `result` event. A message sent while Claude Code works can be folded into the running turn, which then answers it with the brief in one `result` (smoke check C3). So Anthill does not count results: once a `result` reports `queued_turn_count` 0, no message is waiting for a turn of its own, and Anthill closes standard input. Claude Code then exits. A `Send` after that fails, and the message goes to the next means of delivery (design D5). A Claude Code that does not report `queued_turn_count` is handled as before: the input closes once every message written has its own `result`.
+- **Background tasks.** Claude Code does not exit while a command it started in the background is still going, even after its last `result` and with standard input closed. Such a run ends only when that command ends or Anthill stops the run (smoke check C7 on Windows).
 - **The run directory.** `<run dir>` is a temporary directory outside the worktree, so the agent cannot commit it. It holds the two files below and is removed when the run ends. The settings file holds the run's tool token, which therefore never appears in the brief.
   - `mcp.json` names one stdio server, `anthill`, that runs `anthill mcp --ant <token>`.
   - `settings.json` installs the hooks:
-    - `PreToolUse` on `Bash` runs `"<anthill>" hook pre-tool-use`. It refuses `git push`, `gh` and `az` with exit code 2 and a message naming the ant tool to use, such as `open_pull_request` for `gh pr create`.
+    - `PreToolUse` on `Bash` and `PowerShell` (matcher `Bash|PowerShell`) runs `"<anthill>" hook pre-tool-use`. It refuses `git push`, `gh` and `az` with exit code 2 and a message naming the ant tool to use, such as `open_pull_request` for `gh pr create`. It reads a `PowerShell` command with PowerShell's quoting, where a backslash is an ordinary character and the backtick escapes, and also follows `Invoke-Expression` and `Start-Process`.
     - `PostToolUse` on every tool runs `"<anthill>" hook post-tool-use --ant "<token>"`. It takes the run's queued notices from the daemon (`ant.notices`) and returns them as `additionalContext`. With no notice, or when the daemon cannot be reached, it prints nothing and exits 0, so it never blocks the agent.
 - **`--strict-mcp-config`.** This leaves out the developer's own MCP servers. A GitHub MCP server holding a token would otherwise give the agent provider access, which design D4 rules out.
-- **`--permission-mode acceptEdits` with `--allowedTools`.** This is the most restrictive headless setting that still lets the agent edit files and run the tests in its worktree (design, Risks). `acceptEdits` alone would still ask before each Bash command, and nobody answers a headless run. `--allowedTools` lets only the listed tools run without a prompt. The `PreToolUse` hook still refuses `git push`, `gh` and `az`. `bypassPermissions` was not used: it would also let through every tool not listed.
+- **`--permission-mode acceptEdits` with `--allowedTools`.** This is the most restrictive headless setting that still lets the agent edit files and run the tests in its worktree (design, Risks). `acceptEdits` alone would still ask before each Bash command, and nobody answers a headless run. `--allowedTools` lets only the listed tools run without a prompt. On Windows, Claude Code has a `PowerShell` tool besides `Bash`, and the agent often chooses it. Without `PowerShell` in the list, Claude Code asks before every PowerShell command that is not read-only, so the agent could not build, test or commit with it (smoke check C2). The `PreToolUse` hook still refuses `git push`, `gh` and `az`. `bypassPermissions` was not used: it would also let through every tool not listed.
 - **The model.** Anthill sets no model. Claude Code uses the developer's own default.
 - **Session id.** The session id is read from the `system` `init` event, and also from every later event that carries one.
-- **Usage.** Tokens are every token of each `result` event: input, output, cache creation and cache reads. They are added up over the run's results, so cached tokens count, as on every runner. The cost is the `total_cost_usd` of the last result, on the assumption that it is cumulative for the process (smoke check C6).
+- **Usage.** Tokens are every token of each `result` event: input, output, cache creation and cache reads. They are added up over the run's results, so cached tokens count, as on every runner. The cost is the `total_cost_usd` of the last result, on the assumption that it is cumulative for the process (smoke check C6). A run stopped before its first `result` has unknown usage, although it used tokens.
 - **Telemetry variables.**
   - Always: `OTEL_LOG_USER_PROMPTS=0` and `OTEL_LOG_TOOL_DETAILS=0`.
   - With export on, also: `CLAUDE_CODE_ENABLE_TELEMETRY=1`, `OTEL_METRICS_EXPORTER=otlp`, `OTEL_LOGS_EXPORTER=otlp`, `OTEL_EXPORTER_OTLP_ENDPOINT`, `OTEL_EXPORTER_OTLP_PROTOCOL`, `OTEL_EXPORTER_OTLP_HEADERS`, `OTEL_RESOURCE_ATTRIBUTES` (`anthill.item`, `anthill.ant_id`, `anthill.instance`) and `TRACEPARENT`.
@@ -53,14 +54,22 @@ claude -p --input-format stream-json --output-format stream-json --verbose \
 
 ### What is not certain yet
 
-The tests run against recorded output written from Claude Code's documentation, not captured from a real run. The smoke run checks these points; record the answers in the table at the end.
+Most tests run against recorded output written from Claude Code's documentation. The test of a message folded into the running turn replays output captured on Windows (issue #146). The smoke runs check these points; record the answers in the table at the end.
 
-1. A user message with content blocks and `parent_tool_use_id: null`, without a `session_id`, is accepted on standard input (C1).
-2. A message sent while Claude Code is working gets its own `result`, and Claude Code exits once standard input is closed after the last one (C3). If several queued messages are answered by a single `result`, the run would not end on its own: it would only end when Anthill stops it.
-3. The `PostToolUse` matcher `*` runs the hook after every tool, and `additionalContext` reaches the agent (C4).
-4. `--resume` keeps the session id, or reports a new one in its `init` event; either way the run reports what Claude Code says (C5).
-5. `total_cost_usd` is cumulative over the process (C6).
-6. On Windows, the hooks run with the quoted path (C4).
+Confirmed on Windows with Claude Code 2.1.318 (issue #146):
+
+- A user message with content blocks and `parent_tool_use_id: null`, without a `session_id`, is accepted on standard input (C1).
+- The `PostToolUse` matcher `*` runs the hook after every tool, `additionalContext` reaches the agent, and the hooks run with the quoted path (C4).
+- `--resume` keeps the session id (C5).
+- A stop ends the whole tree, Claude Code's own commands included (C7).
+- A message sent during a turn can be folded into it, with one `result` for both messages and `queued_turn_count` 0 (C3). Before task 13.7, the run then did not end on its own.
+
+Still open:
+
+1. A message sent between turns, and read after the `result` of the turn before it, gets a turn and a `result` of its own, and the `result` before it reports it in `queued_turn_count` (C3). The tests assume so.
+2. A message written just before a `result` with `queued_turn_count` 0, and not yet read when Anthill closes standard input, is still answered before Claude Code exits.
+3. `total_cost_usd` is cumulative over the process (C6). The `result` events also carry `model_usage_since_last_result`, which suggests it is, but no smoke run has produced two results in one process yet.
+4. On macOS and Linux, all the checks: they have only been run on Windows.
 
 ## Codex
 
@@ -170,6 +179,7 @@ The hidden command `anthill runner-smoke` starts one run of the real agent in th
 2. Build Anthill from the branch under test:
    - macOS or Linux: `make build`; the binary is `bin/anthill`.
    - Windows (PowerShell): `go build -o bin\anthill.exe .\cmd\anthill`.
+   - Windows, from Linux or the dev container: `CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -o bin/anthill.exe ./cmd/anthill`.
 3. Stop the Anthill daemon if it runs.
 4. Make a throwaway repository and go into it:
 
@@ -180,6 +190,8 @@ The hidden command `anthill runner-smoke` starts one run of the real agent in th
    On Windows, use `mkdir $env:TEMP\smoke; cd $env:TEMP\smoke` and the same git commands.
 
 Below, `anthill` means the path of the binary you built, for example `~/src/anthill/bin/anthill` or `C:\src\anthill\bin\anthill.exe`.
+
+To keep a record, save the two outputs to files, for example `> c1.out.txt 2> c1.events.jsonl`. On Windows, do this in `cmd.exe` or PowerShell 7 (`pwsh`), not in Windows PowerShell 5.1: it saves the files as UTF-16 and wraps each line of standard error in an error record, which breaks the JSON lines.
 
 ### Claude Code
 
@@ -208,7 +220,7 @@ anthill runner-smoke --runner claude-code "Run the shell command 'gh pr create -
 
 Expected:
 
-- On standard error, the tool results of both Bash calls are errors.
+- On standard error, the tool results of both calls are errors. On Windows, the agent may use the `PowerShell` tool instead of `Bash`; the hook refuses both.
 - The `gh` one says `anthill: gh is disabled for agents; call the open_pull_request tool instead`.
 - The `git push` one says `anthill: git push is disabled for agents; call the push tool instead`.
 - The agent's last message reports both refusals.
@@ -226,10 +238,10 @@ On Windows, use `Start-Sleep -Seconds 20` in the brief.
 Expected:
 
 - `smoke: live input sent` about 5 seconds after the start.
-- On standard error, two `result` events: one for the brief, and one that answers 42. Note whether there were two results or one.
+- On standard error, one or two `result` events. Claude Code may fold the message into the running turn and answer both in one `result`, or answer the message in a turn of its own. Note which, and the `queued_turn_count` of each `result`.
 - The process then ends on its own with exit code 0.
 
-If it does not end within a minute of the last result, press Ctrl+C. Then record "one result for both messages" for open point 2.
+If it does not end within a minute of the last result, press Ctrl+C, and record it as a failure.
 
 #### C4: notices reach the agent through the hook
 
@@ -258,22 +270,30 @@ Expected:
 
 #### C6: usage and cost
 
-From the C3 run, compare the `total_cost_usd` of the two `result` events. The second is not lower than the first if the cost is cumulative. The cost printed by `smoke: usage:` is the last one.
+From a C3 run with two `result` events, compare their `total_cost_usd`. The second is not lower than the first if the cost is cumulative. The cost printed by `smoke: usage:` is the last one. When C3 gives one `result`, C6 stays open.
 
 #### C7: stop leaves no process behind
 
 ```bash
-anthill runner-smoke --runner claude-code --stop-after 15s \
-  "Run 'sleep 300' in the shell and wait for it."
+anthill runner-smoke --runner claude-code --stop-after 30s \
+  "Run exactly this command with the Bash tool, in the foreground: ping -n 300 127.0.0.1 > /dev/null. Wait for it to finish."
 ```
+
+On macOS and Linux, use `ping -c 300 127.0.0.1`. The brief does not use `sleep`: Claude Code may refuse a long `sleep` or `Start-Sleep`, or run it in the background, and the check then has no command to stop.
 
 Expected:
 
 - `smoke: stopping the run (--stop-after), grace 10s`.
 - Within about 10 seconds, `smoke: run ended: exit code -1, crashed true`.
 - Afterwards, no agent process is left:
-  - macOS or Linux: `ps -ef | grep -E 'claude|sleep 300' | grep -v grep` prints nothing.
-  - Windows: `Get-Process | Where-Object { $_.ProcessName -match 'claude|node' }` shows no process started by the smoke run. Compare with the list before the run if other Claude Code windows are open.
+  - macOS or Linux: `ps -ef | grep -E 'claude -p|ping' | grep -v grep` prints nothing.
+  - Windows: in a second `cmd.exe` window, list the processes before, during and after the run, and compare:
+
+    ```bat
+    powershell -NoProfile -Command "Get-CimInstance Win32_Process | Where-Object { $_.Name -match 'claude|bash|anthill|ping' } | Select-Object ProcessId,ParentProcessId,Name,CommandLine | Format-Table -AutoSize | Out-String -Width 400"
+    ```
+
+    During the run, the list shows `claude -p …` with `anthill mcp` and `bash.exe` under it, and `PING.EXE` under `bash.exe`. After it, none of them is left. A Claude Code window or desktop app of your own shows up in every list.
 
 Also run C7 with Ctrl+C instead of `--stop-after`: the output and the result are the same, with `(interrupted)`.
 
@@ -285,11 +305,13 @@ Copy this table into the pull request or issue that records the smoke run:
 |---|---|---|---|
 | C1 run, tool, own end |  |  |  |
 | C2 hooks refuse gh, git push |  |  |  |
-| C3 live input (results: one or two?) |  |  |  |
+| C3 live input (results: one or two? `queued_turn_count`?) |  |  |  |
 | C4 notice through the hook |  |  |  |
 | C5 resume (same session id?) |  |  |  |
 | C6 cost cumulative? |  |  |  |
 | C7 no process after stop |  |  |  |
+
+The results so far are recorded in issue #146.
 
 ### Codex
 

@@ -15,13 +15,27 @@ import (
 // the program, such as through a variable or a script, is not refused,
 // and the push then fails for lack of credentials.
 func RefuseCommand(command string) (message string, refused bool) {
-	for _, words := range simpleCommands(command, 0) {
-		if m, ok := refuseWords(words, 0); ok {
-			return m, true
-		}
-	}
-	return "", false
+	return refuseString(command, posixShell, 0)
 }
+
+// RefusePowerShellCommand is RefuseCommand for a PowerShell command
+// line, such as one Claude Code's PowerShell tool runs on Windows. It
+// reads PowerShell's quoting, where a backslash is an ordinary character
+// and the backtick escapes, and also follows Invoke-Expression and
+// Start-Process.
+func RefusePowerShellCommand(command string) (message string, refused bool) {
+	return refuseString(command, powerShell, 0)
+}
+
+// shellDialect is the quoting a command line is read with.
+type shellDialect int
+
+const (
+	// posixShell: a backslash escapes, and backquotes substitute.
+	posixShell shellDialect = iota
+	// powerShell: a backslash is literal, and the backtick escapes.
+	powerShell
+)
 
 // maxNesting bounds how deep sh -c and eval are followed.
 const maxNesting = 4
@@ -30,12 +44,22 @@ const maxNesting = 4
 var commandWrappers = map[string]bool{
 	"sudo": true, "env": true, "command": true, "exec": true, "time": true,
 	"nohup": true, "nice": true, "xargs": true, "builtin": true, "doas": true,
+	// PowerShell and cmd.exe: Start-Process and its aliases, and the
+	// dot-source operator (the call operator & splits commands already).
+	"start-process": true, "saps": true, "start": true, ".": true,
 }
 
-// shells run the command string given to -c.
-var shells = map[string]bool{
-	"sh": true, "bash": true, "zsh": true, "dash": true, "ksh": true, "fish": true,
-	"pwsh": true, "powershell": true, "cmd": true,
+// evaluators run their arguments as a command line, read with the
+// given quoting.
+var evaluators = map[string]shellDialect{
+	"eval": posixShell, "invoke-expression": powerShell, "iex": powerShell,
+}
+
+// shells run the command string given to -c, read with their quoting.
+var shells = map[string]shellDialect{
+	"sh": posixShell, "bash": posixShell, "zsh": posixShell, "dash": posixShell,
+	"ksh": posixShell, "fish": posixShell, "cmd": posixShell,
+	"pwsh": powerShell, "powershell": powerShell,
 }
 
 func refuseWords(words []string, depth int) (string, bool) {
@@ -54,20 +78,23 @@ func refuseWords(words []string, depth int) (string, bool) {
 		}
 	case prog == "gh" || prog == "az":
 		return providerCLIMessage(prog, words[1:]), true
-	case prog == "eval" && depth < maxNesting:
-		return refuseString(strings.Join(words[1:], " "), depth+1)
-	case shells[prog] && depth < maxNesting:
-		for i, w := range words[1:] {
-			if lw := strings.ToLower(w); (lw == "-c" || lw == "/c" || lw == "-command") && i+2 < len(words) {
-				return refuseString(words[i+2], depth+1)
+	case depth < maxNesting:
+		if dialect, ok := evaluators[prog]; ok {
+			return refuseString(strings.Join(words[1:], " "), dialect, depth+1)
+		}
+		if dialect, ok := shells[prog]; ok {
+			for i, w := range words[1:] {
+				if lw := strings.ToLower(w); (lw == "-c" || lw == "/c" || lw == "-command") && i+2 < len(words) {
+					return refuseString(words[i+2], dialect, depth+1)
+				}
 			}
 		}
 	}
 	return "", false
 }
 
-func refuseString(command string, depth int) (string, bool) {
-	for _, words := range simpleCommands(command, depth) {
+func refuseString(command string, dialect shellDialect, depth int) (string, bool) {
+	for _, words := range simpleCommands(command, dialect, depth) {
 		if m, ok := refuseWords(words, depth); ok {
 			return m, true
 		}
@@ -186,11 +213,12 @@ func MessageUseTool(prog, tool string) string {
 }
 
 // simpleCommands splits a shell command line into its simple commands,
-// as words without quotes. It knows quotes, backslashes, the command
-// separators ; & | && || and newlines, grouping with ( ) { }, and
-// command substitution with $( ) and backquotes, whose content is split
-// as commands too.
-func simpleCommands(line string, depth int) [][]string {
+// as words without quotes. It knows quotes, the escape character (a
+// backslash, or PowerShell's backtick), the command separators ; & | &&
+// || and newlines, grouping with ( ) { }, and command substitution with
+// $( ) and, in a POSIX shell, backquotes, whose content is split as
+// commands too.
+func simpleCommands(line string, dialect shellDialect, depth int) [][]string {
 	var (
 		out     [][]string
 		words   []string
@@ -217,12 +245,20 @@ func simpleCommands(line string, depth int) [][]string {
 	for i := 0; i < len(runes); i++ {
 		r := runes[i]
 		switch {
+		case escaped && (r == '\n' || (r == '\r' && i+1 < len(runes) && runes[i+1] == '\n')):
+			// An escaped line end continues the line.
+			if r == '\r' {
+				i++
+			}
+			escaped = false
 		case escaped:
 			word.WriteRune(r)
 			inWord, escaped = true, false
-		case r == '\\' && quote == 0:
+		case dialect == powerShell && r == '`' && quote != '\'':
 			escaped = true
-		case r == '\\' && quote == '"' && i+1 < len(runes) && strings.ContainsRune("$`\"\\\n", runes[i+1]):
+		case dialect == posixShell && r == '\\' && quote == 0:
+			escaped = true
+		case dialect == posixShell && r == '\\' && quote == '"' && i+1 < len(runes) && strings.ContainsRune("$`\"\\\n", runes[i+1]):
 			// Inside double quotes, a backslash escapes only these, so a
 			// Windows path keeps its backslashes.
 			escaped = true
@@ -230,7 +266,7 @@ func simpleCommands(line string, depth int) [][]string {
 			quote = 0
 		case quote == '\'':
 			word.WriteRune(r)
-		case r == '`' || (r == '$' && i+1 < len(runes) && runes[i+1] == '('):
+		case (dialect == posixShell && r == '`') || (r == '$' && i+1 < len(runes) && runes[i+1] == '('):
 			// Command substitution: split its content as commands too.
 			end, closeRune := i+1, '`'
 			if r == '$' {
@@ -249,7 +285,7 @@ func simpleCommands(line string, depth int) [][]string {
 				}
 			}
 			if depth < maxNesting {
-				out = append(out, simpleCommands(string(runes[start:min(end, len(runes))]), depth+1)...)
+				out = append(out, simpleCommands(string(runes[start:min(end, len(runes))]), dialect, depth+1)...)
 			}
 			i = end
 			inWord = true
