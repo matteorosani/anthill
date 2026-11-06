@@ -71,8 +71,9 @@ type Usage struct {
 	// CostIsSessionTotal is set when CostUSD is the running total of the
 	// runner's session, earlier runs that it resumed included, rather
 	// than the cost of this run alone. Anthill then records the run's cost
-	// as the difference from the session's previous total (spec
-	// ant-execution, "Usage is recorded").
+	// as the difference from the last running total the runner reported
+	// for the session (spec ant-execution, "Cost reported for a whole
+	// session").
 	CostIsSessionTotal bool
 }
 

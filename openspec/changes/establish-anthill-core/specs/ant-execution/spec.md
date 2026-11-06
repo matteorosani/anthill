@@ -186,11 +186,19 @@ For every ant run and shepherd round, Anthill SHALL record duration and, when th
 - **THEN** the run's tokens and cost are recorded as unknown, and its duration is still recorded
 
 ### Requirement: Cost reported for a whole session
-When a runner reports cost as a running total for its session, Anthill SHALL record a run's cost as that total minus the session's previous recorded total, or as unknown when the previous total is unknown.
+When a runner reports cost as a running total for its session, Anthill SHALL record a run's cost as that total minus the last running total the runner reported for the session, which is zero for a run that starts a new session. When the last running total is unknown, or the difference is negative, the run's cost SHALL be recorded as unknown.
 
 #### Scenario: Resumed run with a cumulative cost
-- **WHEN** a run resumes a session on a runner that reports cost as a running total for the session, it reports $0.50, and the session's previous recorded total was $0.30
+- **WHEN** a run resumes a session on a runner that reports cost as a running total for the session, it reports $0.50, and the last running total the runner reported for the session was $0.30
 - **THEN** the run's usage record holds a cost of $0.20
+
+#### Scenario: New session with a cumulative cost
+- **WHEN** a run starts a new session on a runner that reports cost as a running total for the session, and it reports $0.40
+- **THEN** the run's usage record holds a cost of $0.40
+
+#### Scenario: Total lower than the last one
+- **WHEN** a run resumes a session on a runner that reports cost as a running total for the session, it reports $0.25, and the last running total the runner reported for the session was $0.30
+- **THEN** the run's cost is recorded as unknown
 
 ### Requirement: Usage of a stopped run
 A run that Anthill stops before the runner's final usage report SHALL record the tokens the runner reported during the run, each message counted once, and its cost as unknown unless the runner reported it.
