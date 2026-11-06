@@ -232,3 +232,20 @@ func TestErrorRedactsSecrets(t *testing.T) {
 		t.Errorf("error = %v", err)
 	}
 }
+
+// Scenario "Remote URL that runs a command" (ant-execution): a clone
+// whose only remote for the repository could run a command is not
+// accepted.
+func TestOpenCloneRefusesCommandURLs(t *testing.T) {
+	for _, url := range []string{
+		"ext::sh -c touch% /tmp/pwned",
+		"ssh://-oProxyCommand=touch@github.com/acme/web",
+		"-oProxyCommand=touch@github.com:acme/web",
+	} {
+		f := newFixture(t)
+		gitIn(t, f.clone, "config", "--local", "remote.origin.url", url)
+		if c, err := f.git.OpenClone(f.ctx, f.clone, webRepo); !errors.Is(err, ports.ErrNoClone) {
+			t.Errorf("OpenClone() with %q = %+v, %v; want ErrNoClone", url, c, err)
+		}
+	}
+}
