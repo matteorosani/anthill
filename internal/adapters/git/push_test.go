@@ -6,10 +6,12 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
 
+	"github.com/matteorosani/anthill/internal/adapters/git"
 	"github.com/matteorosani/anthill/internal/app"
 	"github.com/matteorosani/anthill/internal/domain"
 	"github.com/matteorosani/anthill/internal/ports"
@@ -375,41 +377,52 @@ func TestWorktreeStatusAndRemove(t *testing.T) {
 	}
 }
 
-// The repository's pre-push hook, decided for PR #133: Anthill pushes
-// from the ant's worktree with the repository's hooks given back, so
-// the hook runs on the ant's code and can block the push.
+// Scenario "Repository check blocks a push" (ant-execution), task 6.8:
+// Anthill runs the repository's pre-push hook itself, in the ant's
+// worktree, with the agent's environment and git's arguments and input,
+// and a failing hook refuses the push with its output.
 func TestPushRunsRepositoryPrePushHookOnAntCode(t *testing.T) {
 	f := newFixture(t)
 	ant := f.prepare()
 	seen := filepath.Join(f.tmp, "pre-push-seen")
-	// The hook records where it runs, which file it sees and whether the
-	// environment is Anthill's (GH_TOKEN present) or an agent's (removed
-	// by domain.AgentEnv), and refuses when the code holds a BLOCK file.
+	// The hook records where it runs, which file it sees, whether the
+	// environment holds a token, its arguments and its input, and refuses
+	// when the code holds a BLOCK file.
 	writeFile(t, filepath.Join(f.clone, ".git", "hooks", "pre-push"), "#!/bin/sh\n"+
-		"{ pwd; cat ant.txt 2>/dev/null; echo \"token=${GH_TOKEN:-none}\"; } > '"+filepath.ToSlash(seen)+"'\n"+
+		"{ pwd; cat ant.txt 2>/dev/null; echo \"token=${GH_TOKEN:-none}\"; echo \"args=$1 $2\"; cat; } > '"+filepath.ToSlash(seen)+"'\n"+
 		"if [ -f BLOCK ]; then echo 'blocked by the repository hook' >&2; exit 1; fi\n")
 	if err := os.Chmod(filepath.Join(f.clone, ".git", "hooks", "pre-push"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	t.Setenv("GH_TOKEN", "anthill-env")
+	t.Setenv("GH_TOKEN", "canary")
 
-	f.commitIn(ant.Worktree, "ant.txt", "the ant's code")
+	head := f.commitIn(ant.Worktree, "ant.txt", "the ant's code")
 	if out, err := f.push(ant); err != nil {
 		t.Fatalf("Push() = %v\n%s", err, out)
 	}
+	zero := strings.Repeat("0", len(head))
+	want := []string{
+		"the ant's code", "token=none", "args=origin " + webURL,
+		"refs/heads/" + ant.Branch + " " + head + " refs/heads/" + ant.Branch + " " + zero,
+	}
 	lines := strings.Split(strings.TrimSpace(readFile(t, seen)), "\n")
-	if len(lines) != 3 || !sameDir(lines[0], ant.Worktree) || lines[1] != "the ant's code" || lines[2] != "token=anthill-env" {
-		t.Errorf("the hook saw %q, want the worktree %s, the ant's file and Anthill's environment", lines, ant.Worktree)
+	if len(lines) != 5 || !sameDir(lines[0], ant.Worktree) || !slices.Equal(lines[1:], want) {
+		t.Errorf("the hook saw %q, want the worktree %s, then %q", lines, ant.Worktree, want)
 	}
 
 	pushed := f.remoteTip(ant.Branch)
-	f.commitIn(ant.Worktree, "BLOCK", "x")
+	blocked := f.commitIn(ant.Worktree, "BLOCK", "x")
 	out, err := f.push(ant)
-	if err == nil || !strings.Contains(out, "blocked by the repository hook") {
+	if !errors.Is(err, git.ErrPrePushHook) || !strings.Contains(out, "blocked by the repository hook") {
 		t.Errorf("Push() with BLOCK = %v\n%s", err, out)
 	}
 	if f.remoteTip(ant.Branch) != pushed {
 		t.Error("the blocked commit reached the remote")
+	}
+	// The second time, the remote has the branch.
+	lines = strings.Split(strings.TrimSpace(readFile(t, seen)), "\n")
+	if last := lines[len(lines)-1]; last != "refs/heads/"+ant.Branch+" "+blocked+" refs/heads/"+ant.Branch+" "+pushed {
+		t.Errorf("the hook's input = %q", last)
 	}
 }
 
@@ -428,17 +441,20 @@ func sameDir(a, b string) bool {
 	return strings.HasSuffix(filepath.ToSlash(a), filepath.Base(b))
 }
 
-// The developer's credentials are given back for Anthill's push from the
-// worktree, while the agent's own push from the same worktree gets none.
-func TestPushRestoresCredentials(t *testing.T) {
+// Anthill's push uses the developer's credential helper from the global
+// configuration, never one planted in the clone's, while the agent's own
+// push from the worktree gets none (TestAgentPushFails).
+func TestPushUsesDeveloperCredentials(t *testing.T) {
 	f := newFixture(t)
 	ant := f.prepare()
 	server := newAuthServer(t)
 	called := credentialHelper(t, f.tmp)
-	gitIn(t, f.clone, "remote", "add", "web", server.URL+"/acme/web.git")
+	planted := plantedHelper(t, f)
 	f.commitIn(ant.Worktree, "a.txt", "work")
 
-	out, err := f.git.Push(f.ctx, ports.Clone{Path: f.clone, Remote: "web"}, ant.Worktree, ant.Branch, trailers.Owner())
+	c := f.c
+	c.URL = server.URL + "/acme/web.git"
+	out, err := f.git.Push(f.ctx, c, ant.Worktree, ant.Branch, trailers.Owner())
 	skipWithoutHTTP(t, out)
 	if err == nil {
 		t.Fatalf("Push() to a server that refuses everyone succeeded\n%s", out)
@@ -448,5 +464,8 @@ func TestPushRestoresCredentials(t *testing.T) {
 	}
 	if _, authorized := server.counts(); authorized == 0 {
 		t.Error("the push sent no credentials")
+	}
+	if exists(planted) {
+		t.Errorf("the credential helper planted in the clone was called: %s", readFile(t, planted))
 	}
 }

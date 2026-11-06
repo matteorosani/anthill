@@ -2,25 +2,25 @@ package git
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 
 	"github.com/matteorosani/anthill/internal/domain"
 	"github.com/matteorosani/anthill/internal/ports"
 )
 
-// Push runs git push from the ant's worktree, so that the repository's
-// pre-push hook checks the ant's code, with what the worktree's own
-// configuration takes away from agents given back for this one command:
-// the repository's hooks, the developer's credential helpers, askpass
-// program and ssh command (restoredConfig). It runs with Anthill's own
-// environment, never the agent's. An empty worktree pushes from the
-// clone. The refspec has no +, so the remote refuses anything but a
-// fast-forward.
+// Push runs the repository's pre-push hook itself (runPrePush), then
+// pushes the branch's commit to the remote URL from a transfer
+// repository, with hooks off. Neither reads the clone's configuration
+// while holding credentials (design D4). The refspec has no +, so the
+// remote refuses anything but a fast-forward.
 func (g *Git) Push(ctx context.Context, c ports.Clone, worktree, branch string, owner domain.BranchOwner) (string, error) {
-	if sha, err := g.resolve(ctx, c.Path, localRef(branch)); err != nil {
+	sha, err := g.resolve(ctx, c.Path, localRef(branch))
+	if err != nil {
 		return "", err
 	} else if sha == "" {
 		return "", fmt.Errorf("branch %s: %w", branch, ports.ErrNotFound)
@@ -29,25 +29,36 @@ func (g *Git) Push(ctx context.Context, c ports.Clone, worktree, branch string, 
 	if dir == "" {
 		dir = c.Path
 	}
-	overrides, err := g.restoredConfig(ctx, c)
+	t, err := g.openTransfer(ctx, c)
 	if err != nil {
-		return "", fmt.Errorf("reading the developer's git configuration: %w", err)
+		return "", err
+	}
+	defer t.close()
+
+	hookOut, err := g.runPrePush(ctx, t, dir, branch, sha)
+	if err != nil {
+		return hookOut, err
 	}
 	ref := localRef(branch)
-	r, err := g.run(ctx, dir, append(overrides, "push", "--porcelain", c.Remote, ref+":"+ref)...)
-	out := strings.TrimSpace(r.stdout + "\n" + r.stderr)
+	r, err := t.remote(ctx, "push", "--porcelain", "--no-verify", c.URL, sha+":"+ref)
+	out := g.redactor.Redact(strings.TrimSpace(strings.Join([]string{hookOut, r.stdout, r.stderr}, "\n")))
 	if err == nil {
-		return out, nil
+		// As git push would, update the remote-tracking branch.
+		_, err = g.run(ctx, c.Path, "update-ref", remoteRef(c, branch), sha)
+		return out, err
 	}
 	if !rejected(r.stdout) {
 		return out, err
 	}
 	// Fetch the remote branch, so the ant can merge it, and look at what
 	// the push would have dropped.
-	if _, err := g.run(ctx, c.Path, "fetch", "--quiet", c.Remote, "+"+ref+":"+remoteRef(c, branch)); err != nil {
+	if err := t.fetch(ctx, "+"+ref+":"+ref); err != nil {
 		return out, err
 	}
-	trailers, err := g.output(ctx, c.Path, "log", "--format=%x1e%(trailers:only,unfold)", remoteRef(c, branch), "--not", ref)
+	if err := t.toClone(ctx, false, "+"+ref+":"+remoteRef(c, branch)); err != nil {
+		return out, err
+	}
+	trailers, err := g.output(ctx, c.Path, "log", "--format=%x1e%(trailers:only,unfold)", remoteRef(c, branch), "--not", sha)
 	if err != nil {
 		return out, err
 	}
@@ -59,101 +70,79 @@ func (g *Git) Push(ctx context.Context, c ports.Clone, worktree, branch string, 
 	return out, fmt.Errorf("push %s: %w", branch, ports.ErrConflict)
 }
 
-// configLayers are the configuration files git reads before a
-// worktree's own, in git's order: the later wins or appends.
-var configLayers = []string{"--system", "--global", "--local"}
+// ErrPrePushHook is returned, wrapped, when the repository's pre-push
+// hook refuses a push.
+var ErrPrePushHook = errors.New("the repository's pre-push hook refused the push")
 
-// restoredConfig returns the -c options that undo, for one command run
-// in an ant worktree, the settings that block agents (setUpWorktree and
-// domain.AgentGitConfig). It reads the clone's system, global and local
-// configuration, not the worktree's:
-//   - core.hooksPath: the repository's own hooks, as repo_hooks finds
-//     them. A relative path stays relative, to the worktree where git
-//     runs the hook;
-//   - credential helpers: an empty credential.helper clears the list,
-//     then every credential.helper and credential.<url>.helper entry is
-//     added again in git's order;
-//   - core.askPass and core.sshCommand: the developer's values, or for
-//     ssh the default ssh, or GIT_SSH when that is how the developer set
-//     it. A GIT_SSH_COMMAND in the environment wins over both anyway.
-func (g *Git) restoredConfig(ctx context.Context, c ports.Clone) ([]string, error) {
-	var opts []string
-	set := func(key, value string) { opts = append(opts, "-c", key+"="+value) }
+// runHookAlias is a shell alias that runs its first argument with the
+// others. Git runs it with its own sh, which on Windows is the one that
+// comes with Git for Windows, so a hook runs as git would run it.
+const runHookAlias = `alias.anthill-run-hook=!f() { exec "$@"; }; f`
 
-	hooks, err := g.lastValue(ctx, c, "core.hooksPath")
+// runPrePush runs the repository's pre-push hook, if any, in dir with the
+// agent's environment, as git push would: with the remote's name and URL
+// as arguments, and one line on its input with the local ref and commit
+// and the remote ref and its current commit (zeros when the remote has no
+// such branch). It returns the hook's output. A hook that fails refuses
+// the push with ErrPrePushHook.
+func (g *Git) runPrePush(ctx context.Context, t *transfer, dir, branch, sha string) (string, error) {
+	hooks, err := g.repoHooksDir(ctx, t.c, dir)
 	if err != nil {
-		return nil, err
+		return "", fmt.Errorf("finding the repository's hooks: %w", err)
 	}
-	if hooks == "" {
-		common, err := g.output(ctx, c.Path, "rev-parse", "--git-common-dir")
-		if err != nil {
-			return nil, err
-		}
-		if !filepath.IsAbs(common) {
-			common = filepath.Join(c.Path, common)
-		}
-		hooks = filepath.ToSlash(filepath.Join(common, "hooks"))
+	hook := filepath.Join(hooks, "pre-push")
+	info, err := os.Stat(hook)
+	// Like git, skip a missing hook and, except on Windows where git does
+	// not look at it, one that is not executable.
+	if err != nil || !info.Mode().IsRegular() || (runtime.GOOS != "windows" && info.Mode()&0o111 == 0) {
+		return "", nil
 	}
-	set("core.hooksPath", hooks)
-
-	set("credential.helper", "")
-	for _, layer := range configLayers {
-		out, err := g.configGet(ctx, c, layer, "--get-regexp", `^credential\..*helper$`)
-		if err != nil {
-			return nil, err
-		}
-		for _, line := range strings.Split(out, "\n") {
-			if key, value, ok := strings.Cut(line, " "); ok {
-				set(key, value)
-			} else if line != "" {
-				set(line, "")
-			}
-		}
-	}
-
-	askPass, err := g.lastValue(ctx, c, "core.askPass")
+	remoteSHA, err := t.remoteTip(ctx, branch)
 	if err != nil {
-		return nil, err
+		return "", err
 	}
-	set("core.askPass", askPass)
-	ssh, err := g.lastValue(ctx, c, "core.sshCommand")
+	if remoteSHA == "" {
+		remoteSHA = strings.Repeat("0", len(sha))
+	}
+	ref := localRef(branch)
+	stdin := fmt.Sprintf("%s %s %s %s\n", ref, sha, ref, remoteSHA)
+	r, err := g.runIn(ctx, agentEnv, dir, strings.NewReader(stdin),
+		"-c", runHookAlias, "anthill-run-hook", filepath.ToSlash(hook), t.c.Remote, t.c.URL)
+	out := strings.TrimSpace(r.stdout + "\n" + r.stderr)
 	if err != nil {
-		return nil, err
-	}
-	if ssh == "" {
-		ssh = "ssh"
-		if prog := os.Getenv("GIT_SSH"); prog != "" {
-			ssh = "'" + strings.ReplaceAll(prog, "'", `'\''`) + "'"
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return out, ctxErr
 		}
+		return g.redactor.Redact(out), fmt.Errorf("push %s: %w", branch, ErrPrePushHook)
 	}
-	set("core.sshCommand", ssh)
-	return opts, nil
+	return out, nil
 }
 
-// lastValue is the value of key that git would use from the clone's
-// system, global and local configuration, or "" when none sets it.
-func (g *Git) lastValue(ctx context.Context, c ports.Clone, key string) (string, error) {
-	value := ""
-	for _, layer := range configLayers {
-		out, err := g.configGet(ctx, c, layer, "--get", key)
-		if err != nil {
+// repoHooksDir finds the repository's own hooks directory as git would
+// without Anthill's worktree setting, and as repo_hooks does in the
+// worktree hooks: core.hooksPath from the clone's system, global and
+// local configuration, else the common .git/hooks. A relative path is
+// relative to top, the working tree where the hook runs, so husky's
+// .husky works.
+func (g *Git) repoHooksDir(ctx context.Context, c ports.Clone, top string) (string, error) {
+	dir := ""
+	for _, layer := range []string{"--system", "--global", "--local"} {
+		out, err := g.output(ctx, c.Path, "config", layer, "--includes", "--type=path", "--get", "core.hooksPath")
+		if err != nil && exitCode(err) != 1 {
 			return "", err
 		}
 		if out != "" {
-			value = out
+			dir = out
 		}
 	}
-	return value, nil
-}
-
-// configGet runs git config on one layer, with includes, and returns its
-// output, or "" when nothing matches.
-func (g *Git) configGet(ctx context.Context, c ports.Clone, layer string, args ...string) (string, error) {
-	out, err := g.output(ctx, c.Path, append([]string{"config", layer, "--includes"}, args...)...)
-	if err != nil && exitCode(err) == 1 {
-		return "", nil
+	if dir == "" {
+		common, err := g.output(ctx, c.Path, "rev-parse", "--git-common-dir")
+		if err != nil {
+			return "", err
+		}
+		return filepath.Join(absolute(c.Path, common), "hooks"), nil
 	}
-	return out, err
+	return absolute(top, dir), nil
 }
 
 // rejected reports whether git push --porcelain printed a rejected ref.

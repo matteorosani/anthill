@@ -68,13 +68,13 @@ func fmtErr(err error) string {
 // remote.
 func TestOpenClone(t *testing.T) {
 	f := newFixture(t)
-	if f.c.Path != f.clone || f.c.Remote != "origin" {
+	if f.c != (ports.Clone{Path: f.clone, Remote: "origin", URL: webURL}) {
 		t.Errorf("OpenClone() = %+v", f.c)
 	}
 	// A clone whose matching remote is not origin.
 	gitIn(t, f.clone, "remote", "rename", "origin", "upstream")
 	gitIn(t, f.clone, "remote", "add", "origin", "https://github.com/someone/fork")
-	if c, err := f.git.OpenClone(f.ctx, f.clone, webRepo); err != nil || c.Remote != "upstream" {
+	if c, err := f.git.OpenClone(f.ctx, f.clone, webRepo); err != nil || c.Remote != "upstream" || c.URL != webURL {
 		t.Errorf("OpenClone() with upstream = %+v, %v", c, err)
 	}
 
@@ -209,7 +209,7 @@ func TestCanceledContext(t *testing.T) {
 		t.Errorf("Fetch() with a canceled context = %v", err)
 	}
 	// A check cut short does not stick.
-	g := git.New(nil)
+	g := git.New(nil, f.home)
 	if _, err := g.OpenClone(ctx, f.clone, webRepo); !errors.Is(err, context.Canceled) {
 		t.Errorf("OpenClone() with a canceled context = %v", err)
 	}
@@ -225,9 +225,32 @@ func TestErrorRedactsSecrets(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	gitIn(t, f.clone, "remote", "add", "leak", "https://x:"+token+"@127.0.0.1:1/none.git")
-	err = f.git.DeleteBranch(f.ctx, ports.Clone{Path: f.clone, Remote: "leak"}, "x", true)
+	leak := "https://x:" + token + "@127.0.0.1:1/none.git"
+	gitIn(t, f.clone, "remote", "add", "leak", leak)
+	err = f.git.DeleteBranch(f.ctx, ports.Clone{Path: f.clone, Remote: "leak", URL: leak}, "x", true)
 	if err == nil || strings.Contains(err.Error(), token) {
 		t.Errorf("error = %v", err)
+	}
+}
+
+// Scenarios "Remote URL that runs a command" and "Remote URL with another
+// transport" (ant-execution): a clone whose only remote for the
+// repository could run a command, or uses another transport, is not
+// accepted.
+func TestOpenCloneRefusesCommandURLs(t *testing.T) {
+	for _, url := range []string{
+		"ext::sh -c touch% /tmp/pwned",
+		"ssh://-oProxyCommand=touch@github.com/acme/web",
+		"-oProxyCommand=touch@github.com:acme/web",
+		"http://github.com/acme/web",
+		"git://github.com/acme/web",
+		"file://github.com/acme/web",
+		"fd::https://github.com/acme/web",
+	} {
+		f := newFixture(t)
+		gitIn(t, f.clone, "config", "--local", "remote.origin.url", url)
+		if c, err := f.git.OpenClone(f.ctx, f.clone, webRepo); !errors.Is(err, ports.ErrNoClone) {
+			t.Errorf("OpenClone() with %q = %+v, %v; want ErrNoClone", url, c, err)
+		}
 	}
 }

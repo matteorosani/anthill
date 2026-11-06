@@ -38,7 +38,8 @@ func absolute(dir, p string) string {
 // OpenClone checks that path is the top of a git clone, not a linked
 // worktree, with a remote whose configured URL points to repo. It prefers
 // a matching remote named origin. The URL is read as configured, before
-// any url.<base>.insteadOf rewriting.
+// any url.<base>.insteadOf rewriting, and is the one Fetch and Push use
+// (ports.Clone.URL).
 func (g *Git) OpenClone(ctx context.Context, path string, repo domain.Repository) (ports.Clone, error) {
 	noClone := func(format string, args ...any) error {
 		return fmt.Errorf("%w: %s", ports.ErrNoClone, fmt.Sprintf(format, args...))
@@ -68,29 +69,37 @@ func (g *Git) OpenClone(ctx context.Context, path string, repo domain.Repository
 	if err != nil && exitCode(err) != 1 {
 		return ports.Clone{}, err
 	}
-	var names []string
+	var found []ports.Clone
 	for _, line := range strings.Split(out, "\n") {
 		key, url, ok := strings.Cut(line, " ")
 		if !ok || !repo.MatchesRemoteURL(url) {
 			continue
 		}
-		names = append(names, strings.TrimSuffix(strings.TrimPrefix(key, "remote."), ".url"))
+		name := strings.TrimSuffix(strings.TrimPrefix(key, "remote."), ".url")
+		found = append(found, ports.Clone{Path: path, Remote: name, URL: url})
 	}
-	switch {
-	case len(names) == 0:
+	if len(found) == 0 {
 		return ports.Clone{}, noClone("%s has no remote for %s", path, repo)
-	case slices.Contains(names, "origin"):
-		return ports.Clone{Path: path, Remote: "origin"}, nil
-	default:
-		return ports.Clone{Path: path, Remote: names[0]}, nil
 	}
+	if i := slices.IndexFunc(found, func(c ports.Clone) bool { return c.Remote == "origin" }); i >= 0 {
+		return found[i], nil
+	}
+	return found[0], nil
 }
 
-// Fetch runs git fetch --prune on the clone's remote. It updates only
-// remote-tracking branches.
+// Fetch fetches every branch of the remote URL into a transfer
+// repository, then from there into the clone's remote-tracking branches,
+// pruning those the remote deleted. It fetches branches only, no tags.
 func (g *Git) Fetch(ctx context.Context, c ports.Clone) error {
-	_, err := g.run(ctx, c.Path, "fetch", "--prune", "--quiet", c.Remote)
-	return err
+	t, err := g.openTransfer(ctx, c)
+	if err != nil {
+		return err
+	}
+	defer t.close()
+	if err := t.fetch(ctx, "+refs/heads/*:refs/heads/*"); err != nil {
+		return err
+	}
+	return t.toClone(ctx, true, "+refs/heads/*:"+remoteRef(c, "*"))
 }
 
 // RemoteDefaultBranch reads <remote>/HEAD, or asks the remote when the
@@ -101,11 +110,16 @@ func (g *Git) RemoteDefaultBranch(ctx context.Context, c ports.Clone) (string, e
 	if err == nil && strings.HasPrefix(ref, prefix) {
 		return strings.TrimPrefix(ref, prefix), nil
 	}
-	out, err := g.output(ctx, c.Path, "ls-remote", "--symref", c.Remote, "HEAD")
+	t, err := g.openTransfer(ctx, c)
 	if err != nil {
 		return "", err
 	}
-	for _, line := range strings.Split(out, "\n") {
+	defer t.close()
+	r, err := t.remote(ctx, "ls-remote", "--symref", c.URL, "HEAD")
+	if err != nil {
+		return "", err
+	}
+	for _, line := range strings.Split(r.stdout, "\n") {
 		if target, ok := strings.CutPrefix(line, "ref: refs/heads/"); ok {
 			name, _, _ := strings.Cut(target, "\t")
 			return name, nil
@@ -223,14 +237,19 @@ func (g *Git) DeleteBranch(ctx context.Context, c ports.Clone, name string, remo
 		return err
 	}
 	notFound := fmt.Errorf("remote branch %s: %w", name, ports.ErrNotFound)
-	// Some servers accept deleting a branch that does not exist, so ask
-	// first; ls-remote --exit-code exits with 2 when nothing matches.
-	if _, err := g.run(ctx, c.Path, "ls-remote", "--exit-code", "--heads", c.Remote, localRef(name)); exitCode(err) == 2 {
-		return notFound
-	} else if err != nil {
+	t, err := g.openTransfer(ctx, c)
+	if err != nil {
 		return err
 	}
-	r, err := g.run(ctx, c.Path, "push", "--quiet", c.Remote, "--delete", localRef(name))
+	defer t.close()
+	// Some servers accept deleting a branch that does not exist, so ask
+	// first.
+	if sha, err := t.remoteTip(ctx, name); err != nil {
+		return err
+	} else if sha == "" {
+		return notFound
+	}
+	r, err := t.remote(ctx, "push", "--quiet", "--no-verify", c.URL, "--delete", localRef(name))
 	if err != nil && strings.Contains(r.stderr, "remote ref does not exist") {
 		return notFound
 	}
