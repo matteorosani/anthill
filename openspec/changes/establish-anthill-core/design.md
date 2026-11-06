@@ -69,6 +69,8 @@ Ants edit files and commit inside their worktree. Everything that leaves the mac
 
 Agents get no provider tokens: Anthill strips `GH_TOKEN`, `GITHUB_TOKEN`, `AZURE_DEVOPS_EXT_PAT` and similar from the environment, sets `GIT_TERMINAL_PROMPT=0` and disables the git credential helper for the worktree, so a direct `git push` fails. Where the runner supports hooks, a pre-tool hook refuses `git push`, `gh` and `az` with a pointer to the right tool.
 
+Ant runs also leave out the developer's personal agent settings: the plugins, skills, hooks and MCP servers of the developer's own runner configuration. They would make an ant behave differently on each machine, and in the smoke runs a plugin's session-start hook added its own instructions to every run (issue #146). The repository's own agent settings still apply, so a repository can tune its agents for everyone. For Claude Code this is `--setting-sources project,local` with `--strict-mcp-config`; `docs/runners.md` gives the means for each runner.
+
 This is a **guard, not a sandbox**. The agent runs as the developer's OS user, so a determined agent could still read the developer's `gh` config or OS credential store. The design stops accidents and casual prompt-injection, not a hostile agent (see Risks). The same holds for stopping a run (D6): on Unix, a process the agent starts in a process group or session of its own, with `setsid` for example, is out of reach of the stop and keeps running.
 
 *Alternatives:* let agents use `gh`/`az` directly (simple, but the policy becomes advisory and comments lose markers and redaction), or have agents only report intent through `finish` while Anthill writes the PR itself (safe, but the agent loses control of the PR text and draft state). Both rejected.
@@ -76,6 +78,8 @@ This is a **guard, not a sandbox**. The agent runs as the developer's OS user, s
 ### D5. Ant tools: a stdio MCP proxy over the control pipe
 
 Each run gets an MCP server entry in the runner's configuration that launches `anthill mcp --ant <token>`. This small process speaks MCP over stdio to the agent and relays every call over the daemon's local control pipe (D10), where the token is checked against the one live run it belongs to. The tool set is defined in ant-tools. All three target runners support stdio MCP servers, so there is no HTTP listener and no port to secure.
+
+The token is on the command line of `anthill mcp`, so other OS users of the machine can see it in the process list. This is accepted: the token works only through the control interface, which only the developer's OS user can open (a 0600 socket in a 0700 directory on Unix, a named pipe whose access list grants only that user on Windows), and it is revoked when the run ends. A token file would add nothing against the developer's own processes, which can read the run's files anyway.
 
 *Alternative:* a CLI the agent calls from the shell (`anthill ask "…"`). It works with any runner, but tools are not discoverable by the agent, arguments are free text, and results are unstructured. Rejected; MCP only.
 

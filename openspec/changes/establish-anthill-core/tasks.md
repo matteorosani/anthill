@@ -113,18 +113,19 @@ Terms follow `openspec/glossary.md`. Every group lands its own tests and docs. U
 - [x] 13.7 Fix the Claude Code adapter from the Windows smoke results (issue #146): allow the `PowerShell` tool and refuse `git push`, `gh` and `az` in it through the `PreToolUse` hook, end the run once a `result` leaves no message waiting even when live input was folded into the running turn, and update `docs/runners.md`, and verify tests against the event streams recorded in #146 for C2 and C3, and C2, C3 and C6 re-run on Windows
 - [ ] 13.8 Fix the Codex adapter from the Windows smoke results (issue #149): let the agent call the ant tools without approval in a headless run, and let it commit to the worktree's git directory and reach the network in the `workspace-write` sandbox, after checking Codex's documentation for the version in use, and update `docs/runners.md`, and verify tests against the event streams recorded in #149, and X1, X2, X3 and X5 re-run on Windows
 - [ ] 13.9 Fix the OpenCode adapter from the Windows smoke results (issue #150): run each run without OpenCode's background service, or otherwise give it the run's configuration, environment and process tree, after checking OpenCode's documentation for the version in use, and update `docs/runners.md`, and verify tests against the event streams recorded in #150, and O1 to O6 re-run on Windows
+- [ ] 13.10 Leave the developer's personal settings out of Claude Code runs (`--setting-sources project,local`), record the tokens of a run stopped before its final result from its assistant messages, each message once, and update `docs/runners.md`, and verify tests that the flag is passed and that a recorded stream cut before its result yields its tokens with an unknown cost, plus a Claude Code smoke run showing a user plugin not loaded
 
 ## 14. Ant supervision
 
 - [ ] 14.1 Implement acceptance: re-check eligibility on fresh data, claim, branch and worktree, start the first run, and undo every done step on failure, and verify the "claim lost at start" and "became ineligible" tests
 - [ ] 14.2 Implement capacity and the scheduling of due runs, with `queued` ants started when a slot frees if the run is still due, and verify the "queued for capacity" and "answer arrives while capacity is full" tests
 - [ ] 14.3 Implement the task brief and the summary brief for a new session, excluding Anthill comments, and verify the "brief includes discussion" test
-- [ ] 14.4 Implement finish handling: `complete`, `partial` (forced draft with open points), `no-change` (explanation, hold label, release, `done`), and opening the PR when the agent did not, and verify each ant-execution finish scenario
+- [ ] 14.4 Implement finish handling: `complete`, `partial` (forced draft with open points), `no-change` (explanation, hold label, release, `done`), opening the PR when the agent did not, and ending the run itself when `finish`, `submit_review` or `finish_fixes` returns, as after `ask_question`, and verify each ant-execution finish scenario and the "background command after finish" test
 - [ ] 14.5 Implement exit without finishing: `failed`, push when there are new commits, no PR, draft an open PR, failure summary on the ticket, and verify the three exit scenarios
 - [ ] 14.6 Implement stop, retry, continue and abandon, and verify the "stop and retry later", "retry after crash" and "abandon an ant with an active run" tests
 - [ ] 14.7 Implement the timekeeper: warning delivery, extension requests and late decisions, budget exhaustion with grace period, draft PR and `timed-out`, and verify each ant-timebox scenario end to end with the fake agent and a fake clock
 - [ ] 14.8 Implement session index recovery from claim comments, `ant/` branches and PRs, and restart reconciliation with `auto-resume`, and verify the "local database lost" and "daemon restarted mid-run" tests
-- [ ] 14.9 Record usage per run and per shepherd round, with unknown values kept as unknown, and verify the "runner reports cost" and "runner without usage data" tests
+- [ ] 14.9 Record usage per run and per shepherd round, with the tokens reported before a stop kept and other unknown values kept as unknown, and verify the "runner reports cost", "runner without usage data" and "run stopped after a question" tests
 
 ## 15. Conversation and change reaction
 
