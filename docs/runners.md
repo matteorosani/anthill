@@ -35,7 +35,7 @@ claude -p --input-format stream-json --output-format stream-json --verbose \
 ```
 
 - **The brief.** The brief, then each live input, is written to standard input as one JSON line: `{"type":"user","message":{"role":"user","content":[{"type":"text","text":"…"}]},"parent_tool_use_id":null}`. Nothing of the brief goes on the command line. On Windows, cmd.exe would mangle it there.
-- **When the run ends on its own.** A turn ends with a `result` event. A message sent while Claude Code works can be folded into the running turn, which then answers it with the brief in one `result` (smoke check C3), or get a turn and a `result` of its own (C6). So Anthill does not count results: once a `result` reports `queued_turn_count` 0, Anthill closes standard input. Claude Code still answers every message it has already read, then exits. In the smoke runs, `queued_turn_count` was 0 even when a message waited for a turn of its own; the input then closes after the first `result`, and live input reaches the agent only until then. A `Send` after that fails, and the message goes to the next means of delivery (design D5). A Claude Code that does not report `queued_turn_count` is handled as before: the input closes once every message written has its own `result`.
+- **When the run ends on its own.** A turn ends with a `result` event. A message sent while Claude Code works can be folded into the running turn, which then answers it with the brief in one `result` (smoke check C3), or get a turn and a `result` of its own (C6). So Anthill does not count results: once a `result` reports `queued_turn_count` 0, Anthill closes standard input. Claude Code still answers every message it has already read, then exits. In the smoke runs, `queued_turn_count` was always 0; the input then closes after the first `result`, and live input reaches the agent only until then. A `Send` after that fails, and the message goes to the next means of delivery (design D5). A Claude Code that does not report `queued_turn_count` is handled as before: the input closes once every message written has its own `result`.
 - **Background tasks.** Claude Code does not exit while a command it started in the background is still going, even after its last `result` and with standard input closed. Such a run ends only when that command ends or Anthill stops the run (smoke check C7 on Windows).
 - **The run directory.** `<run dir>` is a temporary directory outside the worktree, so the agent cannot commit it. It holds the two files below and is removed when the run ends. The settings file holds the run's tool token, which therefore never appears in the brief.
   - `mcp.json` names one stdio server, `anthill`, that runs `anthill mcp --ant <token>`.
@@ -54,11 +54,17 @@ claude -p --input-format stream-json --output-format stream-json --verbose \
   - The run's own `--settings`, which is not a setting source: its hooks still run (smoke checks C2 and C4).
   - Managed policy settings, which always apply.
 
-  `--setting-sources` does not cover `~/.claude.json`, which holds the developer's own MCP servers, nor claude.ai connectors: `--strict-mcp-config` leaves both out. Claude Code's auto memory (`~/.claude/projects/<project>/memory/`) is read whatever the setting sources are.
+  `--setting-sources` does not cover `~/.claude.json`, which holds the developer's own MCP servers, nor claude.ai connectors: `--strict-mcp-config` leaves both out.
+- **`CLAUDE_CODE_DISABLE_AUTO_MEMORY=1`.** Claude Code's auto memory is personal too, and `--setting-sources` does not cover it. Claude Code keeps it in `~/.claude/projects/<project>/memory/`, and "all worktrees and subdirectories within the same git repository share one auto memory directory" ([Claude Code docs, "How Claude remembers your project"](https://code.claude.com/docs/en/memory#storage-location)). An ant would read what the developer's own sessions learned, and write its own notes there for them. Anthill sets this variable in the agent's environment, for new and resumed runs, whatever the developer's environment says (design D4).
 - **`--permission-mode acceptEdits` with `--allowedTools`.** This is the most restrictive headless setting that still lets the agent edit files and run the tests in its worktree (design, Risks). `acceptEdits` alone would still ask before each Bash command, and nobody answers a headless run. `--allowedTools` lets only the listed tools run without a prompt. On Windows, Claude Code has a `PowerShell` tool besides `Bash`, and the agent often chooses it. Without `PowerShell` in the list, Claude Code asks before every PowerShell command that is not read-only, so the agent could not build, test or commit with it (smoke check C2). The `PreToolUse` hook still refuses `git push`, `gh` and `az`. `bypassPermissions` was not used: it would also let through every tool not listed.
 - **The model.** Anthill sets no model. Claude Code uses the developer's own default.
 - **Session id.** The session id is read from the `system` `init` event, and also from every later event that carries one.
-- **Usage.** Tokens are every token of each `result` event: input, output, cache creation and cache reads. They are added up over the run's results, so cached tokens count, as on every runner. The cost is the `total_cost_usd` of the last result: Claude Code's documentation says it is the running total of the process, while a result's `usage` covers only its own turn (smoke check C6).
+- **Usage.** Tokens are every token of each `result` event: input, output, cache creation and cache reads. They are added up over the run's results, so cached tokens count, as on every runner. The cost is the `total_cost_usd` of the last result. Claude Code's documentation ([Track cost and usage](https://code.claude.com/docs/en/agent-sdk/cost-tracking#track-costs-in-streaming-input-mode)) says:
+  - a result's `usage` "covers only that turn";
+  - `total_cost_usd` carries "the running total for the whole call so far, plus any spend restored when the call resumed a session";
+  - since v2.1.277, Claude Code "saves the session's totals to its transcript when the process exits normally and restores them when a later call resumes" the session.
+
+  So the cost of a resumed run includes the cost of the session's earlier runs. The adapter reports it with `CostIsSessionTotal` set, and Anthill records the run's cost as the difference from the session's previous recorded total (spec ant-execution, "Cost reported for a whole session"; task 14.9). Smoke checks C5 and C6 observe this.
 - **Usage of a stopped run** (spec ant-execution, "Usage of a stopped run"). A run stopped before its last `result`, for example after `ask_question` or at time-out, also keeps the tokens of the agent's messages since the last result. Each `assistant` event carries its API response's `message.id` and `message.usage`. One response can give several events with the same id and the same usage, one per content block, so each id counts once. Once a `result` arrives, its usage covers the messages before it. The cost of a run stopped before any `result` stays unknown. Two limits, from Claude Code's documentation:
   - The output tokens of a message are the count at the start of its response, a placeholder that only the `result` corrects, so the output of a turn cut short is undercounted.
   - Subagent messages (`parent_tool_use_id` set) are not counted, as a `result`'s `usage` leaves out subagents too. A subagent's tokens appear in neither.
@@ -79,8 +85,11 @@ Confirmed on Windows with Claude Code 2.1.284, 2.1.310 and 2.1.318 (issue #146):
 - A stop ends the whole tree, Claude Code's own commands included (C7).
 - The `PreToolUse` hook refuses `gh pr create` and `git push` run with the `Bash` tool and with the `PowerShell` tool, with the messages naming `open_pull_request` and `push` (C2).
 - A message sent during a turn that calls tools can be folded into it, with one `result` for both messages and `queued_turn_count` 0 (C3). Since task 13.7, the run then ends on its own.
-- A message sent while Claude Code writes an answer without tools gets a turn and a `result` of its own. The first `result` still reports `queued_turn_count` 0; the input closes after it, and Claude Code answers the message anyway, then exits (C6).
-- `total_cost_usd` is cumulative over the process: it grows from one `result` to the next in the same process (C6).
+
+Not yet observed: no process has produced two results (issue #146, "C6 is still open").
+
+- Whether a message read while Claude Code writes an answer without tools gets a turn and a `result` of its own after the input has closed, and Claude Code answers it before exiting (C6).
+- How the cost adds up. Claude Code's documentation answers it: a result's `usage` covers one turn, and `total_cost_usd` is a running total for the process, including spend restored on resume since v2.1.277. C5 and C6 observe it.
 
 Still open:
 
@@ -285,6 +294,7 @@ Expected:
 
 - The agent answers `pong` without calling the tool again.
 - `smoke: session id:` shows the session id. Note whether it is the same as in C1.
+- The cost of the resumed session includes C1's. Compare the `total_cost_usd` of C1's last `result` with that of this run's `result`, both on standard error; `smoke: usage:` prints the last one too. Expected, from Claude Code's documentation (v2.1.277 or later): this run's `total_cost_usd` is C1's plus this run's own spend, so it is higher than C1's although this turn is short. If it is about the size of this turn alone, Claude Code reports the cost per process, and `CostIsSessionTotal` is wrong for that version: note the version.
 
 #### C6: usage and cost
 
@@ -295,7 +305,10 @@ anthill runner-smoke --runner claude-code --send "Now say, in one sentence, what
   "Without using any tools, write a story of about 500 words about an ant colony that learns to build bridges."
 ```
 
-Expected: two `result` events, the second answering 42. Its `total_cost_usd` is not lower than the first's if the cost is cumulative. The cost printed by `smoke: usage:` is the last one. The run ends on its own.
+Expected:
+- Two `result` events, the second answering 42. This happens only if Claude Code does not fold the message into the running turn. If it does, there is one `result`, as in C3: note it, and C6 shows nothing about the cost.
+- With two results: the first `result`'s `usage` covers the first turn only, and the second's covers the second turn only. The second's `total_cost_usd` is the first's plus the second turn's spend, as Claude Code's documentation says. The cost printed by `smoke: usage:` is the last one.
+- The run ends on its own.
 
 #### C7: stop leaves no process behind
 
@@ -323,9 +336,9 @@ Expected:
 
 Also run C7 with Ctrl+C instead of `--stop-after`: the output and the result are the same, with `(interrupted)`.
 
-#### C8: the developer's personal settings are left out
+#### C8: the developer's personal settings and memory are left out
 
-This checks that a run loads the repository's own Claude Code settings but not your personal ones (spec ant-execution, "Personal agent settings are left out").
+This checks that a run loads the repository's own Claude Code settings but not your personal ones, nor your auto memory (spec ant-execution, "Personal agent settings are left out").
 
 1. Back up your user settings: copy `~/.claude/settings.json` to `~/.claude/settings.json.bak`. On Windows the file is `%USERPROFILE%\.claude\settings.json`. If it does not exist, note that, so you can delete it in step 6.
 2. Add a `SessionStart` hook that prints a marker to `~/.claude/settings.json`, keeping the keys already there:
@@ -357,7 +370,14 @@ This checks that a run loads the repository's own Claude Code settings but not y
    - The `system` `init` event on standard error does not list the plugin, or its skills and commands, where it lists plugins, skills or slash commands.
 
    Compare with `claude -p --output-format stream-json --verbose "say hi"` run directly in the same directory, where the plugin appears.
-6. Restore your user settings from the backup, or delete the file if it did not exist before, and delete the throwaway repository's `.claude` directory.
+6. Give Claude Code an auto memory for the throwaway repository: in the repository, run `claude -p "Save this to your auto memory: the smoke word is anthill-memory-42."` and check with `claude -p "What is the smoke word in your memory?"` that it answers `anthill-memory-42`. Then run:
+
+   ```bash
+   anthill runner-smoke --runner claude-code "What is the smoke word in your memory? If you have no memory of one, say none. Use no tools."
+   ```
+
+   Expected: the agent says none. Afterwards, `claude -p "List your auto memory files."` lists the same files as before the smoke run, so the ant wrote none.
+7. Restore your user settings from the backup, or delete the file if it did not exist before. Delete the throwaway repository's `.claude` directory, and the memory you saved in step 6: `claude -p "Delete your auto memory about the smoke word."`, or remove the `memory` folder that `/memory` shows.
 
 #### Results
 
@@ -369,10 +389,10 @@ Copy this table into the pull request or issue that records the smoke run:
 | C2 hooks refuse gh, git push |  |  |  |
 | C3 live input (results: one or two? `queued_turn_count`?) |  |  |  |
 | C4 notice through the hook |  |  |  |
-| C5 resume (same session id?) |  |  |  |
-| C6 cost cumulative? |  |  |  |
+| C5 resume (same session id? cost includes C1's?) |  |  |  |
+| C6 two results? `usage` per turn, `total_cost_usd` running total? |  |  |  |
 | C7 no process after stop; tokens of the stopped run known |  |  |  |
-| C8 user hook and plugin left out, project hook runs |  |  |  |
+| C8 user hook, plugin and memory left out, project hook runs |  |  |  |
 
 The results so far are recorded in issue #146.
 

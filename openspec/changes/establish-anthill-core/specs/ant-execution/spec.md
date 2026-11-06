@@ -110,11 +110,15 @@ Agents SHALL run as separate processes in their worktree, holding no provider to
 - **THEN** the push fails for lack of credentials, and nothing reaches the remote
 
 ### Requirement: Personal agent settings are left out
-Anthill SHALL launch agents without the developer's personal agent settings: the plugins, skills, hooks and MCP servers of the developer's own runner configuration SHALL NOT be loaded. The repository's own agent settings SHALL apply.
+Anthill SHALL launch agents without the developer's personal agent settings: the plugins, skills, hooks, memory and MCP servers of the developer's own runner configuration SHALL NOT be loaded. The repository's own agent settings SHALL apply.
 
 #### Scenario: Developer's personal plugin
 - **WHEN** the developer's Claude Code user settings enable a plugin with a session-start hook
 - **THEN** an ant run does not load the plugin or run its hook, and a hook in the repository's own `.claude/settings.json` still runs
+
+#### Scenario: Developer's agent memory
+- **WHEN** the developer's Claude Code keeps an auto memory for the repository
+- **THEN** an ant run neither loads nor writes it
 
 ### Requirement: Finishing with a pull request
 An ant SHALL finish successfully by pushing its branch and opening a PR against the base branch through the ant tools, then calling `finish`. The agent writes the PR title and body and chooses whether it is a draft. Anthill adds the closing reference (`Closes #12` / `AB#12`) and the `anthill` label. If the ant calls `finish` with new commits but no PR, Anthill SHALL push and open the PR itself from the finish summary.
@@ -180,6 +184,13 @@ For every ant run and shepherd round, Anthill SHALL record duration and, when th
 #### Scenario: Runner without usage data
 - **WHEN** a runner reports no token or cost data
 - **THEN** the run's tokens and cost are recorded as unknown, and its duration is still recorded
+
+### Requirement: Cost reported for a whole session
+When a runner reports cost as a running total for its session, Anthill SHALL record a run's cost as that total minus the session's previous recorded total, or as unknown when the previous total is unknown.
+
+#### Scenario: Resumed run with a cumulative cost
+- **WHEN** a run resumes a session on a runner that reports cost as a running total for the session, it reports $0.50, and the session's previous recorded total was $0.30
+- **THEN** the run's usage record holds a cost of $0.20
 
 ### Requirement: Usage of a stopped run
 A run that Anthill stops before the runner's final usage report SHALL record the tokens the runner reported during the run, each message counted once, and its cost as unknown unless the runner reported it.

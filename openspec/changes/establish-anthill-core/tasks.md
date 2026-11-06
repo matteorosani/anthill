@@ -125,7 +125,7 @@ Terms follow `openspec/glossary.md`. Every group lands its own tests and docs. U
 - [ ] 14.6 Implement stop, retry, continue and abandon, and verify the "stop and retry later", "retry after crash" and "abandon an ant with an active run" tests
 - [ ] 14.7 Implement the timekeeper: warning delivery, extension requests and late decisions, budget exhaustion with grace period, draft PR and `timed-out`, and verify each ant-timebox scenario end to end with the fake agent and a fake clock
 - [ ] 14.8 Implement session index recovery from claim comments, `ant/` branches and PRs, and restart reconciliation with `auto-resume`, and verify the "local database lost" and "daemon restarted mid-run" tests
-- [ ] 14.9 Record usage per run and per shepherd round, with the tokens reported before a stop kept and other unknown values kept as unknown, and verify the "runner reports cost", "runner without usage data" and "run stopped after a question" tests
+- [ ] 14.9 Record usage per run and per shepherd round, with the tokens reported before a stop kept, a cost the runner reports as a running total for its session recorded as the difference from the session's previous recorded total (unknown when that is unknown), and other unknown values kept as unknown, and verify the "runner reports cost", "runner without usage data", "run stopped after a question" and "resumed run with a cumulative cost" tests
 
 ## 15. Conversation and change reaction
 

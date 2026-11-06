@@ -46,6 +46,13 @@ const PermissionMode = "acceptEdits"
 // setting source, so its hooks still run.
 const SettingSources = "project,local"
 
+// AutoMemoryOff turns off Claude Code's auto memory for a run. The
+// memory is personal: all worktrees of a repository share one memory
+// folder in the developer's home, which --setting-sources does not
+// cover (design D4; spec ant-execution, "Personal agent settings are
+// left out").
+const AutoMemoryOff = "CLAUDE_CODE_DISABLE_AUTO_MEMORY=1"
+
 // AllowedTools are the tools the agent uses without a prompt. On
 // Windows, Claude Code also runs commands with its PowerShell tool, which
 // would otherwise ask before every command that is not read-only
@@ -151,7 +158,7 @@ func (r *Runner) start(ctx context.Context, resume string, spec ports.RunSpec) (
 		Path:   r.opts.Command,
 		Args:   args,
 		Dir:    spec.Worktree,
-		Env:    agentenv.With(spec.Env, telemetryEnv(spec.Telemetry)),
+		Env:    agentenv.With(spec.Env, append([]string{AutoMemoryOff}, telemetryEnv(spec.Telemetry)...)),
 		Stdin:  true,
 		Line:   rn.line,
 		Stderr: r.opts.Log,
@@ -239,7 +246,8 @@ func (r *run) Wait() ports.Exit {
 
 // Usage is the tokens of the results so far, plus those of the agent's
 // messages since the last result, each message once. The cost is the
-// last result's, and unknown before any result.
+// last result's, which is a total for the session, and unknown before
+// any result.
 func (r *run) Usage() ports.Usage {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -254,7 +262,9 @@ func (r *run) Usage() ports.Usage {
 		}
 		tokens = &n
 	}
-	return ports.Usage{Tokens: tokens, CostUSD: r.cost}
+	// total_cost_usd is the running total of the session: a resumed
+	// session starts from the spend of its earlier runs.
+	return ports.Usage{Tokens: tokens, CostUSD: r.cost, CostIsSessionTotal: true}
 }
 
 // line handles one line of Claude Code's output.

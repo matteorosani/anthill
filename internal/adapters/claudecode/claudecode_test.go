@@ -114,7 +114,7 @@ func (f *fake) spec(t *testing.T) ports.RunSpec {
 		Budget:     time.Hour,
 		MCPCommand: []string{"/opt/anthill/bin/anthill", "mcp", "--ant", "ant_tok3n"},
 		ToolToken:  "ant_tok3n",
-		Env:        append(os.Environ(), fakeClaudeVar+"="+f.dir, "OTEL_LOG_USER_PROMPTS=1"),
+		Env:        append(os.Environ(), fakeClaudeVar+"="+f.dir, "OTEL_LOG_USER_PROMPTS=1", "CLAUDE_CODE_DISABLE_AUTO_MEMORY=0"),
 	}
 }
 
@@ -220,6 +220,13 @@ func TestStartRunsHeadlessWithLiveInput(t *testing.T) {
 		if !containsSeq(args, want) {
 			t.Errorf("args %q lack %q", args, want)
 		}
+	}
+	// Task 13.10: auto memory is off, whatever the developer's
+	// environment says.
+	var env []string
+	f.read(t, "env.json", &env)
+	if !slices.Contains(env, "CLAUDE_CODE_DISABLE_AUTO_MEMORY=1") || slices.Contains(env, "CLAUDE_CODE_DISABLE_AUTO_MEMORY=0") {
+		t.Error("the run does not turn auto memory off")
 	}
 	if slices.Contains(args, "--resume") || slices.Contains(args, "Fix the login timeout (gh-12).") {
 		t.Errorf("args %q: a new session must not resume, and the brief goes on standard input", args)
@@ -399,8 +406,15 @@ func TestResumeContinuesTheSession(t *testing.T) {
 	if got := f.inputs(t); !slices.Equal(got, []string{spec.Brief}) {
 		t.Errorf("inputs = %q", got)
 	}
-	if u := run.Usage(); u.Tokens == nil || *u.Tokens != 21986 || u.CostUSD == nil || *u.CostUSD != 0.0215 {
-		t.Errorf("usage = %v tokens, %v USD", u.Tokens, u.CostUSD)
+	// Task 13.10: the cost of a resumed session includes the spend of its
+	// earlier runs, so it is marked as a total for the session.
+	if u := run.Usage(); u.Tokens == nil || *u.Tokens != 21986 || u.CostUSD == nil || *u.CostUSD != 0.0215 || !u.CostIsSessionTotal {
+		t.Errorf("usage = %v tokens, %v USD, session total %v", u.Tokens, u.CostUSD, u.CostIsSessionTotal)
+	}
+	var env []string
+	f.read(t, "env.json", &env)
+	if !slices.Contains(env, "CLAUDE_CODE_DISABLE_AUTO_MEMORY=1") {
+		t.Error("a resumed run keeps the developer's auto memory")
 	}
 	if _, err := f.runner.Resume(context.Background(), "", spec); err == nil {
 		t.Error("Resume without a session id succeeded")
@@ -519,6 +533,9 @@ func TestStoppedAfterAResultKeepsBoth(t *testing.T) {
 	}
 	if u.CostUSD == nil || *u.CostUSD != 0.031 {
 		t.Errorf("cost = %v, want the last result's", u.CostUSD)
+	}
+	if !u.CostIsSessionTotal {
+		t.Error("the cost is not marked as a total for the session")
 	}
 }
 
