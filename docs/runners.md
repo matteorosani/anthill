@@ -56,13 +56,14 @@ claude -p --input-format stream-json --output-format stream-json --verbose \
 
 Most tests run against recorded output written from Claude Code's documentation. The test of a message folded into the running turn replays output captured on Windows (issue #146). The smoke runs check these points; record the answers in the table at the end.
 
-Confirmed on Windows with Claude Code 2.1.318 (issue #146):
+Confirmed on Windows with Claude Code 2.1.310 and 2.1.318 (issue #146):
 
 - A user message with content blocks and `parent_tool_use_id: null`, without a `session_id`, is accepted on standard input (C1).
 - The `PostToolUse` matcher `*` runs the hook after every tool, `additionalContext` reaches the agent, and the hooks run with the quoted path (C4).
 - `--resume` keeps the session id (C5).
 - A stop ends the whole tree, Claude Code's own commands included (C7).
-- A message sent during a turn can be folded into it, with one `result` for both messages and `queued_turn_count` 0 (C3). Before task 13.7, the run then did not end on its own.
+- The `PreToolUse` hook refuses `gh pr create` and `git push` run with the `Bash` tool and with the `PowerShell` tool, with the messages naming `open_pull_request` and `push` (C2).
+- A message sent during a turn can be folded into it, with one `result` for both messages and `queued_turn_count` 0 (C3). Since task 13.7, the run then ends on its own.
 
 Still open:
 

@@ -110,7 +110,7 @@ Terms follow `openspec/glossary.md`. Every group lands its own tests and docs. U
 - [x] 13.4 Implement the Codex adapter with the same capabilities where Codex supports them, and verify tests against recorded output plus a documented manual smoke run
 - [x] 13.5 Implement the OpenCode adapter with the same capabilities where OpenCode supports them, and verify tests against recorded output plus a documented manual smoke run
 - [x] 13.6 Implement runner selection (repository, `agent:` label, global default) and the availability check, and verify the "label overrides repository default" and "runner not installed" tests
-- [ ] 13.7 Fix the Claude Code adapter from the Windows smoke results (issue #146): allow the `PowerShell` tool and refuse `git push`, `gh` and `az` in it through the `PreToolUse` hook, end the run once a `result` leaves no message waiting even when live input was folded into the running turn, and update `docs/runners.md`, and verify tests against the event streams recorded in #146 for C2 and C3, and C2, C3 and C6 re-run on Windows
+- [x] 13.7 Fix the Claude Code adapter from the Windows smoke results (issue #146): allow the `PowerShell` tool and refuse `git push`, `gh` and `az` in it through the `PreToolUse` hook, end the run once a `result` leaves no message waiting even when live input was folded into the running turn, and update `docs/runners.md`, and verify tests against the event streams recorded in #146 for C2 and C3, and C2, C3 and C6 re-run on Windows
 
 ## 14. Ant supervision
 
