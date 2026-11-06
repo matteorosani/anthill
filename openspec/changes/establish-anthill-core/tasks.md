@@ -53,6 +53,7 @@ Terms follow `openspec/glossary.md`. Every group lands its own tests and docs. U
 - [x] 6.5 Configure the worktree so agent pushes fail: credential helper disabled, `GIT_TERMINAL_PROMPT=0`, provider tokens removed from the agent environment, and verify a test that `git push` from that environment fails
 - [x] 6.6 Implement the push policy: only Anthill-created branches or opted-in human PR branches, never base, default or protected branches, no force-push, rebase and amend allowed only before the first push, and verify tests for each branching-policy scenario
 - [x] 6.7 Implement worktree cleanup (local branch, remote branch only when the PR is merged and the provider kept it, confirmation for unpushed commits), and verify tests for "PR merged" and "unpushed work"
+- [ ] 6.8 Keep agent-written settings away from Anthill's credentials (design D4, issue #155): run local git commands without credentials and with hooks and `core.fsmonitor` off, run the pre-push hook without credentials before pushing with hooks off, fetch and push through a transfer repository to the remote URL recorded at clone setup, and fail with a clear message on Git LFS files that need credentials, and verify tests that a planted hook, `core.fsmonitor`, `include.path`, credential helper, `pushurl` and `pushInsteadOf` neither see a credential nor redirect the push, that a failing repository pre-push hook still refuses the push, and that fetch still updates the clone
 
 ## 7. GitHub adapter
 
