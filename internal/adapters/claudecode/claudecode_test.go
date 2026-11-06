@@ -114,7 +114,7 @@ func (f *fake) spec(t *testing.T) ports.RunSpec {
 		Budget:     time.Hour,
 		MCPCommand: []string{"/opt/anthill/bin/anthill", "mcp", "--ant", "ant_tok3n"},
 		ToolToken:  "ant_tok3n",
-		Env:        append(os.Environ(), fakeClaudeVar+"="+f.dir, "OTEL_LOG_USER_PROMPTS=1"),
+		Env:        append(os.Environ(), fakeClaudeVar+"="+f.dir, "OTEL_LOG_USER_PROMPTS=1", "CLAUDE_CODE_DISABLE_AUTO_MEMORY=0"),
 	}
 }
 
@@ -213,12 +213,20 @@ func TestStartRunsHeadlessWithLiveInput(t *testing.T) {
 		{"--output-format", "stream-json"},
 		{"--verbose"},
 		{"--strict-mcp-config"},
+		{"--setting-sources", "project,local"},
 		{"--permission-mode", "acceptEdits"},
 		{"--allowedTools", "Bash,PowerShell,Edit,Write,Read,Glob,Grep,mcp__anthill"},
 	} {
 		if !containsSeq(args, want) {
 			t.Errorf("args %q lack %q", args, want)
 		}
+	}
+	// Task 13.10: auto memory is off, whatever the developer's
+	// environment says.
+	var env []string
+	f.read(t, "env.json", &env)
+	if !slices.Contains(env, "CLAUDE_CODE_DISABLE_AUTO_MEMORY=1") || slices.Contains(env, "CLAUDE_CODE_DISABLE_AUTO_MEMORY=0") {
+		t.Error("the run does not turn auto memory off")
 	}
 	if slices.Contains(args, "--resume") || slices.Contains(args, "Fix the login timeout (gh-12).") {
 		t.Errorf("args %q: a new session must not resume, and the brief goes on standard input", args)
@@ -358,13 +366,7 @@ func TestQueuedMessageKeepsTheInputOpen(t *testing.T) {
 		t.Fatal(err)
 	}
 	waitSession(t, run)
-	deadline := time.Now().Add(20 * time.Second)
-	for run.Usage().Tokens == nil {
-		if time.Now().After(deadline) {
-			t.Fatal("no result")
-		}
-		time.Sleep(5 * time.Millisecond)
-	}
+	waitResult(t, run)
 	if err := run.Send(context.Background(), "Anthill notice: 12 minutes left."); err != nil {
 		t.Fatalf("Send after a result with a queued message: %v", err)
 	}
@@ -397,11 +399,22 @@ func TestResumeContinuesTheSession(t *testing.T) {
 	if !containsSeq(args, []string{"--resume", recordedSession}) {
 		t.Errorf("args %q lack --resume %s", args, recordedSession)
 	}
+	// Task 13.10: a resumed run leaves out the personal settings too.
+	if !containsSeq(args, []string{"--setting-sources", "project,local"}) || !slices.Contains(args, "--strict-mcp-config") {
+		t.Errorf("args %q do not leave out the developer's personal settings", args)
+	}
 	if got := f.inputs(t); !slices.Equal(got, []string{spec.Brief}) {
 		t.Errorf("inputs = %q", got)
 	}
-	if u := run.Usage(); u.Tokens == nil || *u.Tokens != 21986 || u.CostUSD == nil || *u.CostUSD != 0.0215 {
-		t.Errorf("usage = %v tokens, %v USD", u.Tokens, u.CostUSD)
+	// Task 13.10: the cost of a resumed session includes the spend of its
+	// earlier runs, so it is marked as a total for the session.
+	if u := run.Usage(); u.Tokens == nil || *u.Tokens != 21986 || u.CostUSD == nil || *u.CostUSD != 0.0215 || !u.CostIsSessionTotal {
+		t.Errorf("usage = %v tokens, %v USD, session total %v", u.Tokens, u.CostUSD, u.CostIsSessionTotal)
+	}
+	var env []string
+	f.read(t, "env.json", &env)
+	if !slices.Contains(env, "CLAUDE_CODE_DISABLE_AUTO_MEMORY=1") {
+		t.Error("a resumed run keeps the developer's auto memory")
 	}
 	if _, err := f.runner.Resume(context.Background(), "", spec); err == nil {
 		t.Error("Resume without a session id succeeded")
@@ -449,6 +462,80 @@ func TestStopAndUnknownUsage(t *testing.T) {
 	}
 	if run.SessionID() != "" {
 		t.Errorf("session = %q, want none reported", run.SessionID())
+	}
+}
+
+// waitResult waits until the run has processed a result, which is when
+// its cost becomes known.
+func waitResult(t *testing.T, run ports.Run) {
+	t.Helper()
+	deadline := time.Now().Add(20 * time.Second)
+	for run.Usage().CostUSD == nil {
+		if time.Now().After(deadline) {
+			t.Fatal("no result")
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+}
+
+// Task 13.10 (spec ant-execution, "Usage of a stopped run"): a run
+// stopped before any result keeps the tokens of the agent's messages,
+// each message id once and without the subagent's message, and its cost
+// stays unknown.
+func TestStoppedBeforeTheResultKeepsItsTokens(t *testing.T) {
+	f := newFake(t, "stopped")
+	run, err := f.runner.Start(context.Background(), f.spec(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	waitSession(t, run)
+	if err := run.Stop(100 * time.Millisecond); err != nil {
+		t.Fatal(err)
+	}
+	if exit := run.Wait(); exit != agentproc.StoppedExit {
+		t.Errorf("exit = %+v", exit)
+	}
+	u := run.Usage()
+	// msg_s1 twice (one response, two content blocks), then msg_s2; the
+	// subagent's msg_sub is left out.
+	if want := int64((4 + 1800 + 12000 + 2) + (3 + 200 + 13800 + 1)); u.Tokens == nil || *u.Tokens != want {
+		t.Errorf("tokens = %v, want %d", u.Tokens, want)
+	}
+	if u.CostUSD != nil {
+		t.Errorf("cost = %v, want unknown", *u.CostUSD)
+	}
+}
+
+// Task 13.10: a run stopped during a later turn keeps the tokens of its
+// results plus those of the messages after the last result, each id once,
+// and the cost of its last result.
+func TestStoppedAfterAResultKeepsBoth(t *testing.T) {
+	f := newFake(t, "stopped-after-result")
+	run, err := f.runner.Start(context.Background(), f.spec(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	waitSession(t, run)
+	if err := run.Send(context.Background(), "Also add a test."); err != nil {
+		t.Fatal(err)
+	}
+	waitResult(t, run)
+	if err := run.Stop(100 * time.Millisecond); err != nil {
+		t.Fatal(err)
+	}
+	if exit := run.Wait(); exit != agentproc.StoppedExit {
+		t.Errorf("exit = %+v", exit)
+	}
+	u := run.Usage()
+	// The result covers msg_r1; msg_r2 comes twice after it.
+	if want := int64(17510 + (5 + 0 + 17600 + 1)); u.Tokens == nil || *u.Tokens != want {
+		t.Errorf("tokens = %v, want %d", u.Tokens, want)
+	}
+	if u.CostUSD == nil || *u.CostUSD != 0.031 {
+		t.Errorf("cost = %v, want the last result's", u.CostUSD)
+	}
+	if !u.CostIsSessionTotal {
+		t.Error("the cost is not marked as a total for the session")
 	}
 }
 

@@ -37,6 +37,22 @@ const MCPServerName = "anthill"
 // PreToolUse hook still refuses git push, gh and az.
 const PermissionMode = "acceptEdits"
 
+// SettingSources leaves the developer's user settings out of a run:
+// their plugins, skills, hooks, commands, subagents and CLAUDE.md
+// (design D4; spec ant-execution, "Personal agent settings are left
+// out"). The repository's own settings, and the developer's local
+// settings for that repository, still apply. --strict-mcp-config does
+// the same for MCP servers, and the run's own --settings are not a
+// setting source, so its hooks still run.
+const SettingSources = "project,local"
+
+// AutoMemoryOff turns off Claude Code's auto memory for a run. The
+// memory is personal: all worktrees of a repository share one memory
+// folder in the developer's home, which --setting-sources does not
+// cover (design D4; spec ant-execution, "Personal agent settings are
+// left out").
+const AutoMemoryOff = "CLAUDE_CODE_DISABLE_AUTO_MEMORY=1"
+
 // AllowedTools are the tools the agent uses without a prompt. On
 // Windows, Claude Code also runs commands with its PowerShell tool, which
 // would otherwise ask before every command that is not read-only
@@ -128,6 +144,7 @@ func (r *Runner) start(ctx context.Context, resume string, spec ports.RunSpec) (
 		"--verbose",
 		"--mcp-config", mcpPath,
 		"--strict-mcp-config",
+		"--setting-sources", SettingSources,
 		"--settings", settingsPath,
 		"--permission-mode", PermissionMode,
 		"--allowedTools", strings.Join(AllowedTools, ","),
@@ -141,7 +158,7 @@ func (r *Runner) start(ctx context.Context, resume string, spec ports.RunSpec) (
 		Path:   r.opts.Command,
 		Args:   args,
 		Dir:    spec.Worktree,
-		Env:    agentenv.With(spec.Env, telemetryEnv(spec.Telemetry)),
+		Env:    agentenv.With(spec.Env, append([]string{AutoMemoryOff}, telemetryEnv(spec.Telemetry)...)),
 		Stdin:  true,
 		Line:   rn.line,
 		Stderr: r.opts.Log,
@@ -172,8 +189,13 @@ type run struct {
 	// the input is closed and Claude Code exits.
 	pending     int
 	inputClosed bool
-	tokens      *int64
-	cost        *float64
+	// resultTokens are the tokens of the results so far, and
+	// messageTokens those of the main-loop messages since the last
+	// result, by message id, so that a run stopped before its result
+	// keeps them (spec ant-execution, "Usage of a stopped run").
+	resultTokens  *int64
+	messageTokens map[string]int64
+	cost          *float64
 
 	cleanup sync.Once
 }
@@ -222,11 +244,27 @@ func (r *run) Wait() ports.Exit {
 	return exit
 }
 
-// Usage is the total of the results so far.
+// Usage is the tokens of the results so far, plus those of the agent's
+// messages since the last result, each message once. The cost is the
+// last result's, which is a total for the session, and unknown before
+// any result.
 func (r *run) Usage() ports.Usage {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	return ports.Usage{Tokens: r.tokens, CostUSD: r.cost}
+	var tokens *int64
+	if r.resultTokens != nil || len(r.messageTokens) > 0 {
+		var n int64
+		if r.resultTokens != nil {
+			n = *r.resultTokens
+		}
+		for _, t := range r.messageTokens {
+			n += t
+		}
+		tokens = &n
+	}
+	// total_cost_usd is the running total of the session: a resumed
+	// session starts from the spend of its earlier runs.
+	return ports.Usage{Tokens: tokens, CostUSD: r.cost, CostIsSessionTotal: true}
 }
 
 // line handles one line of Claude Code's output.
@@ -242,14 +280,23 @@ func (r *run) line(b []byte) {
 	if ev.SessionID != "" {
 		r.session = ev.SessionID
 	}
+	if id, n, ok := ev.messageTokens(); ok {
+		if r.messageTokens == nil {
+			r.messageTokens = map[string]int64{}
+		}
+		if _, seen := r.messageTokens[id]; !seen {
+			r.messageTokens[id] = n
+		}
+	}
 	closeInput := false
 	if ev.Type == eventResult {
+		// The result's usage covers the turn's messages so far.
 		if n, ok := ev.tokens(); ok {
-			total := n
-			if r.tokens != nil {
-				total += *r.tokens
+			if r.resultTokens != nil {
+				n += *r.resultTokens
 			}
-			r.tokens = &total
+			r.resultTokens = &n
+			clear(r.messageTokens)
 		}
 		if ev.TotalCostUSD != nil {
 			cost := *ev.TotalCostUSD

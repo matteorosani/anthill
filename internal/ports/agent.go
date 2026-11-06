@@ -68,6 +68,13 @@ type AgentTelemetry struct {
 type Usage struct {
 	Tokens  *int64
 	CostUSD *float64
+	// CostIsSessionTotal is set when CostUSD is the running total of the
+	// runner's session, earlier runs that it resumed included, rather
+	// than the cost of this run alone. Anthill then records the run's cost
+	// as the difference from the last running total the runner reported
+	// for the session (spec ant-execution, "Cost reported for a whole
+	// session").
+	CostIsSessionTotal bool
 }
 
 // Exit is how a run's process ended.
