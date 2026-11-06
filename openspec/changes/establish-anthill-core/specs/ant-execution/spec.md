@@ -109,6 +109,25 @@ Agents SHALL run as separate processes in their worktree, holding no provider to
 - **WHEN** an ant runs `git push` directly on a runner without hooks
 - **THEN** the push fails for lack of credentials, and nothing reaches the remote
 
+### Requirement: Anthill's git commands do not run agent-written settings with credentials
+Anthill SHALL NOT run a hook, configuration setting or program that an agent can write while its git commands hold credentials. Local git commands SHALL run without credentials and with the clone's hooks turned off. Anthill SHALL run the repository's pre-push hook itself without credentials, and a failing hook SHALL refuse the push. Fetch and push SHALL use the remote URL recorded when Anthill set up the clone, never one read from configuration an agent can write.
+
+#### Scenario: Planted pre-push hook
+- **WHEN** an agent commits a pre-push hook to its ant branch, or writes one to the clone's hooks, and calls `push`
+- **THEN** the hook runs without provider tokens or credential helpers, and cannot push with the developer's credentials
+
+#### Scenario: Repository check blocks a push
+- **WHEN** the repository's pre-push hook fails on the ant's commits
+- **THEN** the push is refused, nothing reaches the remote, and the `push` result carries the hook's output
+
+#### Scenario: Planted push URL
+- **WHEN** an agent sets `remote.origin.pushurl` or a `url.<base>.pushInsteadOf` in the clone's configuration and calls `push`
+- **THEN** the branch is pushed only to the recorded remote URL
+
+#### Scenario: Git LFS files that need credentials
+- **WHEN** Anthill creates a worktree whose Git LFS files need credentials to download
+- **THEN** worktree creation fails with an error saying that such repositories are not supported yet
+
 ### Requirement: Personal agent settings are left out
 Anthill SHALL launch agents without the developer's personal agent settings: the plugins, skills, hooks and MCP servers of the developer's own runner configuration SHALL NOT be loaded. The repository's own agent settings SHALL apply.
 
