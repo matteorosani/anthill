@@ -135,6 +135,10 @@ Fetch and push SHALL use the remote URL that Anthill checked against the configu
 - **WHEN** the clone's only remote for the configured repository has a URL such as `ext::sh -c …` or `ssh://-oProxyCommand=…@github.com/acme/web`
 - **THEN** Anthill does not accept the clone, as for a clone with no remote for the repository, and runs nothing
 
+#### Scenario: Remote URL with another transport
+- **WHEN** the clone's only remote for the configured repository has an `http://`, `git://` or `file://` URL, or a `<transport>::<address>` URL
+- **THEN** Anthill does not accept the clone, as for a clone with no remote for the repository, although earlier versions accepted it
+
 ### Requirement: Personal agent settings are left out
 Anthill SHALL launch agents without the developer's personal agent settings: the plugins, skills, hooks, memory and MCP servers of the developer's own runner configuration SHALL NOT be loaded. The repository's own agent settings SHALL apply.
 

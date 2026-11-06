@@ -233,14 +233,19 @@ func TestErrorRedactsSecrets(t *testing.T) {
 	}
 }
 
-// Scenario "Remote URL that runs a command" (ant-execution): a clone
-// whose only remote for the repository could run a command is not
+// Scenarios "Remote URL that runs a command" and "Remote URL with another
+// transport" (ant-execution): a clone whose only remote for the
+// repository could run a command, or uses another transport, is not
 // accepted.
 func TestOpenCloneRefusesCommandURLs(t *testing.T) {
 	for _, url := range []string{
 		"ext::sh -c touch% /tmp/pwned",
 		"ssh://-oProxyCommand=touch@github.com/acme/web",
 		"-oProxyCommand=touch@github.com:acme/web",
+		"http://github.com/acme/web",
+		"git://github.com/acme/web",
+		"file://github.com/acme/web",
+		"fd::https://github.com/acme/web",
 	} {
 		f := newFixture(t)
 		gitIn(t, f.clone, "config", "--local", "remote.origin.url", url)

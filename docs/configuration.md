@@ -55,6 +55,8 @@ repositories:
 
 A repository is identified by `provider` (`github` or `azure-devops`) and `remote` (`owner/name` on GitHub, `organization/project/repository` on Azure DevOps). Each repository may appear only once. `path` is the absolute path of your local clone. An entry may also set any shared setting. Those values apply when `.anthill.yml` does not set them.
 
+The clone must have a remote whose URL points to the repository, and that URL must be `https://`, `ssh://` (also written `git+ssh://` or `ssh+git://`) or the scp-like `git@host:path` form. Anthill fetches and pushes to it with your credentials, so it does not accept a URL whose transport could run a command or pass an option to ssh. `http://`, `git://` and `file://` URLs, `<transport>::<address>` URLs such as `ext::`, and URLs with a part that starts with `-` are not accepted, even though earlier versions accepted some of them. A clone with only such a remote counts as a clone with no remote for the repository: change its URL with `git remote set-url origin https://github.com/<owner>/<name>.git`.
+
 ### The repository file
 
 `.anthill.yml` sits at the root of the repository and holds only the shared settings marked `.anthill.yml` in the table below. Anthill reads it from the working folder of your local clone, whatever branch is checked out, so an uncommitted edit takes effect at the next reload:
