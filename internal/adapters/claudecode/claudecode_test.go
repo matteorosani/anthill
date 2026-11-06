@@ -213,6 +213,7 @@ func TestStartRunsHeadlessWithLiveInput(t *testing.T) {
 		{"--output-format", "stream-json"},
 		{"--verbose"},
 		{"--strict-mcp-config"},
+		{"--setting-sources", "project,local"},
 		{"--permission-mode", "acceptEdits"},
 		{"--allowedTools", "Bash,PowerShell,Edit,Write,Read,Glob,Grep,mcp__anthill"},
 	} {
@@ -358,13 +359,7 @@ func TestQueuedMessageKeepsTheInputOpen(t *testing.T) {
 		t.Fatal(err)
 	}
 	waitSession(t, run)
-	deadline := time.Now().Add(20 * time.Second)
-	for run.Usage().Tokens == nil {
-		if time.Now().After(deadline) {
-			t.Fatal("no result")
-		}
-		time.Sleep(5 * time.Millisecond)
-	}
+	waitResult(t, run)
 	if err := run.Send(context.Background(), "Anthill notice: 12 minutes left."); err != nil {
 		t.Fatalf("Send after a result with a queued message: %v", err)
 	}
@@ -396,6 +391,10 @@ func TestResumeContinuesTheSession(t *testing.T) {
 	f.read(t, "args.json", &args)
 	if !containsSeq(args, []string{"--resume", recordedSession}) {
 		t.Errorf("args %q lack --resume %s", args, recordedSession)
+	}
+	// Task 13.10: a resumed run leaves out the personal settings too.
+	if !containsSeq(args, []string{"--setting-sources", "project,local"}) || !slices.Contains(args, "--strict-mcp-config") {
+		t.Errorf("args %q do not leave out the developer's personal settings", args)
 	}
 	if got := f.inputs(t); !slices.Equal(got, []string{spec.Brief}) {
 		t.Errorf("inputs = %q", got)
@@ -449,6 +448,77 @@ func TestStopAndUnknownUsage(t *testing.T) {
 	}
 	if run.SessionID() != "" {
 		t.Errorf("session = %q, want none reported", run.SessionID())
+	}
+}
+
+// waitResult waits until the run has processed a result, which is when
+// its cost becomes known.
+func waitResult(t *testing.T, run ports.Run) {
+	t.Helper()
+	deadline := time.Now().Add(20 * time.Second)
+	for run.Usage().CostUSD == nil {
+		if time.Now().After(deadline) {
+			t.Fatal("no result")
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+}
+
+// Task 13.10 (spec ant-execution, "Usage of a stopped run"): a run
+// stopped before any result keeps the tokens of the agent's messages,
+// each message id once and without the subagent's message, and its cost
+// stays unknown.
+func TestStoppedBeforeTheResultKeepsItsTokens(t *testing.T) {
+	f := newFake(t, "stopped")
+	run, err := f.runner.Start(context.Background(), f.spec(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	waitSession(t, run)
+	if err := run.Stop(100 * time.Millisecond); err != nil {
+		t.Fatal(err)
+	}
+	if exit := run.Wait(); exit != agentproc.StoppedExit {
+		t.Errorf("exit = %+v", exit)
+	}
+	u := run.Usage()
+	// msg_s1 twice (one response, two content blocks), then msg_s2; the
+	// subagent's msg_sub is left out.
+	if want := int64((4 + 1800 + 12000 + 2) + (3 + 200 + 13800 + 1)); u.Tokens == nil || *u.Tokens != want {
+		t.Errorf("tokens = %v, want %d", u.Tokens, want)
+	}
+	if u.CostUSD != nil {
+		t.Errorf("cost = %v, want unknown", *u.CostUSD)
+	}
+}
+
+// Task 13.10: a run stopped during a later turn keeps the tokens of its
+// results plus those of the messages after the last result, each id once,
+// and the cost of its last result.
+func TestStoppedAfterAResultKeepsBoth(t *testing.T) {
+	f := newFake(t, "stopped-after-result")
+	run, err := f.runner.Start(context.Background(), f.spec(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	waitSession(t, run)
+	if err := run.Send(context.Background(), "Also add a test."); err != nil {
+		t.Fatal(err)
+	}
+	waitResult(t, run)
+	if err := run.Stop(100 * time.Millisecond); err != nil {
+		t.Fatal(err)
+	}
+	if exit := run.Wait(); exit != agentproc.StoppedExit {
+		t.Errorf("exit = %+v", exit)
+	}
+	u := run.Usage()
+	// The result covers msg_r1; msg_r2 comes twice after it.
+	if want := int64(17510 + (5 + 0 + 17600 + 1)); u.Tokens == nil || *u.Tokens != want {
+		t.Errorf("tokens = %v, want %d", u.Tokens, want)
+	}
+	if u.CostUSD == nil || *u.CostUSD != 0.031 {
+		t.Errorf("cost = %v, want the last result's", u.CostUSD)
 	}
 }
 

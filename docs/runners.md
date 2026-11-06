@@ -28,7 +28,7 @@ In the worktree, Anthill runs:
 
 ```
 claude -p --input-format stream-json --output-format stream-json --verbose \
-  --mcp-config <run dir>/mcp.json --strict-mcp-config \
+  --mcp-config <run dir>/mcp.json --strict-mcp-config --setting-sources project,local \
   --settings <run dir>/settings.json \
   --permission-mode acceptEdits --allowedTools Bash,PowerShell,Edit,Write,Read,Glob,Grep,mcp__anthill \
   [--resume <session id>]
@@ -43,10 +43,25 @@ claude -p --input-format stream-json --output-format stream-json --verbose \
     - `PreToolUse` on `Bash` and `PowerShell` (matcher `Bash|PowerShell`) runs `"<anthill>" hook pre-tool-use`. It refuses `git push`, `gh` and `az` with exit code 2 and a message naming the ant tool to use, such as `open_pull_request` for `gh pr create`. It reads a `PowerShell` command with PowerShell's quoting, where a backslash is an ordinary character and the backtick escapes, and also follows `Invoke-Expression` and `Start-Process`.
     - `PostToolUse` on every tool runs `"<anthill>" hook post-tool-use --ant "<token>"`. It takes the run's queued notices from the daemon (`ant.notices`) and returns them as `additionalContext`. With no notice, or when the daemon cannot be reached, it prints nothing and exits 0, so it never blocks the agent.
 - **`--strict-mcp-config`.** This leaves out the developer's own MCP servers. A GitHub MCP server holding a token would otherwise give the agent provider access, which design D4 rules out.
+- **`--setting-sources project,local`.** This leaves out the developer's personal settings (design D4; spec ant-execution, "Personal agent settings are left out"). Without it, the developer's plugins, skills and hooks reach every ant: in the smoke runs, the session-start hook of a user plugin added its own instructions to every run (issue #146). The flag leaves out the `user` source, which in Claude Code's documentation is:
+  - `~/.claude/settings.json`, and with it the plugins it enables and the hooks it sets;
+  - `~/.claude/CLAUDE.md` and `~/.claude/rules`;
+  - the user's skills, commands and subagents in `~/.claude/skills`, `~/.claude/commands` and `~/.claude/agents`.
+
+  What still applies:
+  - The repository's own settings (`project`): `.claude/settings.json` with its hooks and plugins, `CLAUDE.md` and `.claude/rules`, and the repository's skills, commands and subagents. A repository can tune its agents for everyone.
+  - The developer's local settings for the repository (`local`): `.claude/settings.local.json`, which in a worktree Claude Code reads from the main checkout's root, and `CLAUDE.local.md`.
+  - The run's own `--settings`, which is not a setting source: its hooks still run (smoke checks C2 and C4).
+  - Managed policy settings, which always apply.
+
+  `--setting-sources` does not cover `~/.claude.json`, which holds the developer's own MCP servers, nor claude.ai connectors: `--strict-mcp-config` leaves both out. Claude Code's auto memory (`~/.claude/projects/<project>/memory/`) is read whatever the setting sources are.
 - **`--permission-mode acceptEdits` with `--allowedTools`.** This is the most restrictive headless setting that still lets the agent edit files and run the tests in its worktree (design, Risks). `acceptEdits` alone would still ask before each Bash command, and nobody answers a headless run. `--allowedTools` lets only the listed tools run without a prompt. On Windows, Claude Code has a `PowerShell` tool besides `Bash`, and the agent often chooses it. Without `PowerShell` in the list, Claude Code asks before every PowerShell command that is not read-only, so the agent could not build, test or commit with it (smoke check C2). The `PreToolUse` hook still refuses `git push`, `gh` and `az`. `bypassPermissions` was not used: it would also let through every tool not listed.
 - **The model.** Anthill sets no model. Claude Code uses the developer's own default.
 - **Session id.** The session id is read from the `system` `init` event, and also from every later event that carries one.
-- **Usage.** Tokens are every token of each `result` event: input, output, cache creation and cache reads. They are added up over the run's results, so cached tokens count, as on every runner. The cost is the `total_cost_usd` of the last result, on the assumption that it is cumulative for the process (smoke check C6). A run stopped before its first `result` has unknown usage, although it used tokens.
+- **Usage.** Tokens are every token of each `result` event: input, output, cache creation and cache reads. They are added up over the run's results, so cached tokens count, as on every runner. The cost is the `total_cost_usd` of the last result: Claude Code's documentation says it is the running total of the process, while a result's `usage` covers only its own turn (smoke check C6).
+- **Usage of a stopped run** (spec ant-execution, "Usage of a stopped run"). A run stopped before its last `result`, for example after `ask_question` or at time-out, also keeps the tokens of the agent's messages since the last result. Each `assistant` event carries its API response's `message.id` and `message.usage`. One response can give several events with the same id and the same usage, one per content block, so each id counts once. Once a `result` arrives, its usage covers the messages before it. The cost of a run stopped before any `result` stays unknown. Two limits, from Claude Code's documentation:
+  - The output tokens of a message are the count at the start of its response, a placeholder that only the `result` corrects, so the output of a turn cut short is undercounted.
+  - Subagent messages (`parent_tool_use_id` set) are not counted, as a `result`'s `usage` leaves out subagents too. A subagent's tokens appear in neither.
 - **Telemetry variables.**
   - Always: `OTEL_LOG_USER_PROMPTS=0` and `OTEL_LOG_TOOL_DETAILS=0`.
   - With export on, also: `CLAUDE_CODE_ENABLE_TELEMETRY=1`, `OTEL_METRICS_EXPORTER=otlp`, `OTEL_LOGS_EXPORTER=otlp`, `OTEL_EXPORTER_OTLP_ENDPOINT`, `OTEL_EXPORTER_OTLP_PROTOCOL`, `OTEL_EXPORTER_OTLP_HEADERS`, `OTEL_RESOURCE_ATTRIBUTES` (`anthill.item`, `anthill.ant_id`, `anthill.instance`) and `TRACEPARENT`.
@@ -71,6 +86,8 @@ Still open:
 
 1. Whether any version reports a waiting message in `queued_turn_count`. None did in the smoke runs. The adapter keeps the input open while it is above 0.
 2. On macOS and Linux, all the checks: they have only been run on Windows.
+3. That `--setting-sources project,local` leaves out a user plugin and a user hook while a project hook still runs (C8), and that the run's own hooks still run with it (C2, C4).
+4. The tokens of a stopped run (C7): the event names and fields come from Claude Code's documentation, not from a recorded stop.
 
 ## Codex
 
@@ -293,6 +310,7 @@ Expected:
 
 - `smoke: stopping the run (--stop-after), grace 10s`.
 - Within about 10 seconds, `smoke: run ended: exit code -1, crashed true`.
+- `smoke: usage: <n> tokens, unknown USD`, with `<n>` above 0: the run was stopped before its `result`, and keeps the tokens of its messages.
 - Afterwards, no agent process is left:
   - macOS or Linux: `ps -ef | grep -E 'claude -p|ping' | grep -v grep` prints nothing.
   - Windows: in a second `cmd.exe` window, list the processes before, during and after the run, and compare:
@@ -304,6 +322,42 @@ Expected:
     During the run, the list shows `claude -p …` with `anthill mcp` and `bash.exe` under it, and `PING.EXE` under `bash.exe`. After it, none of them is left. A Claude Code window or desktop app of your own shows up in every list.
 
 Also run C7 with Ctrl+C instead of `--stop-after`: the output and the result are the same, with `(interrupted)`.
+
+#### C8: the developer's personal settings are left out
+
+This checks that a run loads the repository's own Claude Code settings but not your personal ones (spec ant-execution, "Personal agent settings are left out").
+
+1. Back up your user settings: copy `~/.claude/settings.json` to `~/.claude/settings.json.bak`. On Windows the file is `%USERPROFILE%\.claude\settings.json`. If it does not exist, note that, so you can delete it in step 6.
+2. Add a `SessionStart` hook that prints a marker to `~/.claude/settings.json`, keeping the keys already there:
+
+   ```json
+   {
+     "hooks": {
+       "SessionStart": [
+         { "hooks": [ { "type": "command", "command": "echo ANTHILL-SMOKE-USER-HOOK" } ] }
+       ]
+     }
+   }
+   ```
+
+3. In the throwaway repository, create `.claude/settings.json` with the same hook, printing `ANTHILL-SMOKE-PROJECT-HOOK` instead.
+4. Run:
+
+   ```bash
+   anthill runner-smoke --runner claude-code "Quote, word for word, every line of your context that starts with ANTHILL-SMOKE. If there is none, say none. Use no tools."
+   ```
+
+   Expected:
+   - The agent quotes `ANTHILL-SMOKE-PROJECT-HOOK` and not `ANTHILL-SMOKE-USER-HOOK`.
+   - If the standard error shows hook events, only the project hook ran.
+
+   If the agent quotes neither marker, check the same brief with `claude -p` directly, which loads both. If that shows both markers, note that the project hook did not run under Anthill. If it shows neither, the brief does not reach hook output and this step tests nothing.
+5. With a user plugin of your own enabled, such as one with a `SessionStart` hook, run C1 again:
+   - The plugin's instructions do not appear in the agent's context.
+   - The `system` `init` event on standard error does not list the plugin, or its skills and commands, where it lists plugins, skills or slash commands.
+
+   Compare with `claude -p --output-format stream-json --verbose "say hi"` run directly in the same directory, where the plugin appears.
+6. Restore your user settings from the backup, or delete the file if it did not exist before, and delete the throwaway repository's `.claude` directory.
 
 #### Results
 
@@ -317,7 +371,8 @@ Copy this table into the pull request or issue that records the smoke run:
 | C4 notice through the hook |  |  |  |
 | C5 resume (same session id?) |  |  |  |
 | C6 cost cumulative? |  |  |  |
-| C7 no process after stop |  |  |  |
+| C7 no process after stop; tokens of the stopped run known |  |  |  |
+| C8 user hook and plugin left out, project hook runs |  |  |  |
 
 The results so far are recorded in issue #146.
 
