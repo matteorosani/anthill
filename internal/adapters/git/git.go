@@ -150,8 +150,10 @@ func (g *Git) output(ctx context.Context, dir string, args ...string) (string, e
 	return strings.TrimRight(r.stdout, "\r\n"), err
 }
 
-// noHooksDir creates, once, the empty directory every command takes as
-// core.hooksPath, and returns it.
+// noHooksDir creates, once and for the owner only, the empty directory
+// every command takes as core.hooksPath, and returns it. Before each use
+// it checks that the directory is still empty, so that a hook planted in
+// it never runs.
 func (g *Git) noHooksDir() (string, error) {
 	dir := filepath.Join(g.transferRoot, "no-hooks")
 	g.noHooksMu.Lock()
@@ -165,7 +167,25 @@ func (g *Git) noHooksDir() (string, error) {
 		if err := os.MkdirAll(dir, 0o700); err != nil {
 			return "", fmt.Errorf("creating the empty hooks directory: %w", err)
 		}
+		// MkdirAll leaves the permissions of a directory that exists.
+		if err := os.Chmod(dir, 0o700); err != nil {
+			return "", fmt.Errorf("creating the empty hooks directory: %w", err)
+		}
 		g.noHooksOK = true
+	}
+	info, err := os.Lstat(dir)
+	if err != nil {
+		return "", fmt.Errorf("checking the empty hooks directory: %w", err)
+	}
+	if !info.IsDir() {
+		return "", fmt.Errorf("the empty hooks directory %s is not a directory", dir)
+	}
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return "", fmt.Errorf("checking the empty hooks directory: %w", err)
+	}
+	if len(entries) > 0 {
+		return "", fmt.Errorf("the empty hooks directory %s is not empty: something wrote %s to it", dir, entries[0].Name())
 	}
 	return dir, nil
 }

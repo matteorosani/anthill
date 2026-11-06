@@ -89,7 +89,7 @@ func (g *Git) OpenClone(ctx context.Context, path string, repo domain.Repository
 
 // Fetch fetches every branch of the remote URL into a transfer
 // repository, then from there into the clone's remote-tracking branches,
-// pruning those the remote deleted.
+// pruning those the remote deleted. It fetches branches only, no tags.
 func (g *Git) Fetch(ctx context.Context, c ports.Clone) error {
 	t, err := g.openTransfer(ctx, c)
 	if err != nil {

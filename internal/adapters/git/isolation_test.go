@@ -270,3 +270,25 @@ func TestTransferRepositoriesRemoved(t *testing.T) {
 		}
 	}
 }
+
+// A hook planted in Anthill's empty hooks directory stops every git
+// command instead of running.
+func TestPlantedHookInNoHooksRefused(t *testing.T) {
+	f := newFixture(t)
+	ran := filepath.Join(f.tmp, "no-hooks-ran")
+	hook := filepath.Join(f.home, git.TransferDirName, "no-hooks", "reference-transaction")
+	writeFile(t, hook, "#!/bin/sh\necho ran > '"+filepath.ToSlash(ran)+"'\n")
+	if err := os.Chmod(hook, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	err := f.git.CreateBranch(f.ctx, f.c, "ant/x", "main")
+	if err == nil || !strings.Contains(err.Error(), "not empty") {
+		t.Errorf("CreateBranch() with a planted hook = %v", err)
+	}
+	if exists(ran) {
+		t.Error("the planted hook ran")
+	}
+	if strings.Contains(gitIn(t, f.clone, "branch", "--list", "ant/x"), "ant/x") {
+		t.Error("the branch was created")
+	}
+}

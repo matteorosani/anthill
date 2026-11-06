@@ -110,7 +110,7 @@ Agents SHALL run as separate processes in their worktree, holding no provider to
 - **THEN** the push fails for lack of credentials, and nothing reaches the remote
 
 ### Requirement: Anthill's git commands do not run agent-written settings with credentials
-Anthill SHALL NOT run a hook, configuration setting or program that an agent can write while its git commands hold credentials. Local git commands SHALL run without credentials and with the clone's hooks turned off. Anthill SHALL run the repository's pre-push hook itself without credentials, and a failing hook SHALL refuse the push. Fetch and push SHALL use the remote URL recorded when Anthill set up the clone, never one read from configuration an agent can write.
+Anthill SHALL NOT run a hook, configuration setting or program that an agent can write while its git commands hold credentials. Local git commands SHALL run without credentials and with hooks off. Anthill SHALL run the repository's pre-push hook itself without credentials, and a failing hook SHALL refuse the push. Fetch and push SHALL use the remote URL Anthill checked against the configured repository when it opened the clone, never a `pushurl` or URL rewrite from the clone's configuration.
 
 #### Scenario: Planted pre-push hook
 - **WHEN** an agent commits a pre-push hook to its ant branch, or writes one to the clone's hooks, and calls `push`
@@ -122,7 +122,7 @@ Anthill SHALL NOT run a hook, configuration setting or program that an agent can
 
 #### Scenario: Planted push URL
 - **WHEN** an agent sets `remote.origin.pushurl` or a `url.<base>.pushInsteadOf` in the clone's configuration and calls `push`
-- **THEN** the branch is pushed only to the recorded remote URL
+- **THEN** the branch is pushed only to the remote URL Anthill checked when it opened the clone
 
 #### Scenario: Git LFS files that need credentials
 - **WHEN** Anthill creates a worktree whose Git LFS files need credentials to download
