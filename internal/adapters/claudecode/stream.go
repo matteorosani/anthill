@@ -22,6 +22,12 @@ type event struct {
 	// TotalCostUSD is the cost of the process so far, so the last one
 	// is the run's cost.
 	TotalCostUSD *float64 `json:"total_cost_usd"`
+	// QueuedTurnCount, on a result, is the number of input messages
+	// still waiting for a turn of their own. A message that arrives while
+	// Claude Code is working can be folded into the running turn, and
+	// then gets no result of its own (issue #146, smoke check C3). Older
+	// versions do not report it.
+	QueuedTurnCount *int `json:"queued_turn_count"`
 	// Usage is the turn's tokens.
 	Usage *struct {
 		InputTokens              int64 `json:"input_tokens"`

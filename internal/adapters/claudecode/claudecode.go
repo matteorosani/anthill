@@ -37,8 +37,11 @@ const MCPServerName = "anthill"
 // PreToolUse hook still refuses git push, gh and az.
 const PermissionMode = "acceptEdits"
 
-// AllowedTools are the tools the agent uses without a prompt.
-var AllowedTools = []string{"Bash", "Edit", "Write", "Read", "Glob", "Grep", "mcp__" + MCPServerName}
+// AllowedTools are the tools the agent uses without a prompt. On
+// Windows, Claude Code also runs commands with its PowerShell tool, which
+// would otherwise ask before every command that is not read-only
+// (issue #146).
+var AllowedTools = []string{ToolBash, ToolPowerShell, "Edit", "Write", "Read", "Glob", "Grep", "mcp__" + MCPServerName}
 
 // Options configure the runner.
 type Options struct {
@@ -164,8 +167,9 @@ type run struct {
 
 	mu      sync.Mutex
 	session string
-	// pending counts the input messages whose result has not arrived.
-	// At zero, the input is closed and Claude Code exits.
+	// pending counts the input messages whose result has not arrived,
+	// for a Claude Code that does not report queued_turn_count. At zero,
+	// the input is closed and Claude Code exits.
 	pending     int
 	inputClosed bool
 	tokens      *int64
@@ -182,8 +186,10 @@ func (r *run) SessionID() string {
 	return r.session
 }
 
-// Send gives input to the agent as a new user message. It fails once
-// the agent has answered every message and its input is closed.
+// Send gives input to the agent as a new user message. Claude Code may
+// answer it in the turn it is working on, or in a turn of its own. Send
+// fails once the agent has answered every message and its input is
+// closed.
 func (r *run) Send(ctx context.Context, input string) error {
 	if err := ctx.Err(); err != nil {
 		return err
@@ -250,7 +256,16 @@ func (r *run) line(b []byte) {
 			r.cost = &cost
 		}
 		r.pending--
-		if r.pending <= 0 && !r.inputClosed {
+		// Every message is answered when no message waits for a turn of
+		// its own. A message written just before this result, and not
+		// yet read, stays in the pipe ahead of the end of the input; that
+		// Claude Code still answers it is an open point of
+		// docs/runners.md.
+		answered := r.pending <= 0
+		if ev.QueuedTurnCount != nil {
+			answered = *ev.QueuedTurnCount == 0
+		}
+		if answered && !r.inputClosed {
 			r.inputClosed, closeInput = true, true
 		}
 	}

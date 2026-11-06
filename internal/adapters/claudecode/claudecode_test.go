@@ -214,7 +214,7 @@ func TestStartRunsHeadlessWithLiveInput(t *testing.T) {
 		{"--verbose"},
 		{"--strict-mcp-config"},
 		{"--permission-mode", "acceptEdits"},
-		{"--allowedTools", "Bash,Edit,Write,Read,Glob,Grep,mcp__anthill"},
+		{"--allowedTools", "Bash,PowerShell,Edit,Write,Read,Glob,Grep,mcp__anthill"},
 	} {
 		if !containsSeq(args, want) {
 			t.Errorf("args %q lack %q", args, want)
@@ -249,7 +249,7 @@ func TestStartRunsHeadlessWithLiveInput(t *testing.T) {
 	}
 	f.read(t, "settings.json", &settings)
 	pre, post := settings.Hooks["PreToolUse"], settings.Hooks["PostToolUse"]
-	if len(pre) != 1 || pre[0].Matcher != "Bash" || pre[0].Hooks[0].Command != `"/opt/anthill/bin/anthill" hook pre-tool-use` {
+	if len(pre) != 1 || pre[0].Matcher != "Bash|PowerShell" || pre[0].Hooks[0].Command != `"/opt/anthill/bin/anthill" hook pre-tool-use` {
 		t.Errorf("PreToolUse = %+v", pre)
 	}
 	if len(post) != 1 || post[0].Matcher != "*" || post[0].Hooks[0].Command != `"/opt/anthill/bin/anthill" hook post-tool-use --ant "ant_tok3n"` {
@@ -259,6 +259,120 @@ func TestStartRunsHeadlessWithLiveInput(t *testing.T) {
 	tmp := filepath.Dir(firstArgAfter(args, "--settings"))
 	if _, err := os.Stat(tmp); !os.IsNotExist(err) {
 		t.Errorf("the run's configuration %s is still there after Wait: %v", tmp, err)
+	}
+}
+
+// waitExit waits for the run to end on its own, and fails the test when
+// it does not within a few seconds.
+func waitExit(t *testing.T, run ports.Run) ports.Exit {
+	t.Helper()
+	ended := make(chan ports.Exit, 1)
+	go func() { ended <- run.Wait() }()
+	select {
+	case exit := <-ended:
+		return exit
+	case <-time.After(20 * time.Second):
+		_ = run.Stop(0)
+		<-ended
+		t.Fatal("the run did not end on its own: its input was not closed")
+		return ports.Exit{}
+	}
+}
+
+// Task 13.7, issue #146, smoke check C3: a message sent while Claude
+// Code works is folded into the running turn, which ends with one result
+// for both messages and no message queued. The input then closes and
+// the run ends on its own. The output is recorded on Windows.
+func TestLiveInputFoldedIntoTheTurn(t *testing.T) {
+	f := newFake(t, "live-input-folded")
+	run, err := f.runner.Start(context.Background(), f.spec(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	waitSession(t, run)
+	if err := run.Send(context.Background(), "Also tell me what 6 times 7 is."); err != nil {
+		t.Fatal(err)
+	}
+	if exit := waitExit(t, run); exit != (ports.Exit{}) {
+		t.Errorf("exit = %+v", exit)
+	}
+	if got := len(f.inputs(t)); got != 2 {
+		t.Errorf("claude read %d inputs, want the brief and the message", got)
+	}
+	if got := run.SessionID(); got != "54d115d5-4010-4387-8d3c-21708a16e990" {
+		t.Errorf("session = %q", got)
+	}
+	u := run.Usage()
+	if u.Tokens == nil || *u.Tokens != 6+7739+45480+121 {
+		t.Errorf("tokens = %v, want those of the one result", u.Tokens)
+	}
+	if u.CostUSD == nil || *u.CostUSD != 0.073452 {
+		t.Errorf("cost = %v", u.CostUSD)
+	}
+	if err := run.Send(context.Background(), "late"); err == nil {
+		t.Error("Send after the run ended succeeded")
+	}
+}
+
+// Task 13.7, issue #146, smoke check C6: a message sent while Claude Code
+// writes an answer without tools gets a turn and a result of its own.
+// The first result reports queued_turn_count 0 although the message is
+// waiting, so the input closes after it; Claude Code still answers the
+// message it has read, then exits. Both results count, and the cost is
+// the last, cumulative total. The output is recorded on Windows.
+func TestLiveInputAnsweredInATurnOfItsOwn(t *testing.T) {
+	f := newFake(t, "live-input-own-turn")
+	run, err := f.runner.Start(context.Background(), f.spec(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	waitSession(t, run)
+	if err := run.Send(context.Background(), "Now say, in one sentence, what 6 times 7 is."); err != nil {
+		t.Fatal(err)
+	}
+	if exit := waitExit(t, run); exit != (ports.Exit{}) {
+		t.Errorf("exit = %+v", exit)
+	}
+	if got := len(f.inputs(t)); got != 2 {
+		t.Errorf("claude read %d inputs, want the brief and the message", got)
+	}
+	u := run.Usage()
+	if want := int64(2+10587+16027+1075) + (4 + 1097 + 26614 + 12); u.Tokens == nil || *u.Tokens != want {
+		t.Errorf("tokens = %v, want %d, the sum of both results", u.Tokens, want)
+	}
+	if u.CostUSD == nil || *u.CostUSD != 0.12376419999999999 {
+		t.Errorf("cost = %v, want the second result's cumulative total", u.CostUSD)
+	}
+}
+
+// Task 13.7: a result that reports a message still queued for a turn of
+// its own keeps the input open, although as many results as messages
+// have come. The output is written, not recorded: in the smoke runs,
+// Claude Code reported queued_turn_count 0 even with a message waiting
+// (see TestLiveInputAnsweredInATurnOfItsOwn), so this guards the rule
+// for a version that reports it.
+func TestQueuedMessageKeepsTheInputOpen(t *testing.T) {
+	f := newFake(t, "live-input-queued")
+	run, err := f.runner.Start(context.Background(), f.spec(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	waitSession(t, run)
+	deadline := time.Now().Add(20 * time.Second)
+	for run.Usage().Tokens == nil {
+		if time.Now().After(deadline) {
+			t.Fatal("no result")
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	if err := run.Send(context.Background(), "Anthill notice: 12 minutes left."); err != nil {
+		t.Fatalf("Send after a result with a queued message: %v", err)
+	}
+	if exit := waitExit(t, run); exit != (ports.Exit{}) {
+		t.Errorf("exit = %+v", exit)
+	}
+	if got := len(f.inputs(t)); got != 2 {
+		t.Errorf("claude read %d inputs, want 2", got)
 	}
 }
 
@@ -435,6 +549,12 @@ func TestPreToolUse(t *testing.T) {
 		{"pre_tool_use_git_push.json", "call the push tool"},
 		{"pre_tool_use_go_test.json", ""},
 		{"pre_tool_use_edit.json", ""},
+		// Issue #146, smoke check C2: on Windows, the agent runs commands
+		// with the PowerShell tool. Claude Code does not print hook
+		// inputs, so these carry the recorded tool calls of that run.
+		{"pre_tool_use_powershell_gh_pr_create.json", "call the open_pull_request tool"},
+		{"pre_tool_use_powershell_git_push.json", "call the push tool"},
+		{"pre_tool_use_powershell_go_test.json", ""},
 	}
 	for _, tt := range tests {
 		b, err := fixtures.ReadFile("testdata/hooks/" + tt.fixture)
