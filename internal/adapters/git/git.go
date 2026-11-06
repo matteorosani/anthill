@@ -46,7 +46,6 @@ type Git struct {
 	transferRoot string
 
 	noHooksMu sync.Mutex
-	noHooksOK bool
 
 	versionMu  sync.Mutex
 	versionOK  bool
@@ -150,28 +149,24 @@ func (g *Git) output(ctx context.Context, dir string, args ...string) (string, e
 	return strings.TrimRight(r.stdout, "\r\n"), err
 }
 
-// noHooksDir creates, once and for the owner only, the empty directory
-// every command takes as core.hooksPath, and returns it. Before each use
-// it checks that the directory is still empty, so that a hook planted in
-// it never runs.
+// noHooksDir returns the empty directory every command takes as
+// core.hooksPath. Before every command it creates the directory if
+// needed, checks that it is a directory and not a symbolic link, makes it
+// owner-only, and checks that it is still empty. The agent runs as the
+// same OS user and could write a hook there, which a transfer command
+// would run with credentials, so a directory that is not empty fails the
+// command instead of being emptied.
 func (g *Git) noHooksDir() (string, error) {
 	dir := filepath.Join(g.transferRoot, "no-hooks")
+	// A relative core.hooksPath would be relative to the worktree, which
+	// the agent writes.
+	if !filepath.IsAbs(dir) {
+		return "", fmt.Errorf("anthill's data folder %q is not an absolute path", filepath.Dir(g.transferRoot))
+	}
 	g.noHooksMu.Lock()
 	defer g.noHooksMu.Unlock()
-	if !g.noHooksOK {
-		// A relative core.hooksPath would be relative to the worktree,
-		// which the agent writes.
-		if !filepath.IsAbs(dir) {
-			return "", fmt.Errorf("anthill's data folder %q is not an absolute path", filepath.Dir(g.transferRoot))
-		}
-		if err := os.MkdirAll(dir, 0o700); err != nil {
-			return "", fmt.Errorf("creating the empty hooks directory: %w", err)
-		}
-		// MkdirAll leaves the permissions of a directory that exists.
-		if err := os.Chmod(dir, 0o700); err != nil {
-			return "", fmt.Errorf("creating the empty hooks directory: %w", err)
-		}
-		g.noHooksOK = true
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return "", fmt.Errorf("creating the empty hooks directory: %w", err)
 	}
 	info, err := os.Lstat(dir)
 	if err != nil {
@@ -180,12 +175,18 @@ func (g *Git) noHooksDir() (string, error) {
 	if !info.IsDir() {
 		return "", fmt.Errorf("the empty hooks directory %s is not a directory", dir)
 	}
+	// MkdirAll leaves the mode of a directory that exists.
+	if info.Mode().Perm() != 0o700 {
+		if err := os.Chmod(dir, 0o700); err != nil {
+			return "", fmt.Errorf("making the empty hooks directory owner-only: %w", err)
+		}
+	}
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		return "", fmt.Errorf("checking the empty hooks directory: %w", err)
 	}
 	if len(entries) > 0 {
-		return "", fmt.Errorf("the empty hooks directory %s is not empty: something wrote %s to it", dir, entries[0].Name())
+		return "", fmt.Errorf("the empty hooks directory %s is not empty: something wrote %s to it; remove it to continue", dir, entries[0].Name())
 	}
 	return dir, nil
 }

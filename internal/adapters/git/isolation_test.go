@@ -4,6 +4,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -272,23 +273,68 @@ func TestTransferRepositoriesRemoved(t *testing.T) {
 }
 
 // A hook planted in Anthill's empty hooks directory stops every git
-// command instead of running.
+// command instead of running, also Fetch, which holds credentials.
 func TestPlantedHookInNoHooksRefused(t *testing.T) {
 	f := newFixture(t)
+	t.Setenv("GH_TOKEN", canary)
 	ran := filepath.Join(f.tmp, "no-hooks-ran")
-	hook := filepath.Join(f.home, git.TransferDirName, "no-hooks", "reference-transaction")
-	writeFile(t, hook, "#!/bin/sh\necho ran > '"+filepath.ToSlash(ran)+"'\n")
+	noHooks := filepath.Join(f.home, git.TransferDirName, "no-hooks")
+	hook := filepath.Join(noHooks, "reference-transaction")
+	writeFile(t, hook, "#!/bin/sh\necho \"token=${GH_TOKEN:-none}\" >> '"+filepath.ToSlash(ran)+"'\n")
 	if err := os.Chmod(hook, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	err := f.git.CreateBranch(f.ctx, f.c, "ant/x", "main")
-	if err == nil || !strings.Contains(err.Error(), "not empty") {
+	f.seedCommit("theirs.txt", "theirs\n", "someone else's work")
+	gitIn(t, f.seed, "push", "--quiet", "origin", "main")
+	before := gitIn(t, f.clone, "rev-parse", "refs/remotes/origin/main")
+
+	if err := f.git.Fetch(f.ctx, f.c); err == nil || !strings.Contains(err.Error(), "not empty") {
+		t.Errorf("Fetch() with a planted hook = %v", err)
+	}
+	if err := f.git.CreateBranch(f.ctx, f.c, "ant/x", "main"); err == nil || !strings.Contains(err.Error(), "not empty") {
 		t.Errorf("CreateBranch() with a planted hook = %v", err)
 	}
 	if exists(ran) {
-		t.Error("the planted hook ran")
+		t.Errorf("the planted hook ran: %s", readFile(t, ran))
+	}
+	if got := gitIn(t, f.clone, "rev-parse", "refs/remotes/origin/main"); got != before {
+		t.Error("Fetch() updated the clone")
 	}
 	if strings.Contains(gitIn(t, f.clone, "branch", "--list", "ant/x"), "ant/x") {
 		t.Error("the branch was created")
+	}
+	if !exists(hook) {
+		t.Error("the planted hook was removed; it should be left for the developer to see")
+	}
+}
+
+// The empty hooks directory is made owner-only again before each use,
+// and a symbolic link in its place is refused.
+func TestNoHooksDirectoryChecked(t *testing.T) {
+	f := newFixture(t)
+	noHooks := filepath.Join(f.home, git.TransferDirName, "no-hooks")
+	if runtime.GOOS != "windows" {
+		if err := os.Chmod(noHooks, 0o777); err != nil {
+			t.Fatal(err)
+		}
+		if err := f.git.Fetch(f.ctx, f.c); err != nil {
+			t.Fatal(err)
+		}
+		if info, err := os.Stat(noHooks); err != nil || info.Mode().Perm() != 0o700 {
+			t.Errorf("no-hooks mode = %v, %v; want 0700", info.Mode().Perm(), err)
+		}
+	}
+	target := filepath.Join(f.tmp, "elsewhere")
+	if err := os.MkdirAll(target, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(noHooks); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(target, noHooks); err != nil {
+		t.Skipf("cannot create a symbolic link: %v", err)
+	}
+	if err := f.git.Fetch(f.ctx, f.c); err == nil || !strings.Contains(err.Error(), "not a directory") {
+		t.Errorf("Fetch() with no-hooks a symbolic link = %v", err)
 	}
 }
