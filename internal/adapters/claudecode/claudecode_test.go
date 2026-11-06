@@ -314,10 +314,43 @@ func TestLiveInputFoldedIntoTheTurn(t *testing.T) {
 	}
 }
 
+// Task 13.7, issue #146, smoke check C6: a message sent while Claude Code
+// writes an answer without tools gets a turn and a result of its own.
+// The first result reports queued_turn_count 0 although the message is
+// waiting, so the input closes after it; Claude Code still answers the
+// message it has read, then exits. Both results count, and the cost is
+// the last, cumulative total. The output is recorded on Windows.
+func TestLiveInputAnsweredInATurnOfItsOwn(t *testing.T) {
+	f := newFake(t, "live-input-own-turn")
+	run, err := f.runner.Start(context.Background(), f.spec(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	waitSession(t, run)
+	if err := run.Send(context.Background(), "Now say, in one sentence, what 6 times 7 is."); err != nil {
+		t.Fatal(err)
+	}
+	if exit := waitExit(t, run); exit != (ports.Exit{}) {
+		t.Errorf("exit = %+v", exit)
+	}
+	if got := len(f.inputs(t)); got != 2 {
+		t.Errorf("claude read %d inputs, want the brief and the message", got)
+	}
+	u := run.Usage()
+	if want := int64(2+10587+16027+1075) + (4 + 1097 + 26614 + 12); u.Tokens == nil || *u.Tokens != want {
+		t.Errorf("tokens = %v, want %d, the sum of both results", u.Tokens, want)
+	}
+	if u.CostUSD == nil || *u.CostUSD != 0.12376419999999999 {
+		t.Errorf("cost = %v, want the second result's cumulative total", u.CostUSD)
+	}
+}
+
 // Task 13.7: a result that reports a message still queued for a turn of
 // its own keeps the input open, although as many results as messages
-// have come. The output is written, not recorded: the smoke runs have
-// not produced a queued message yet.
+// have come. The output is written, not recorded: in the smoke runs,
+// Claude Code reported queued_turn_count 0 even with a message waiting
+// (see TestLiveInputAnsweredInATurnOfItsOwn), so this guards the rule
+// for a version that reports it.
 func TestQueuedMessageKeepsTheInputOpen(t *testing.T) {
 	f := newFake(t, "live-input-queued")
 	run, err := f.runner.Start(context.Background(), f.spec(t))

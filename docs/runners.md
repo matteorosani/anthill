@@ -35,7 +35,7 @@ claude -p --input-format stream-json --output-format stream-json --verbose \
 ```
 
 - **The brief.** The brief, then each live input, is written to standard input as one JSON line: `{"type":"user","message":{"role":"user","content":[{"type":"text","text":"…"}]},"parent_tool_use_id":null}`. Nothing of the brief goes on the command line. On Windows, cmd.exe would mangle it there.
-- **When the run ends on its own.** A turn ends with a `result` event. A message sent while Claude Code works can be folded into the running turn, which then answers it with the brief in one `result` (smoke check C3). So Anthill does not count results: once a `result` reports `queued_turn_count` 0, no message is waiting for a turn of its own, and Anthill closes standard input. Claude Code then exits. A `Send` after that fails, and the message goes to the next means of delivery (design D5). A Claude Code that does not report `queued_turn_count` is handled as before: the input closes once every message written has its own `result`.
+- **When the run ends on its own.** A turn ends with a `result` event. A message sent while Claude Code works can be folded into the running turn, which then answers it with the brief in one `result` (smoke check C3), or get a turn and a `result` of its own (C6). So Anthill does not count results: once a `result` reports `queued_turn_count` 0, Anthill closes standard input. Claude Code still answers every message it has already read, then exits. In the smoke runs, `queued_turn_count` was 0 even when a message waited for a turn of its own; the input then closes after the first `result`, and live input reaches the agent only until then. A `Send` after that fails, and the message goes to the next means of delivery (design D5). A Claude Code that does not report `queued_turn_count` is handled as before: the input closes once every message written has its own `result`.
 - **Background tasks.** Claude Code does not exit while a command it started in the background is still going, even after its last `result` and with standard input closed. Such a run ends only when that command ends or Anthill stops the run (smoke check C7 on Windows).
 - **The run directory.** `<run dir>` is a temporary directory outside the worktree, so the agent cannot commit it. It holds the two files below and is removed when the run ends. The settings file holds the run's tool token, which therefore never appears in the brief.
   - `mcp.json` names one stdio server, `anthill`, that runs `anthill mcp --ant <token>`.
@@ -56,21 +56,21 @@ claude -p --input-format stream-json --output-format stream-json --verbose \
 
 Most tests run against recorded output written from Claude Code's documentation. The test of a message folded into the running turn replays output captured on Windows (issue #146). The smoke runs check these points; record the answers in the table at the end.
 
-Confirmed on Windows with Claude Code 2.1.310 and 2.1.318 (issue #146):
+Confirmed on Windows with Claude Code 2.1.284, 2.1.310 and 2.1.318 (issue #146):
 
 - A user message with content blocks and `parent_tool_use_id: null`, without a `session_id`, is accepted on standard input (C1).
 - The `PostToolUse` matcher `*` runs the hook after every tool, `additionalContext` reaches the agent, and the hooks run with the quoted path (C4).
 - `--resume` keeps the session id (C5).
 - A stop ends the whole tree, Claude Code's own commands included (C7).
 - The `PreToolUse` hook refuses `gh pr create` and `git push` run with the `Bash` tool and with the `PowerShell` tool, with the messages naming `open_pull_request` and `push` (C2).
-- A message sent during a turn can be folded into it, with one `result` for both messages and `queued_turn_count` 0 (C3). Since task 13.7, the run then ends on its own.
+- A message sent during a turn that calls tools can be folded into it, with one `result` for both messages and `queued_turn_count` 0 (C3). Since task 13.7, the run then ends on its own.
+- A message sent while Claude Code writes an answer without tools gets a turn and a `result` of its own. The first `result` still reports `queued_turn_count` 0; the input closes after it, and Claude Code answers the message anyway, then exits (C6).
+- `total_cost_usd` is cumulative over the process: it grows from one `result` to the next in the same process (C6).
 
 Still open:
 
-1. A message sent between turns, and read after the `result` of the turn before it, gets a turn and a `result` of its own, and the `result` before it reports it in `queued_turn_count` (C3). The tests assume so.
-2. A message written just before a `result` with `queued_turn_count` 0, and not yet read when Anthill closes standard input, is still answered before Claude Code exits.
-3. `total_cost_usd` is cumulative over the process (C6). The `result` events also carry `model_usage_since_last_result`, which suggests it is, but no smoke run has produced two results in one process yet.
-4. On macOS and Linux, all the checks: they have only been run on Windows.
+1. Whether any version reports a waiting message in `queued_turn_count`. None did in the smoke runs. The adapter keeps the input open while it is above 0.
+2. On macOS and Linux, all the checks: they have only been run on Windows.
 
 ## Codex
 
@@ -271,7 +271,14 @@ Expected:
 
 #### C6: usage and cost
 
-From a C3 run with two `result` events, compare their `total_cost_usd`. The second is not lower than the first if the cost is cumulative. The cost printed by `smoke: usage:` is the last one. When C3 gives one `result`, C6 stays open.
+C3 often gives one `result`. For two, send the message while the agent writes an answer that needs no tool:
+
+```bash
+anthill runner-smoke --runner claude-code --send "Now say, in one sentence, what 6 times 7 is." --send-after 2s \
+  "Without using any tools, write a story of about 500 words about an ant colony that learns to build bridges."
+```
+
+Expected: two `result` events, the second answering 42. Its `total_cost_usd` is not lower than the first's if the cost is cumulative. The cost printed by `smoke: usage:` is the last one. The run ends on its own.
 
 #### C7: stop leaves no process behind
 
