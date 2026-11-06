@@ -29,7 +29,14 @@ func (g *Git) AddWorktree(ctx context.Context, c ports.Clone, path, branch strin
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return err
 	}
-	if _, err := g.run(ctx, c.Path, "worktree", "add", "--quiet", path, branch); err != nil {
+	if r, err := g.run(ctx, c.Path, "worktree", "add", "--quiet", path, branch); err != nil {
+		// A checkout that failed leaves the worktree behind.
+		if ok, _ := g.worktreeRegistered(context.WithoutCancel(ctx), c, path); ok {
+			_, _ = g.run(context.WithoutCancel(ctx), c.Path, "worktree", "remove", "--force", path)
+		}
+		if lfsFailed(r.stderr) {
+			return fmt.Errorf("%w: %s: %w", ports.ErrUnsupported, MessageLFSUnsupported, err)
+		}
 		return err
 	}
 	if err := g.setUpWorktree(ctx, c, path, trailers); err != nil {
@@ -37,6 +44,21 @@ func (g *Git) AddWorktree(ctx context.Context, c ports.Clone, path, branch strin
 		return fmt.Errorf("setting up worktree %s: %w", path, err)
 	}
 	return nil
+}
+
+// MessageLFSUnsupported explains why a worktree could not be created
+// when its Git LFS files failed to download: the checkout runs without
+// credentials (design D4).
+const MessageLFSUnsupported = "repositories with Git LFS files that need credentials to download are not supported yet"
+
+// lfsFailed reports whether git's output says the Git LFS filter failed.
+// Git prints "smudge filter lfs failed" when the filter is required, as
+// git lfs install sets it; git-lfs's own messages name Git LFS or
+// git-lfs.
+func lfsFailed(stderr string) bool {
+	return strings.Contains(stderr, "smudge filter lfs failed") ||
+		strings.Contains(stderr, "external filter 'git-lfs") ||
+		strings.Contains(stderr, "git-lfs filter-process")
 }
 
 func (g *Git) setUpWorktree(ctx context.Context, c ports.Clone, path string, trailers domain.Trailers) error {

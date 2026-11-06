@@ -4,6 +4,13 @@
 // worktrees under the worktree root, and the only line it writes to the
 // clone's .git/config is extensions.worktreeConfig = true, so that each
 // worktree gets its own hooks and settings (spec branching-policy).
+//
+// An agent can write the clone's configuration and hooks, so no git
+// command that reads them holds credentials (design D4). Commands in the
+// clone or a worktree run with the agent's environment and with hooks
+// and core.fsmonitor off (local). Only fetch, push and ls-remote hold
+// credentials, and they run in a transfer repository (transfer.go) that
+// reads none of the clone's configuration.
 package git
 
 import (
@@ -11,9 +18,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -31,6 +41,12 @@ var MinVersion = Version{2, 25, 0}
 type Git struct {
 	bin      string
 	redactor *domain.Redactor
+	// transferRoot holds the transfer repositories and noHooks, the empty
+	// hooks directory of every command.
+	transferRoot string
+
+	noHooksMu sync.Mutex
+	noHooksOK bool
 
 	versionMu  sync.Mutex
 	versionOK  bool
@@ -39,14 +55,19 @@ type Git struct {
 
 var _ ports.SourceControl = (*Git)(nil)
 
+// TransferDirName is the directory, in <anthill-home>, that holds the
+// transfer repositories.
+const TransferDirName = "transfer"
+
 // New returns a source control that runs git from the PATH. The redactor
 // scrubs git's output in errors and push results; nil means the built-in
-// patterns only.
-func New(redactor *domain.Redactor) *Git {
+// patterns only. home is Anthill's data folder, <anthill-home>: the
+// transfer repositories live in its TransferDirName directory.
+func New(redactor *domain.Redactor, home string) *Git {
 	if redactor == nil {
 		redactor, _ = domain.NewRedactor(nil)
 	}
-	return &Git{bin: "git", redactor: redactor}
+	return &Git{bin: "git", redactor: redactor, transferRoot: filepath.Join(home, TransferDirName)}
 }
 
 // Error is a git command that failed. Stderr is redacted.
@@ -81,12 +102,45 @@ type result struct {
 	stdout, stderr string
 }
 
-// run checks the git version once, then runs git in dir.
+// env selects the environment of a git command.
+type env int
+
+const (
+	// agentEnv is the agent's environment (domain.AgentEnv): no provider
+	// token and no credential helper. Every command that reads the
+	// clone's configuration or runs in a worktree uses it.
+	agentEnv env = iota
+	// anthillEnv is Anthill's own environment, with the developer's
+	// credentials. Only commands in a transfer repository use it.
+	anthillEnv
+)
+
+// run checks the git version once, then runs git in dir with the agent's
+// environment and hooks and core.fsmonitor off.
 func (g *Git) run(ctx context.Context, dir string, args ...string) (result, error) {
+	return g.runIn(ctx, agentEnv, dir, nil, args...)
+}
+
+// runIn checks the git version once, then runs git in dir with the
+// environment e, hooks and core.fsmonitor off, and stdin as input.
+func (g *Git) runIn(ctx context.Context, e env, dir string, stdin io.Reader, args ...string) (result, error) {
+	return g.runWith(ctx, e, dir, stdin, nil, args...)
+}
+
+// runWith is runIn with extra git options before args, which errors do
+// not show.
+func (g *Git) runWith(ctx context.Context, e env, dir string, stdin io.Reader, extra []string, args ...string) (result, error) {
 	if err := g.checkVersion(ctx); err != nil {
 		return result{}, err
 	}
-	return g.exec(ctx, dir, args...)
+	noHooks, err := g.noHooksDir()
+	if err != nil {
+		return result{}, err
+	}
+	// An empty core.fsmonitor turns it off in every git version; "false"
+	// would be a hook path before git 2.36.
+	opts := append([]string{"-c", "core.hooksPath=" + filepath.ToSlash(noHooks), "-c", "core.fsmonitor="}, extra...)
+	return g.exec(ctx, e, dir, stdin, opts, args...)
 }
 
 // output runs git and returns its standard output without the final
@@ -96,12 +150,39 @@ func (g *Git) output(ctx context.Context, dir string, args ...string) (string, e
 	return strings.TrimRight(r.stdout, "\r\n"), err
 }
 
-func (g *Git) exec(ctx context.Context, dir string, args ...string) (result, error) {
-	cmd := exec.CommandContext(ctx, g.bin, args...)
+// noHooksDir creates, once, the empty directory every command takes as
+// core.hooksPath, and returns it.
+func (g *Git) noHooksDir() (string, error) {
+	dir := filepath.Join(g.transferRoot, "no-hooks")
+	g.noHooksMu.Lock()
+	defer g.noHooksMu.Unlock()
+	if !g.noHooksOK {
+		// A relative core.hooksPath would be relative to the worktree,
+		// which the agent writes.
+		if !filepath.IsAbs(dir) {
+			return "", fmt.Errorf("anthill's data folder %q is not an absolute path", filepath.Dir(g.transferRoot))
+		}
+		if err := os.MkdirAll(dir, 0o700); err != nil {
+			return "", fmt.Errorf("creating the empty hooks directory: %w", err)
+		}
+		g.noHooksOK = true
+	}
+	return dir, nil
+}
+
+// exec runs git with opts, then args, in dir. Errors show args only,
+// redacted.
+func (g *Git) exec(ctx context.Context, e env, dir string, stdin io.Reader, opts []string, args ...string) (result, error) {
+	cmd := exec.CommandContext(ctx, g.bin, append(slices.Clip(opts), args...)...)
 	cmd.Dir = dir
+	cmd.Stdin = stdin
+	environ := os.Environ()
+	if e == agentEnv {
+		environ = domain.AgentEnv(environ)
+	}
 	// Anthill's own git calls never prompt, since nobody would answer,
 	// and print messages in English, since some are parsed.
-	cmd.Env = append(os.Environ(), "GIT_TERMINAL_PROMPT=0", "GCM_INTERACTIVE=never", "LC_ALL=C", "LANGUAGE=C")
+	cmd.Env = append(environ, "GIT_TERMINAL_PROMPT=0", "GCM_INTERACTIVE=never", "LC_ALL=C", "LANGUAGE=C")
 	// When the context ends, git is killed; WaitDelay bounds the wait for
 	// a child such as ssh that still holds the output pipes.
 	cmd.WaitDelay = 5 * time.Second
@@ -118,7 +199,11 @@ func (g *Git) exec(ctx context.Context, dir string, args ...string) (result, err
 		if ctxErr := ctx.Err(); ctxErr != nil {
 			err = ctxErr
 		}
-		return r, &Error{Args: args, ExitCode: code, Stderr: r.stderr, Err: err}
+		shown := make([]string, len(args))
+		for i, a := range args {
+			shown[i] = g.redactor.Redact(a)
+		}
+		return r, &Error{Args: shown, ExitCode: code, Stderr: r.stderr, Err: err}
 	}
 	return r, nil
 }
@@ -167,7 +252,7 @@ func (g *Git) checkVersion(ctx context.Context) error {
 	if g.versionOK || g.versionErr != nil {
 		return g.versionErr
 	}
-	r, err := g.exec(ctx, "", "version")
+	r, err := g.exec(ctx, agentEnv, "", nil, nil, "version")
 	if ctx.Err() != nil {
 		return ctx.Err()
 	}
