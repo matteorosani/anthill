@@ -75,7 +75,7 @@ Ants SHALL have `open_pull_request(title, body, draft)` and `update_pull_request
 - **THEN** the call is rejected, and the ant is told to use `update_pull_request`
 
 ### Requirement: Finish tool
-Ants SHALL end a run with `finish(status, summary, open_points)`, where status is `complete`, `partial` or `no-change`. Anthill SHALL then end the session, record the outcome, and park or release the claim. On a task run, `complete` and `partial` SHALL require new commits and `no-change` SHALL allow none. A `finish` without a PR on a branch with unpushed commits SHALL make Anthill push and open a PR (ant-execution).
+Ants SHALL end a run with `finish(status, summary, open_points)`, where status is `complete`, `partial` or `no-change`. Anthill SHALL then record the outcome, and park or release the claim. On a task run, `complete` and `partial` SHALL require new commits and `no-change` SHALL allow none. A `finish` without a PR on a branch with unpushed commits SHALL make Anthill push and open a PR (ant-execution).
 
 #### Scenario: Finish after opening the PR
 - **WHEN** an ant has opened its PR and calls `finish(complete, …)`
@@ -102,6 +102,13 @@ Fix agents SHALL end a fix pass with `finish_fixes(results)`, giving for each fi
 #### Scenario: One fix skipped
 - **WHEN** a fix agent fixes one of two findings and calls `finish_fixes` with the second marked `skipped` with "needs an API decision"
 - **THEN** Anthill handles the first as a fix to verify and push, and reclassifies the second as `needs-developer` with that reason
+
+### Requirement: Closing tools end the run
+When `finish`, `submit_review` or `finish_fixes` returns, Anthill SHALL stop the runner itself with the session saved, as after `ask_question`, so that nothing the agent started keeps the run active.
+
+#### Scenario: Background command after finish
+- **WHEN** an ant calls `finish(complete, …)` while a command it started in the background is still going
+- **THEN** Anthill stops the runner and its whole process tree, the session is saved, and the run ends
 
 ### Requirement: Tool sets per agent role
 Anthill SHALL offer each agent only the tools of its role, and SHALL refuse calls to any other tool:
