@@ -3,6 +3,7 @@ package domain
 import (
 	"net/url"
 	"strings"
+	"unicode"
 )
 
 // MatchesRemoteURL reports whether a git remote URL points to the
@@ -11,6 +12,12 @@ import (
 // without .git, ignoring case. The configured-path check uses it to find
 // the clone's remote (spec anthill-configuration, "Repository listed
 // without a clone").
+//
+// Anthill fetches and pushes to the matching URL with the developer's
+// credentials (design D4), so it accepts only URLs that run no command:
+// the schemes https, ssh, git+ssh and ssh+git, or an scp-like address,
+// never a <transport>::<address> form such as ext::, and no user name,
+// host or path that git would pass to ssh as an option.
 func (r Repository) MatchesRemoteURL(raw string) bool {
 	host, segs, ok := splitRemoteURL(raw)
 	if !ok {
@@ -53,11 +60,17 @@ func (r Repository) MatchesRemoteURL(raw string) bool {
 // segments of a URL, or of an scp-like address such as
 // git@github.com:owner/name.git, without a trailing .git.
 func splitRemoteURL(raw string) (host string, segs []string, ok bool) {
-	raw = strings.TrimSpace(raw)
+	if raw == "" || strings.ContainsFunc(raw, unicode.IsSpace) || strings.ContainsFunc(raw, unicode.IsControl) ||
+		strings.HasPrefix(raw, "-") || strings.Contains(raw, "::") {
+		return "", nil, false
+	}
 	var p string
 	if strings.Contains(raw, "://") {
 		u, err := url.Parse(raw)
-		if err != nil {
+		if err != nil || u.Opaque != "" || !remoteSchemes[strings.ToLower(u.Scheme)] {
+			return "", nil, false
+		}
+		if u.User != nil && !safeUser(u.User.Username()) {
 			return "", nil, false
 		}
 		host, p = u.Hostname(), u.Path
@@ -67,7 +80,10 @@ func splitRemoteURL(raw string) (host string, segs []string, ok bool) {
 		if !found || strings.Contains(addr, "/") {
 			return "", nil, false
 		}
-		if _, h, at := strings.Cut(addr, "@"); at {
+		if user, h, at := strings.Cut(addr, "@"); at {
+			if !safeUser(user) {
+				return "", nil, false
+			}
 			addr = h
 		}
 		unescaped, err := url.PathUnescape(rest)
@@ -80,5 +96,27 @@ func splitRemoteURL(raw string) (host string, segs []string, ok bool) {
 	if host == "" || p == "" {
 		return "", nil, false
 	}
-	return strings.ToLower(host), strings.Split(p, "/"), true
+	segs = strings.Split(p, "/")
+	for _, s := range segs {
+		if strings.HasPrefix(s, "-") {
+			return "", nil, false
+		}
+	}
+	return strings.ToLower(host), segs, true
+}
+
+// remoteSchemes are the URL schemes MatchesRemoteURL accepts.
+var remoteSchemes = map[string]bool{"https": true, "ssh": true, "git+ssh": true, "ssh+git": true}
+
+// safeUser reports whether a user name in a remote URL is plain: letters,
+// digits, dot, underscore, tilde and hyphen, not starting with a hyphen,
+// so that ssh cannot read it as an option.
+func safeUser(user string) bool {
+	if user == "" || strings.HasPrefix(user, "-") {
+		return false
+	}
+	plain := func(r rune) bool {
+		return r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' || strings.ContainsRune("._~-", r)
+	}
+	return !strings.ContainsFunc(user, func(r rune) bool { return !plain(r) })
 }

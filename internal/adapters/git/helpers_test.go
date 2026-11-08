@@ -134,6 +134,7 @@ type fixture struct {
 	seed  string
 	clone string
 	root  string
+	home  string
 	git   *git.Git
 	c     ports.Clone
 	ctx   context.Context
@@ -149,9 +150,10 @@ func newFixture(t *testing.T) *fixture {
 		seed:  filepath.Join(tmp, "seed"),
 		clone: filepath.Join(tmp, "clone"),
 		root:  filepath.Join(tmp, "worktrees"),
-		git:   git.New(nil),
+		home:  filepath.Join(tmp, "anthill-home"),
 		ctx:   context.Background(),
 	}
+	f.git = git.New(nil, f.home)
 	gitIn(t, tmp, "init", "--quiet", "--bare", f.bare)
 	gitIn(t, tmp, "config", "--global", "url."+filepath.ToSlash(f.bare)+".insteadOf", webURL)
 	gitIn(t, tmp, "clone", "--quiet", webURL, f.seed)

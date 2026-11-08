@@ -148,7 +148,7 @@ Every comment, reply, question and status comment posted on behalf of an ant sta
 
 Roles: task run, follow-up run.
 
-Pushes the worktree's current branch, never with force. Anthill first applies the branching policy: only the ant's own branch, never the base branch, the remote's default branch or a protected branch, and never from a detached HEAD. It then runs `git push` from the ant's worktree with the developer's credentials and the repository's own hooks given back for that one command, so the repository's pre-push hook checks the ant's code and can stop the push.
+Pushes the worktree's current branch, never with force. Anthill first applies the branching policy: only the ant's own branch, never the base branch, the remote's default branch or a protected branch, and never from a detached HEAD. It then runs the repository's own pre-push hook in the ant's worktree, with the agent's environment and so without credentials, so the hook checks the ant's code and can stop the push. Last, it pushes the branch with the developer's credentials from a transfer repository, a short-lived bare repository in `~/.anthill/transfer` that reads none of the clone's configuration, to the remote URL Anthill checked when it opened the clone. A `pushurl`, `insteadOf` or `pushInsteadOf` setting in the clone, or a credential helper planted there, is never used.
 
 - Arguments: none.
 - Result: `status` `pushed` and git's `output`.
@@ -156,7 +156,7 @@ Pushes the worktree's current branch, never with force. Anthill first applies th
   - `push to <branch> is not allowed`, with the reason, from the branching policy;
   - `push rejected: the remote branch has commits this worktree lacks; they were fetched as origin/<branch>: merge them (git merge origin/<branch>) and call push again`, followed by git's output. Merge, then push again;
   - `push rejected: the push was rejected as non-fast-forward: the branch rewrites commits that were already pushed. Keep the published history and add a new commit`, after an amend or a rebase of pushed commits;
-  - `push failed: …` with git's output, for anything else, such as a pre-push hook that refused.
+  - `push failed: …` with the output, for anything else, such as the repository's pre-push hook refusing the push: the output is then the hook's.
 
 ### `open_pull_request`
 

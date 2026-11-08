@@ -55,6 +55,8 @@ repositories:
 
 A repository is identified by `provider` (`github` or `azure-devops`) and `remote` (`owner/name` on GitHub, `organization/project/repository` on Azure DevOps). Each repository may appear only once. `path` is the absolute path of your local clone. An entry may also set any shared setting. Those values apply when `.anthill.yml` does not set them.
 
+The clone must have a remote whose URL points to the repository, and that URL must be `https://`, `ssh://` (also written `git+ssh://` or `ssh+git://`) or the scp-like `git@host:path` form. Anthill fetches and pushes to it with your credentials, so it does not accept a URL whose transport could run a command or pass an option to ssh. `http://`, `git://` and `file://` URLs, `<transport>::<address>` URLs such as `ext::`, and URLs with a part that starts with `-` are not accepted, even though earlier versions accepted some of them. A clone with only such a remote counts as a clone with no remote for the repository: change its URL with `git remote set-url origin https://github.com/<owner>/<name>.git`.
+
 ### The repository file
 
 `.anthill.yml` sits at the root of the repository and holds only the shared settings marked `.anthill.yml` in the table below. Anthill reads it from the working folder of your local clone, whatever branch is checked out, so an uncommitted edit takes effect at the next reload:
@@ -172,4 +174,6 @@ Credential values never appear in logs, errors, comments, task briefs or telemet
 - Telemetry export stays off until you set `otlp-endpoint`.
 - The `repo:<name>` label picks an item's target repository. It is not a setting.
 - Anthill never changes your clone's working copy, checked-out branch or uncommitted changes. The only thing it writes to the clone's `.git/config` is `extensions.worktreeConfig = true`, so that each ant worktree can have its own hooks and its own git settings.
-- In an ant worktree, Anthill's hooks run first and then call the repository's own hook of the same name, if there is one, so checks such as `pre-commit` and `commit-msg` still run. `pre-push` is the exception: it always refuses, because ants push only through the `push` tool.
+- In an ant worktree, Anthill's hooks run first and then call the repository's own hook of the same name, if there is one, so checks such as `pre-commit` and `commit-msg` still run. `pre-push` is the exception: it always refuses, because ants push only through the `push` tool, which runs the repository's pre-push hook itself.
+- Anthill's own git commands never run a hook or setting an agent could have written while they hold your credentials. Commands in the clone or a worktree run without credentials and with the repository's hooks and `core.fsmonitor` off. Fetch and push run from a transfer repository in `~/.anthill/transfer`, to the remote URL Anthill checked when it opened the clone, so only your system and global git configuration apply to them.
+- Repositories whose Git LFS files need credentials to download are not supported yet: creating an ant's worktree fails with a message saying so.

@@ -18,8 +18,14 @@ type Clone struct {
 	// Path is the clone's working folder.
 	Path string
 	// Remote is the name of the git remote that points to the configured
-	// repository, such as origin. Fetches and pushes use it.
+	// repository, such as origin. Remote-tracking branches are kept under
+	// its name.
 	Remote string
+	// URL is the remote's URL as OpenClone checked it against the
+	// configured repository. Fetches and pushes go to it, never to a
+	// pushurl or an insteadOf rewrite from the clone's configuration
+	// (design D4).
+	URL string
 }
 
 // BranchInfo describes an existing branch.
@@ -78,7 +84,8 @@ type SourceControl interface {
 	// trailers, hooks that call the repository's own hooks, a pre-push
 	// hook that refuses, and no push credentials (spec branching-policy,
 	// "Worktree location" and "Commit identity and traceability"; design
-	// D4).
+	// D4). The checkout runs without credentials, so a repository whose
+	// Git LFS files need them fails with ErrUnsupported.
 	AddWorktree(ctx context.Context, c Clone, path, branch string, trailers domain.Trailers) error
 	// WorktreeStatus returns the state of a worktree of the clone, or
 	// ErrNotFound when there is none at path.
@@ -87,11 +94,11 @@ type SourceControl interface {
 	// changes. The branch stays.
 	RemoveWorktree(ctx context.Context, c Clone, path string, force bool) error
 	// Push pushes the local branch to the same branch on the remote, never
-	// with force, and returns git's output. It runs from worktree, the
-	// ant's worktree or a fix pass's, so that the repository's pre-push
-	// hook checks that code, with the developer's credentials and the
-	// repository's hooks given back for this one push; an empty worktree
-	// pushes from the clone. When the remote rejects it,
+	// with force, and returns git's output. First it runs the
+	// repository's pre-push hook itself in worktree, the ant's worktree or
+	// a fix pass's (the clone when empty), without credentials; a failing
+	// hook refuses the push and its output is returned (design D4). When
+	// the remote rejects it,
 	// Push fetches the remote branch, so that the ant can merge it. The
 	// rejection is ErrHistoryRewritten when the remote branch has commits
 	// of owner, the pusher's item and instance, that the local branch
