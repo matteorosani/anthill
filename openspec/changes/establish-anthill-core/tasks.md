@@ -118,34 +118,37 @@ Terms follow `openspec/glossary.md`. Every group lands its own tests and docs. U
 
 ## 14. Ant supervision
 
-- [ ] 14.1 Implement acceptance: re-check eligibility on fresh data, claim, branch and worktree, start the first run, and undo every done step on failure, and verify the "claim lost at start" and "became ineligible" tests
-- [ ] 14.2 Implement capacity and the scheduling of due runs, with `queued` ants started when a slot frees if the run is still due, and verify the "queued for capacity" and "answer arrives while capacity is full" tests
+- [ ] 14.1 Implement acceptance: re-check eligibility on fresh data, claim, branch and worktree, start the first run through the executor (14.10), and undo every done step on failure, and verify the "claim lost at start" and "became ineligible" tests
+- [ ] 14.2 Implement capacity and the scheduling of due runs decided by the default playbook (14.11), with `queued` ants started when a slot frees if the run is still due, and verify the "queued for capacity" and "answer arrives while capacity is full" tests
 - [ ] 14.3 Implement the task brief and the summary brief for a new session, excluding Anthill comments, and verify the "brief includes discussion" test
-- [ ] 14.4 Implement finish handling: `complete`, `partial` (forced draft with open points), `no-change` (explanation, hold label, release, `done`), opening the PR when the agent did not, and ending the run itself when `finish`, `submit_review` or `finish_fixes` returns, as after `ask_question`, and verify each ant-execution finish scenario and the "background command after finish" test
+- [ ] 14.4 Implement finish handling by acting on the playbook's decision (14.11): `complete`, `partial` (forced draft with open points), `no-change` (explanation, hold label, release, `done`), opening the PR when the agent did not, and ending the run itself when `finish`, `submit_review` or `finish_fixes` returns, as after `ask_question`, and verify each ant-execution finish scenario and the "background command after finish" test
 - [ ] 14.5 Implement exit without finishing: `failed`, push when there are new commits, no PR, draft an open PR, failure summary on the ticket, and verify the three exit scenarios
 - [ ] 14.6 Implement stop, retry, continue and abandon, and verify the "stop and retry later", "retry after crash" and "abandon an ant with an active run" tests
-- [ ] 14.7 Implement the timekeeper: warning delivery, extension requests and late decisions, budget exhaustion with grace period, draft PR and `timed-out`, and verify each ant-timebox scenario end to end with the fake agent and a fake clock
+- [ ] 14.7 Implement the timekeeper: the deadline given to the executor and moved when the budget is paused or extended, warning delivery, extension requests and late decisions, budget exhaustion with grace period, draft PR and `timed-out`, and verify each ant-timebox scenario end to end with the fake executor and a fake clock
 - [ ] 14.8 Implement session index recovery from claim comments, `ant/` branches and PRs, and restart reconciliation with `auto-resume`, and verify the "local database lost" and "daemon restarted mid-run" tests
 - [ ] 14.9 Record usage per run and per shepherd round, with the tokens reported before a stop kept, a cost the runner reports as a running total for its session recorded as that total minus the last running total the runner reported for the session (zero for a new session; unknown when that total is unknown or the difference is negative), and other unknown values kept as unknown, and verify the "runner reports cost", "runner without usage data", "run stopped after a question", "resumed run with a cumulative cost", "new session with a cumulative cost" and "total lower than the last one" tests
+- [ ] 14.10 Add the `Executor` port and its adapter over the agent runners: start and resume runs, review agents and fix agents from a run spec with a deadline, move the deadline and end the process tree at the deadline on the executor's own timer, deliver messages by the means the runner supports, stop, and report events (started, session id, activity, usage, exited, ended at the deadline) as plain values, add a fake executor to `internal/testkit`, and verify the adapter with the fake agent for a deadline moved later, a deadline reached and a stop
+- [ ] 14.11 Add the default playbook for ants in `internal/domain`: a pure function from an ant snapshot to one decision (start a run with its kind, input and budget; deliver a change to the active run; store a change; propose a follow-up; open the PR, as a draft after `partial`; finish with no change; nothing) that follows ant-execution and change-reaction, and verify with table tests one case per finish and routing scenario, and that deciding again after each decision's effect returns nothing
 
 ## 15. Conversation and change reaction
 
 - [ ] 15.1 Implement questions: posting, pending state, answer detection (thread reply, quote or `@anthill`), a run that resumes the session with the answer, and stale questions, and verify each agent-conversation question scenario
 - [ ] 15.2 Implement command execution once across instances through the acknowledgement `reply`, by the responsible instance only, and verify the "two instances see the same command" test
 - [ ] 15.3 Implement relevance classification: rules first, then a short agent call, with `actionable` as the fallback, and verify tests with a fake runner for the thank-you comment and a classifier failure
-- [ ] 15.4 Implement routing: delivery to an active run, stored changes for ants between runs, follow-up runs for `succeeded` ants with batching, follow-up budget and limit, and follow-up proposals when `auto-follow-up` is off, and verify each change-reaction routing scenario
+- [ ] 15.4 Implement routing decided by the default playbook (14.11): delivery to an active run, stored changes for ants between runs, follow-up runs for `succeeded` ants with batching, follow-up budget and limit, and follow-up proposals when `auto-follow-up` is off, and verify each change-reaction routing scenario
 - [ ] 15.5 Implement hold (finish the active run, start no run, keep the claim, store changes, refuse retries) and withdrawal of opt-in, and verify the "hold added during a run", "retry while held" and "label removed mid-run" tests
 - [ ] 15.6 Ensure only the responsible instance reacts and Anthill-authored changes are ignored, except shepherd findings on ant PRs, and verify the "colleague's machine ignores the change" test with two instances on one fake provider
 
 ## 16. PR Shepherd
 
 - [ ] 16.1 Implement shepherd scope, participation settings and review runner selection, and verify the scope, "machine opted out" and "review runner missing" tests
-- [ ] 16.2 Implement round triggers, the round limit with its comment, and requested rounds counted separately, and verify each round scenario
+- [ ] 16.2 Implement round triggers decided by the default playbook (16.8), the round limit with its comment, and requested rounds counted separately, and verify each round scenario
 - [ ] 16.3 Implement a round: review claim, temporary detached worktree, new session, `submit_review`, de-duplication against open threads, inline and summary comments, and verify the "blocking finding", "clean round" and "unchanged problem in round 2" tests
-- [ ] 16.4 Hand findings on ant PRs to the owning ant's follow-up run as defined by change-reaction, and verify the "findings handed to the owning ant" and "auto-fixable nit included in the run" tests
+- [ ] 16.4 Hand findings on ant PRs to the owning ant's follow-up run as decided by the default playbook (16.8) and as defined by change-reaction, and verify the "findings handed to the owning ant" and "auto-fixable nit included in the run" tests
 - [ ] 16.5 Implement auto-fix on opted-in human PRs: opt-in by label or `/anthill fix`, fix pass in a temporary worktree, `finish_fixes`, verification command, push, replies and resolution, and verify the "auto-fix on an opted-in human PR" and "verified fixes" tests
 - [ ] 16.6 Implement the auto-fix fallbacks (no verification command, fork not pushable, failed verification, PR branch moved) as all or nothing, and verify each fallback scenario
 - [ ] 16.7 Handle PR merge or close: stop shepherd activity, release claims, make the ant `done`, clean up the worktree, and verify the "PR merged by developer" test
+- [ ] 16.8 Add the shepherd decisions to the default playbook: a pure function from a PR snapshot (head commit, rounds done, requested rounds, scope, opt-in labels, open findings) to one decision (start an automatic or requested round, post the round limit comment, hand findings to the owning ant, start a fix pass, nothing) that follows pr-shepherd, and verify with table tests one case per round and auto-fix scenario, and that deciding again after each decision's effect returns nothing
 
 ## 17. Queen console
 

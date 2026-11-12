@@ -48,7 +48,7 @@ _None. There are no existing specs._
 
 ## Impact
 
-- New codebase (greenfield). Hexagonal architecture: a core domain with ports for issue trackers, source control and PRs, agent runners, persistence, clock and notifications. Adapters for GitHub, Azure DevOps, git worktrees, and the Claude Code/Codex/OpenCode CLIs.
+- New codebase (greenfield). Hexagonal architecture: a core domain with ports for issue trackers, source control and PRs, agent runners, an executor, persistence, clock and notifications. Adapters for GitHub, Azure DevOps, git worktrees, and the Claude Code/Codex/OpenCode CLIs.
 - External dependencies: GitHub REST/GraphQL API, Azure DevOps REST API, the local `git` CLI, and the agent CLIs installed on each developer machine.
 - Shared state lives on the providers (labels, assignees, comments). Each machine keeps only a local store for sessions, budgets and poll cursors.
 - Runs on developer machines (Windows, macOS, Linux). The implementation language is still open (Go or Rust for learning, C# as the fallback). The specs are language-neutral.

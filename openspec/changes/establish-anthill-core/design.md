@@ -41,7 +41,7 @@ Greenfield repository with no code yet. See proposal.md for motivation and specs
                                                     └─────────────────────────┘
 ```
 
-Domain: WorkItem, PullRequest, Prerequisite/EligibilityResult, Claim/Lease, Ant (state machine), Budget, ReviewRound/Finding, ChangeEvent, Command. Application services: `Ingestion`, `Eligibility`, `Claiming`, `AntSupervisor`, `Timekeeper`, `Shepherd`, `ChangeReactor`, `Conversation`.
+Domain: WorkItem, PullRequest, Prerequisite/EligibilityResult, Claim/Lease, Ant (state machine), Budget, ReviewRound/Finding, ChangeEvent, Command. Application services: `Ingestion`, `Eligibility`, `Claiming`, `AntSupervisor`, `Timekeeper`, `Shepherd`, `ChangeReactor`, `Conversation`. Application services start agent processes only through the `Executor` port (D21), and the order of an ant's runs and a PR's rounds comes from the default playbook (D22).
 
 Ports are split by role, not by provider. One provider adapter can implement several ports, because GitHub is both a tracker and a code host. This allows mixed setups, such as Azure DevOps boards with GitHub repositories.
 
@@ -199,6 +199,29 @@ There, the fix agent only edits, commits and reports per finding through `finish
 
 An ant is the worker for one item and lives until its PR is merged or closed (`done`) or it is abandoned. A run is one agent process of that ant. Every exit without `finish`, clean or crashed, is `failed`. Anthill pushes the branch so the work is safe but opens no PR, and turns an open PR into a draft so the shepherd does not review half-done work. The queen retries or abandons. A stop by the queen or `/anthill stop` ends the run, pushes nothing and parks the claim, so the ant is `stopped` until a retry. When an ant finds that nothing needs changing, `finish(no-change)` posts its explanation, releases the claim and adds the hold label, leaving the ticket to a human. An extension request pauses the budget only while the tool waits. After that the run goes on, and a late approval on a timed-out ant acts as "continue".
 
+### D21. Executor: running agents is separate from deciding what to run
+
+Application services never start agent processes themselves. They go through one port, the `Executor`. It starts and resumes runs, review agents and fix agents through the runner adapters (D6), ends them, delivers messages to them (D5), and reports their events: started, session id captured, activity, usage, exited, ended at the deadline. Polling, eligibility, claims, scheduling, budget accounting, change reaction, the shepherd, provider writes and push stay in the application services.
+
+- The executor's API carries only plain values: a run spec in, events out, messages, deadlines and stop requests in. It has no callbacks into application services and no shared state, so a later adapter could run agents elsewhere.
+- The timekeeper computes from the budget the time at which a run must end, the budget plus the grace period (ant-timebox), and gives it to the executor with the run spec. The executor ends the process tree at that time on its own timer. When the budget is paused during `request_extension`, or an extension is granted, the timekeeper gives a new deadline. The warning stays with the timekeeper and reaches the run through the executor's message delivery.
+- The executor is Anthill's own code, so which side of the boundary runs fetch and push is not part of it. D4 is unchanged: the agent holds no credential.
+- Its only adapter runs agents on the instance's own machine, over the existing runner adapters. Tests of ant supervision, change reaction and the shepherd use a fake executor. The fake agent tests the executor adapter.
+- No behaviour changes: the specs are unchanged.
+
+*Alternative:* let `AntSupervisor` call the runner adapters directly. Simpler now, but supervision would mix process control with policy, every supervision test would need the fake agent, and a sandboxed or remote executor would mean reworking supervision. Rejected.
+
+### D22. A default playbook decides what comes next
+
+The order of an ant's runs and a PR's rounds is not hardwired in `AntSupervisor`, `ChangeReactor` and `Shepherd`. After each trigger (a run ended, a change event, an answer, a queen action carried out, a PR state change, a poll), the service builds a snapshot of the ant or PR and calls the playbook. The playbook is a pure domain function that returns one decision. The service checks the decision against the rules below, acts on it, and records the effect.
+
+- Decisions for an ant: start a run (task or follow-up; with the task brief, a summary brief, an answer or stored changes; with the budget kept or a new follow-up budget), deliver a change to the active run, store a change, propose a follow-up, open the PR (as a draft after `partial`), finish with no change, or nothing. Decisions for a PR: start a round (automatic or requested), post the round limit comment, hand findings to the owning ant, start a fix pass, or nothing.
+- The playbook decides only what comes next. Whatever it returns, these stay with the services: hold, capacity and `queued`, the timekeeper, the handling of an exit without finishing, claims, write-access checks, and queen actions. The services carry out stop, retry, continue, abandon and clean up as ant-execution defines them, outside the playbook.
+- The playbook decides from the current state, not from the order of events, so a missed or repeated event, or a restart, leads to the same decision. The service records each effect in the same transaction as the action, as with the outbox (D7). For example, starting a run moves the ant to `starting` and marks the stored changes it used. Deciding again on the new snapshot returns nothing, and tests check this for every decision.
+- Only the default playbook exists. It follows the specs, and repositories cannot change it. No behaviour changes.
+
+*Alternatives:* hardwire the order in each service, as planned before. Rejected: the sequence would be spread over three services and hard to change later. Repository playbooks now (Starlark or a declarative file): deferred, with no proven need yet, and they need their own trust rules. A playbook that also decides queen actions: deferred, because a repository file could take stop or abandon away from the queen.
+
 ## Risks / Trade-offs
 
 - **Prompt injection through ticket and PR content** (anyone who can comment can write text an agent reads) → Only items opted in by a user with write/triage permission count, because adding labels needs it. Only answers and commands from write-access users are acted on. Agents are given no credentials (D4, with its limits), and all pushes go through the `push` tool and the branching policy.
@@ -226,5 +249,9 @@ Not applicable (greenfield). Rollout: one developer first, with shepherd scope `
 - GUI technology. Deferrable: the GUI is just another client of the control API.
 - Whether stacked ant branches (working on top of an unmerged dependency PR) should be supported later. The current specs forbid it.
 - Per-runner details such as headless permission flags, which hooks are used, how session ids are captured (D17) and which OTel variables each runner honours (D18). Fixed in `docs/runners.md` for each runner, with the points the manual smoke runs still have to confirm.
-- Stronger agent isolation (separate OS user or container) to close the credential gap in D4.
+- Stronger agent isolation (separate OS user or container) to close the credential gap in D4. A sandboxed `Executor` adapter (D21), such as bubblewrap on Linux or Seatbelt on macOS, is the likely form.
+- A stall timeout: ending a run that shows no activity for a set time, apart from the budget. A behaviour change, so it needs its own change.
+- Repository playbooks (D22): a file on the base branch describing steps such as plan or check, in Starlark or a declarative format. It needs trust rules: read only from the base branch, no I/O, and tool sets that can be narrowed but never widened.
+- Playbook-defined queen actions: retry, continue and approval gates routed through the playbook, while stop, abandon, clean up and force-release stay with the services. Only if the default proves insufficient.
+- Executors on another machine, as another `Executor` adapter (D21).
 - Agents left running after the daemon itself crashes or is killed. On Windows, the Job Object ends them when the daemon's handle to it closes. On Unix, the process group survives the daemon, so an agent could keep working while restart reconciliation (ant-execution) resumes its session or marks it failed. Reconciliation should find and end such processes first, for example from a process group id recorded with the run.

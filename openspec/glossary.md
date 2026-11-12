@@ -134,7 +134,11 @@ Every spec, design and task uses these terms with exactly one meaning. When a ne
 - **Adapter**: an implementation of a port for one technology, such as GitHub, git or Claude Code.
 - **Fake**: an in-memory adapter used in tests, with no network or external process.
 - **Outbox**: the local table of change events still to handle, which gives exactly-once handling across restarts (design D7).
-- **Fake agent**: a small test program that acts like a runner's CLI, used to test runner adapters and ant supervision without a real agent.
+- **Fake agent**: a small test program that acts like a runner's CLI, used to test runner adapters and the executor without a real agent.
+- **Executor**: the port through which application services start, resume and end the agent processes of runs, review agents and fix agents, end them at a deadline, deliver messages to them and receive their events (design D21).
+- **Playbook**: the rules that decide what comes next for an ant or a PR, such as which run is due or whether a round starts. Only the **default playbook** exists. It is written in Go and follows the specs (design D22).
+- **Snapshot**: the state the playbook decides from: the ant's or PR's state, the last run's outcome, stored changes, limits and settings (design D22).
+- **Decision**: what the playbook returns for a snapshot: one next action, such as start a run, open the PR or nothing. Anthill checks it against the rules the playbook cannot change before acting (design D22).
 
 ## Writing rules
 
