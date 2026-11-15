@@ -126,7 +126,7 @@ const recordedSession = "ses_6f2a9c1e4ffeK3w8Q1Zr7bN2xD"
 func TestStart(t *testing.T) {
 	f := newFake(t, "start")
 	spec := f.spec(t)
-	run, err := f.runner.Start(context.Background(), spec)
+	run, err := f.runner.Start(context.Background(), spec, ports.RunIO{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -208,7 +208,7 @@ func TestStart(t *testing.T) {
 // Task 13.5: resuming runs opencode run --session <id>.
 func TestResume(t *testing.T) {
 	f := newFake(t, "resume")
-	run, err := f.runner.Resume(context.Background(), recordedSession, f.spec(t))
+	run, err := f.runner.Resume(context.Background(), recordedSession, f.spec(t), ports.RunIO{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -224,7 +224,7 @@ func TestResume(t *testing.T) {
 	if u := run.Usage(); u.Tokens == nil || *u.Tokens != 90+30+11000 || u.CostUSD == nil || *u.CostUSD != 0.002 {
 		t.Errorf("usage = %v tokens, %v USD", u.Tokens, u.CostUSD)
 	}
-	if _, err := f.runner.Resume(context.Background(), "", f.spec(t)); err == nil {
+	if _, err := f.runner.Resume(context.Background(), "", f.spec(t), ports.RunIO{}); err == nil {
 		t.Error("Resume without a session id succeeded")
 	}
 }
@@ -233,7 +233,7 @@ func TestResume(t *testing.T) {
 // not JSON are skipped.
 func TestFailedRun(t *testing.T) {
 	f := newFake(t, "failed")
-	run, err := f.runner.Start(context.Background(), f.spec(t))
+	run, err := f.runner.Start(context.Background(), f.spec(t), ports.RunIO{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -254,7 +254,7 @@ func TestStop(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(f.dir, "block"), nil, 0o600); err != nil {
 		t.Fatal(err)
 	}
-	run, err := f.runner.Start(context.Background(), f.spec(t))
+	run, err := f.runner.Start(context.Background(), f.spec(t), ports.RunIO{})
 	if err != nil {
 		t.Fatal(err)
 	}

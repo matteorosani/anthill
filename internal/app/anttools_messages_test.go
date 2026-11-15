@@ -13,20 +13,20 @@ import (
 	"github.com/matteorosani/anthill/internal/testkit"
 )
 
-// runWith issues a token for the ant's run on a fake runner with caps,
-// and returns the token and the fake run.
-func (e *toolsEnv) runWith(caps ports.Capabilities) (string, *testkit.FakeRun) {
+// runWith issues a token for the ant's run on an executor whose runner
+// has caps, and returns the token and the run's fake execution.
+func (e *toolsEnv) runWith(caps ports.Capabilities) (string, *testkit.FakeExecution) {
 	e.t.Helper()
-	runner := testkit.NewAgentRunner(caps)
-	run, err := runner.Start(context.Background(), ports.RunSpec{Worktree: antWorktree})
+	e.executor.SetCapabilities(domain.RunnerClaudeCode, caps)
+	x, err := e.executor.Start(context.Background(), ports.ExecSpec{Runner: domain.RunnerClaudeCode, Run: ports.RunSpec{Worktree: antWorktree}})
 	if err != nil {
 		e.t.Fatal(err)
 	}
-	token, err := e.tools.Issue(app.ToolSession{Role: domain.RoleTaskRun, Ant: e.ant, Run: 1, Channel: app.RunChannel{Capabilities: caps, Run: run}})
+	token, err := e.tools.Issue(app.ToolSession{Role: domain.RoleTaskRun, Ant: e.ant, Run: 1, Channel: app.RunChannel{Capabilities: x.Capabilities, Exec: x.ID}})
 	if err != nil {
 		e.t.Fatal(err)
 	}
-	return token, run.(*testkit.FakeRun)
+	return token, e.executor.Execution(x.ID)
 }
 
 // warning is the 80% warning after 48 of 60 minutes (spec ant-timebox,
@@ -88,7 +88,7 @@ func TestRunnerWithLiveInput(t *testing.T) {
 	}
 
 	// When sending fails, the hook takes the message instead.
-	run.End(ports.Exit{})
+	run.End(ports.ExecExited, ports.Exit{})
 	means, err = e.tools.Deliver(context.Background(), e.ant, "ticket updated")
 	if err != nil || means != domain.DeliverHook {
 		t.Fatalf("Deliver after a failed send = %s, %v; want hook", means, err)

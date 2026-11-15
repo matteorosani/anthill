@@ -177,7 +177,7 @@ const recordedSession = "7f3c2a9e-5d1b-4c8e-9a6f-2b1d0e4c3a58"
 // has its result, the input closes and claude exits.
 func TestStartRunsHeadlessWithLiveInput(t *testing.T) {
 	f := newFake(t, "start")
-	run, err := f.runner.Start(context.Background(), f.spec(t))
+	run, err := f.runner.Start(context.Background(), f.spec(t), ports.RunIO{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -293,7 +293,7 @@ func waitExit(t *testing.T, run ports.Run) ports.Exit {
 // the run ends on its own. The output is recorded on Windows.
 func TestLiveInputFoldedIntoTheTurn(t *testing.T) {
 	f := newFake(t, "live-input-folded")
-	run, err := f.runner.Start(context.Background(), f.spec(t))
+	run, err := f.runner.Start(context.Background(), f.spec(t), ports.RunIO{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -330,7 +330,7 @@ func TestLiveInputFoldedIntoTheTurn(t *testing.T) {
 // the last, cumulative total. The output is recorded on Windows.
 func TestLiveInputAnsweredInATurnOfItsOwn(t *testing.T) {
 	f := newFake(t, "live-input-own-turn")
-	run, err := f.runner.Start(context.Background(), f.spec(t))
+	run, err := f.runner.Start(context.Background(), f.spec(t), ports.RunIO{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -361,7 +361,7 @@ func TestLiveInputAnsweredInATurnOfItsOwn(t *testing.T) {
 // for a version that reports it.
 func TestQueuedMessageKeepsTheInputOpen(t *testing.T) {
 	f := newFake(t, "live-input-queued")
-	run, err := f.runner.Start(context.Background(), f.spec(t))
+	run, err := f.runner.Start(context.Background(), f.spec(t), ports.RunIO{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -384,7 +384,7 @@ func TestResumeContinuesTheSession(t *testing.T) {
 	f := newFake(t, "resume")
 	spec := f.spec(t)
 	spec.Brief = "Answer to your question: 60 seconds."
-	run, err := f.runner.Resume(context.Background(), recordedSession, spec)
+	run, err := f.runner.Resume(context.Background(), recordedSession, spec, ports.RunIO{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -416,7 +416,7 @@ func TestResumeContinuesTheSession(t *testing.T) {
 	if !slices.Contains(env, "CLAUDE_CODE_DISABLE_AUTO_MEMORY=1") {
 		t.Error("a resumed run keeps the developer's auto memory")
 	}
-	if _, err := f.runner.Resume(context.Background(), "", spec); err == nil {
+	if _, err := f.runner.Resume(context.Background(), "", spec, ports.RunIO{}); err == nil {
 		t.Error("Resume without a session id succeeded")
 	}
 }
@@ -428,7 +428,7 @@ func TestFailedRun(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(f.dir, "exit-code"), []byte("1"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	run, err := f.runner.Start(context.Background(), f.spec(t))
+	run, err := f.runner.Start(context.Background(), f.spec(t), ports.RunIO{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -447,7 +447,7 @@ func TestFailedRun(t *testing.T) {
 // unknown when it reported none.
 func TestStopAndUnknownUsage(t *testing.T) {
 	f := newFake(t, "")
-	run, err := f.runner.Start(context.Background(), f.spec(t))
+	run, err := f.runner.Start(context.Background(), f.spec(t), ports.RunIO{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -484,7 +484,7 @@ func waitResult(t *testing.T, run ports.Run) {
 // stays unknown.
 func TestStoppedBeforeTheResultKeepsItsTokens(t *testing.T) {
 	f := newFake(t, "stopped")
-	run, err := f.runner.Start(context.Background(), f.spec(t))
+	run, err := f.runner.Start(context.Background(), f.spec(t), ports.RunIO{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -511,7 +511,7 @@ func TestStoppedBeforeTheResultKeepsItsTokens(t *testing.T) {
 // and the cost of its last result.
 func TestStoppedAfterAResultKeepsBoth(t *testing.T) {
 	f := newFake(t, "stopped-after-result")
-	run, err := f.runner.Start(context.Background(), f.spec(t))
+	run, err := f.runner.Start(context.Background(), f.spec(t), ports.RunIO{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -552,7 +552,7 @@ func TestTelemetryVariables(t *testing.T) {
 		ResourceAttributes: map[string]string{"anthill.item": "gh-12", "anthill.ant_id": "7", "anthill.instance": "mrosani@LAPTOP-42"},
 		TraceParent:        "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01",
 	}
-	run, err := f.runner.Start(context.Background(), spec)
+	run, err := f.runner.Start(context.Background(), spec, ports.RunIO{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -579,7 +579,7 @@ func TestTelemetryVariables(t *testing.T) {
 	}
 
 	f = newFake(t, "resume")
-	run, err = f.runner.Start(context.Background(), f.spec(t))
+	run, err = f.runner.Start(context.Background(), f.spec(t), ports.RunIO{})
 	if err != nil {
 		t.Fatal(err)
 	}

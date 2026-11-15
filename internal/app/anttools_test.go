@@ -35,6 +35,7 @@ type toolsEnv struct {
 	reviews  *fakeReviews
 	fixes    *fakeFixes
 	notifier *testkit.Notifier
+	executor *testkit.Executor
 }
 
 // The ant's worktree and branch, and the user's home.
@@ -134,6 +135,7 @@ func newToolsEnv(t *testing.T, policy domain.BudgetPolicy) *toolsEnv {
 	e := &toolsEnv{
 		t: t, clock: clock, gh: gh, store: store, git: git, clone: clone, ant: id,
 		runs: &fakeRunEnder{}, finishes: &fakeFinishes{}, reviews: &fakeReviews{}, fixes: &fakeFixes{}, notifier: &testkit.Notifier{},
+		executor: testkit.NewExecutor(nil),
 	}
 	redactor, err := domain.NewRedactor([]string{`ACME-[0-9]{8}`})
 	if err != nil {
@@ -150,6 +152,7 @@ func newToolsEnv(t *testing.T, policy domain.BudgetPolicy) *toolsEnv {
 		Git:      git,
 		Clock:    clock,
 		Notifier: e.notifier,
+		Executor: e.executor,
 		Runs:     e.runs,
 		Finishes: e.finishes,
 		Reviews:  e.reviews,

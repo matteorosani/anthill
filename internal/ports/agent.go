@@ -2,6 +2,7 @@ package ports
 
 import (
 	"context"
+	"io"
 	"time"
 )
 
@@ -41,6 +42,17 @@ type RunSpec struct {
 	// runner that supports it (spec observability, "Agent telemetry is
 	// switched on and linked"). It is nil when export is off.
 	Telemetry *AgentTelemetry
+}
+
+// RunIO is where a run's output goes. It is given beside the RunSpec,
+// which holds only plain values.
+type RunIO struct {
+	// Activity, when set, receives this run's activity: each line of the
+	// agent's output in one Write, with its line ending, once the run's
+	// SessionID and Usage take the line into account, and its standard
+	// error as it comes. It must be safe for concurrent use. Each run has
+	// its own, so the executor reports activity per run (design D21).
+	Activity io.Writer
 }
 
 // AgentTelemetry is where an agent exports its telemetry, and what links
@@ -93,13 +105,13 @@ type AgentRunner interface {
 	// on this machine, such as when it is not installed (spec
 	// ant-execution, "Runner not installed").
 	Available(ctx context.Context) error
-	// Start starts a run with a new session.
-	Start(ctx context.Context, spec RunSpec) (Run, error)
+	// Start starts a run with a new session, its output going to out.
+	Start(ctx context.Context, spec RunSpec, out RunIO) (Run, error)
 	// Resume starts a run that continues sessionID with spec.Brief as its
 	// input (spec ant-execution, "Sessions are persisted for
 	// resumption"). It returns ErrUnsupported when the runner cannot
 	// resume.
-	Resume(ctx context.Context, sessionID string, spec RunSpec) (Run, error)
+	Resume(ctx context.Context, sessionID string, spec RunSpec, out RunIO) (Run, error)
 }
 
 // Run is one active agent process.

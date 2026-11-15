@@ -35,9 +35,6 @@ type Options struct {
 	// Command is the OpenCode CLI; empty means DefaultCommand on the
 	// PATH.
 	Command string
-	// Log, when set, receives the agent's output lines and its standard
-	// error, as its activity log. It must be safe for concurrent use.
-	Log io.Writer
 }
 
 // Runner starts OpenCode runs.
@@ -72,19 +69,19 @@ func (r *Runner) Available(context.Context) error {
 }
 
 // Start starts a run with a new session.
-func (r *Runner) Start(ctx context.Context, spec ports.RunSpec) (ports.Run, error) {
-	return r.start(ctx, "", spec)
+func (r *Runner) Start(ctx context.Context, spec ports.RunSpec, out ports.RunIO) (ports.Run, error) {
+	return r.start(ctx, "", spec, out)
 }
 
 // Resume starts a run that continues sessionID.
-func (r *Runner) Resume(ctx context.Context, sessionID string, spec ports.RunSpec) (ports.Run, error) {
+func (r *Runner) Resume(ctx context.Context, sessionID string, spec ports.RunSpec, out ports.RunIO) (ports.Run, error) {
 	if sessionID == "" {
 		return nil, errors.New("opencode: resume needs a session id")
 	}
-	return r.start(ctx, sessionID, spec)
+	return r.start(ctx, sessionID, spec, out)
 }
 
-func (r *Runner) start(ctx context.Context, resume string, spec ports.RunSpec) (ports.Run, error) {
+func (r *Runner) start(ctx context.Context, resume string, spec ports.RunSpec, out ports.RunIO) (ports.Run, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
@@ -112,7 +109,7 @@ func (r *Runner) start(ctx context.Context, resume string, spec ports.RunSpec) (
 		args = append(args, "--session", resume)
 	}
 
-	rn := &run{dir: dir, session: resume, log: r.opts.Log}
+	rn := &run{dir: dir, session: resume, log: out.Activity}
 	proc, err := agentproc.Start(agentproc.Spec{
 		Path:   r.opts.Command,
 		Args:   args,
@@ -120,7 +117,7 @@ func (r *Runner) start(ctx context.Context, resume string, spec ports.RunSpec) (
 		Env:    agentenv.With(spec.Env, []string{"OPENCODE_CONFIG=" + configPath}),
 		Stdin:  true,
 		Line:   rn.line,
-		Stderr: r.opts.Log,
+		Stderr: out.Activity,
 	})
 	if err != nil {
 		_ = os.RemoveAll(dir)
@@ -217,9 +214,9 @@ func (r *run) Usage() ports.Usage {
 }
 
 func (r *run) line(b []byte) {
-	if r.log != nil {
-		_, _ = r.log.Write(append(append([]byte(nil), b...), '\n'))
-	}
+	// The activity is written last, so that SessionID and Usage already
+	// take the line into account when the activity reader sees it.
+	defer r.activity(b)
 	ev, ok := parseEvent(b)
 	if !ok {
 		return
@@ -244,5 +241,12 @@ func (r *run) line(b []byte) {
 			c += *r.cost
 		}
 		r.cost = &c
+	}
+}
+
+// activity writes one output line to the run's activity output.
+func (r *run) activity(b []byte) {
+	if r.log != nil {
+		_, _ = r.log.Write(append(append([]byte(nil), b...), '\n'))
 	}
 }
