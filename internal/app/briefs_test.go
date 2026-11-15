@@ -31,6 +31,7 @@ type briefEnv struct {
 	gh      *testkit.Provider
 	store   *testkit.StateStore
 	git     *testkit.SourceControl
+	files   *testkit.WorktreeFiles
 	builder *app.BriefBuilder
 	ant     ports.AntRecord
 }
@@ -69,27 +70,25 @@ func newBriefEnv(t *testing.T) *briefEnv {
 	if err != nil {
 		t.Fatal(err)
 	}
-	e := &briefEnv{t: t, clock: clock, gh: gh, store: store, git: git, ant: rec}
-	e.builder = app.NewBriefBuilder(app.BriefDeps{
-		Tracker:  func(context.Context, domain.Ref) (ports.TrackerPort, error) { return gh.Client("mrosani"), nil },
-		CodeHost: func(context.Context, domain.Repository) (ports.CodeHostPort, error) { return gh.Client("mrosani"), nil },
-		Workspace: func(context.Context, domain.Ref) (app.ToolWorkspace, error) {
-			return app.ToolWorkspace{Clone: clone, Repo: shop, Settings: domain.Effective{AgentInstructions: "AGENTS.md"}}, nil
-		},
-		Git:   git,
-		Runs:  store,
-		Clock: clock,
-	})
+	files := testkit.NewWorktreeFiles()
+	files.Put(antWorktree, "AGENTS.md", "Run make test before you push.\n")
+	e := &briefEnv{t: t, clock: clock, gh: gh, store: store, git: git, files: files, ant: rec}
+	e.rebuild(t)
 	return e
 }
 
-// anthillComment renders an Anthill comment of the given kind on #12.
+// anthillComment renders an ant comment of this instance, of the given
+// kind on #12.
 func anthillComment(kind domain.CommentKind, body string) string {
-	m := domain.Marker{Version: domain.MarkerVersion, Instance: instanceA, Kind: kind, Ref: "gh-12"}
+	return anthillCommentBy(domain.RoleAnt, instanceA, kind, body)
+}
+
+func anthillCommentBy(role domain.Role, instance string, kind domain.CommentKind, body string) string {
+	m := domain.Marker{Version: domain.MarkerVersion, Instance: instance, Kind: kind, Ref: "gh-12"}
 	if kind == domain.CommentClaim {
 		m.ClaimFields = &domain.ClaimFields{Claim: domain.ClaimTask, LeaseMinutes: 15}
 	}
-	return domain.AnthillComment{Role: domain.RoleAnt, Body: body, Marker: m}.String()
+	return domain.AnthillComment{Role: role, Body: body, Marker: m}.String()
 }
 
 func contains(t *testing.T, got string, want ...string) {
@@ -129,7 +128,7 @@ func TestBriefIncludesDiscussion(t *testing.T) {
 		"Scope: only the login page.", "Safari 17 and 18 only.", "Keep the API unchanged.",
 		"Fix login", "Logins time out on Safari.", "https://github.com/acme/shop/issues/12",
 		"Branch: `ant/gh-12-fix-login`", "Base branch: `main`", "Time budget: 60 minutes",
-		"`AGENTS.md`", "`ask_question`", "`finish`",
+		"from `AGENTS.md`", "Run make test before you push.", "`ask_question`", "`finish`",
 	)
 	lacks(t, got, "Claimed by", "Working on it.", "<!-- anthill")
 	first := strings.Index(got, "Scope: only the login page.")
@@ -208,7 +207,11 @@ func TestSummaryBriefSummarizesPriorWork(t *testing.T) {
 		"Time left: 40 minutes",
 		"### Answer to your question", "ann answered at 2026-10-01T13:00:00Z", "60 seconds.",
 	)
-	lacks(t, got, "30 or 60 seconds?", "Done: retry added.", "<!-- anthill")
+	contains(t, got,
+		"Your earlier question, posted by Anthill at", "30 or 60 seconds?",
+		"Your earlier finish summary, posted by Anthill at 2026-10-01T11:30:00Z", "Done: retry added.",
+	)
+	lacks(t, got, "<!-- anthill", "🐜")
 	if strings.Index(got, "Rename this variable.") > strings.Index(got, "Please use a 60 second timeout.") {
 		t.Errorf("PR comments are not in time order:\n%s", got)
 	}
@@ -264,4 +267,122 @@ func TestResumeInputReadsNothing(t *testing.T) {
 	}
 	contains(t, got, "60 seconds.")
 	lacks(t, got, "Logins time out on Safari.", "## Conventions")
+}
+
+// Spec ant-execution, "Task brief": the repository's agent instructions.
+func TestBriefAgentInstructions(t *testing.T) {
+	ctx := context.Background()
+	t.Run("cut at the limit", func(t *testing.T) {
+		e := newBriefEnv(t)
+		e.files.Put(antWorktree, "AGENTS.md", strings.Repeat("a", domain.AgentInstructionsLimit)+"TAIL")
+		got, err := e.builder.Task(ctx, e.ant, nil, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		contains(t, got, "only its start is quoted")
+		lacks(t, got, "TAIL")
+	})
+	t.Run("missing", func(t *testing.T) {
+		e := newBriefEnv(t)
+		e.files = testkit.NewWorktreeFiles()
+		e.rebuild(t)
+		got, err := e.builder.Task(ctx, e.ant, nil, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		contains(t, got, "`AGENTS.md` was not found in your worktree")
+	})
+	t.Run("leads outside", func(t *testing.T) {
+		e := newBriefEnv(t)
+		e.files.PutOutside(antWorktree, "AGENTS.md")
+		got, err := e.builder.Summary(ctx, e.ant, nil, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		contains(t, got, "`AGENTS.md` leads outside your worktree, so Anthill did not read it.")
+		lacks(t, got, "Run make test before you push.")
+	})
+	t.Run("read error", func(t *testing.T) {
+		e := newBriefEnv(t)
+		boom := errors.New("disk failed")
+		e.files.Fail(boom)
+		if _, err := e.builder.Task(ctx, e.ant, nil, nil); !errors.Is(err, boom) {
+			t.Fatalf("want %v, got %v", boom, err)
+		}
+	})
+}
+
+// rebuild makes the builder again over the env's current fakes.
+func (e *briefEnv) rebuild(t *testing.T) {
+	t.Helper()
+	clone, err := e.git.OpenClone(context.Background(), "/src/shop", shop)
+	if err != nil {
+		t.Fatal(err)
+	}
+	gh := e.gh
+	e.builder = app.NewBriefBuilder(app.BriefDeps{
+		Tracker:  func(context.Context, domain.Ref) (ports.TrackerPort, error) { return gh.Client("mrosani"), nil },
+		CodeHost: func(context.Context, domain.Repository) (ports.CodeHostPort, error) { return gh.Client("mrosani"), nil },
+		Workspace: func(context.Context, domain.Ref) (app.ToolWorkspace, error) {
+			return app.ToolWorkspace{Clone: clone, Repo: shop, Settings: domain.Effective{AgentInstructions: "AGENTS.md"}}, nil
+		},
+		Git: e.git, Files: e.files, Runs: e.store, Clock: e.clock, Instance: instanceA,
+	})
+}
+
+// The task brief leaves out every Anthill comment. The summary brief keeps
+// only the ant's own question and finish summary comments.
+func TestBriefsChooseAnthillComments(t *testing.T) {
+	cases := []struct {
+		name    string
+		body    string
+		task    bool
+		summary bool
+	}{
+		{"human", "HUMAN-TEXT", true, true},
+		{"claim", anthillComment(domain.CommentClaim, "CLAIM-TEXT"), false, false},
+		{"question", anthillComment(domain.CommentQuestion, "QUESTION-TEXT"), false, true},
+		{"status", anthillComment(domain.CommentStatus, "STATUS-TEXT"), false, false},
+		{"summary", anthillComment(domain.CommentSummary, "SUMMARY-TEXT"), false, true},
+		{"finding", anthillCommentBy(domain.RoleShepherd, instanceA, domain.CommentFinding, "FINDING-TEXT"), false, false},
+		{"reply", anthillComment(domain.CommentReply, "REPLY-TEXT"), false, false},
+		{"shepherd summary", anthillCommentBy(domain.RoleShepherd, instanceA, domain.CommentSummary, "ROUND-TEXT"), false, false},
+		{"other instance's question", anthillCommentBy(domain.RoleAnt, "bob@DESK-7", domain.CommentQuestion, "FOREIGN-TEXT"), false, false},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			ctx := context.Background()
+			e := newBriefEnv(t)
+			e.gh.Comment(ghRef(12), "mrosani", c.body)
+			pr := ghPR(34)
+			e.gh.PutPullRequest(domain.PullRequest{
+				Ref: pr, URL: "https://github.com/acme/shop/pull/34", Title: "Fix login", SourceBranch: antBranch, TargetBranch: "main",
+				Threads: []domain.ReviewThread{{ID: "t1", Path: "login.go", Line: 3, Comments: []domain.Comment{
+					{ID: "p1", Author: "mrosani", Body: strings.ReplaceAll(c.body, "TEXT", "ON-PR"), CreatedAt: t0},
+				}}},
+			})
+			text := c.body
+			if ac, ok := domain.ParseAnthillComment(c.body); ok {
+				text = ac.Body
+			}
+			onPR := strings.ReplaceAll(text, "TEXT", "ON-PR")
+
+			task, err := e.builder.Task(ctx, e.ant, nil, nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if strings.Contains(task, text) != c.task {
+				t.Errorf("task brief: want kept=%v:\n%s", c.task, task)
+			}
+			e.ant.PR = &pr
+			summary, err := e.builder.Summary(ctx, e.ant, nil, nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if strings.Contains(summary, text) != c.summary || strings.Contains(summary, onPR) != c.summary {
+				t.Errorf("summary brief: want kept=%v:\n%s", c.summary, summary)
+			}
+			lacks(t, summary, "<!-- anthill")
+		})
+	}
 }
