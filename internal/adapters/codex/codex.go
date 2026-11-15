@@ -40,9 +40,6 @@ type Options struct {
 	// Git is the git program, used to find the worktree's git directory;
 	// empty means git on the PATH.
 	Git string
-	// Log, when set, receives the agent's output lines and its standard
-	// error, as its activity log. It must be safe for concurrent use.
-	Log io.Writer
 }
 
 // Runner starts Codex runs.
@@ -106,7 +103,7 @@ func (r *Runner) start(ctx context.Context, resume string, spec ports.RunSpec) (
 	// command line.
 	args = append(args, "-")
 
-	rn := &run{session: resume, log: r.opts.Log}
+	rn := &run{session: resume, log: spec.Activity}
 	env := spec.Env
 	if spec.Telemetry != nil {
 		env = agentenv.With(env, agentenv.OTLP(spec.Telemetry))
@@ -118,7 +115,7 @@ func (r *Runner) start(ctx context.Context, resume string, spec ports.RunSpec) (
 		Env:    env,
 		Stdin:  true,
 		Line:   rn.line,
-		Stderr: r.opts.Log,
+		Stderr: spec.Activity,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("starting codex: %w", err)
@@ -254,9 +251,9 @@ func (r *run) Usage() ports.Usage {
 }
 
 func (r *run) line(b []byte) {
-	if r.log != nil {
-		_, _ = r.log.Write(append(append([]byte(nil), b...), '\n'))
-	}
+	// The activity is written last, so that SessionID and Usage already
+	// take the line into account when the activity reader sees it.
+	defer r.activity(b)
 	ev, ok := parseEvent(b)
 	if !ok {
 		return
@@ -275,5 +272,12 @@ func (r *run) line(b []byte) {
 			}
 			r.tokens = &n
 		}
+	}
+}
+
+// activity writes one output line to the run's activity output.
+func (r *run) activity(b []byte) {
+	if r.log != nil {
+		_, _ = r.log.Write(append(append([]byte(nil), b...), '\n'))
 	}
 }

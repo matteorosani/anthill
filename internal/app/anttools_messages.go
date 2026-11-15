@@ -9,12 +9,13 @@ import (
 )
 
 // RunChannel reaches the agent of an active run: what its runner
-// supports, and the run itself for live input. Ant supervision sets it
-// when it issues the run's token.
+// supports, and the run's process in the executor, for live input
+// (design D21). Ant supervision sets it when it issues the run's token.
 type RunChannel struct {
 	Capabilities ports.Capabilities
-	// Run is the active run, or nil before its process is known.
-	Run ports.Run
+	// Exec is the run's process in the executor, or empty before it is
+	// known.
+	Exec ports.ExecID
 }
 
 // ErrNoActiveRun is returned when a message is for an ant without an
@@ -25,8 +26,8 @@ var ErrNoActiveRun = errors.New("the ant has no active run")
 // decision or a ticket update, to the agent of the ant's active run, by
 // the first means its runner supports (spec ant-tools, "Messages during
 // a run"; design D5):
-//   - live input: the message is sent to the run at once. When sending
-//     fails, the next means is used;
+//   - live input: the executor sends the message to the run at once.
+//     When it cannot, the next means is used;
 //   - a hook: the message is queued, and the runner's hook takes it with
 //     Notices after the agent's next tool use;
 //   - otherwise it is queued and attached to the result of the agent's
@@ -40,9 +41,10 @@ func (t *AntTools) Deliver(ctx context.Context, ant ports.AntID, text string) (d
 		return "", ErrNoActiveRun
 	}
 	caps := ch.Capabilities
-	means := domain.ChooseDelivery(caps.LiveInput && ch.Run != nil, caps.Hooks)
+	live := caps.LiveInput && ch.Exec != "" && t.deps.Executor != nil
+	means := domain.ChooseDelivery(live, caps.Hooks)
 	if means == domain.DeliverLiveInput {
-		if err := ch.Run.Send(ctx, text); err == nil {
+		if err := t.deps.Executor.Send(ctx, ch.Exec, text); err == nil {
 			return means, nil
 		}
 		means = domain.ChooseDelivery(false, caps.Hooks)

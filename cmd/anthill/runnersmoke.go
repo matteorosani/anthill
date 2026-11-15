@@ -34,17 +34,17 @@ const smokeStopGrace = 10 * time.Second
 const smokeTool = "smoke_ping"
 
 // agentRunners builds the runner adapters. exe is the anthill program,
-// which the hooks run, log receives the agents' activity, and commands
-// replace a runner's CLI, for tests.
-func agentRunners(exe string, log io.Writer, commands map[domain.Runner]string) (map[domain.Runner]ports.AgentRunner, error) {
-	claude, err := claudecode.New(claudecode.Options{Anthill: exe, Command: commands[domain.RunnerClaudeCode], Log: log})
+// which the hooks run, and commands replace a runner's CLI, for tests.
+// Each run takes its activity output in its RunSpec.
+func agentRunners(exe string, commands map[domain.Runner]string) (map[domain.Runner]ports.AgentRunner, error) {
+	claude, err := claudecode.New(claudecode.Options{Anthill: exe, Command: commands[domain.RunnerClaudeCode]})
 	if err != nil {
 		return nil, err
 	}
 	return map[domain.Runner]ports.AgentRunner{
 		domain.RunnerClaudeCode: claude,
-		domain.RunnerCodex:      codex.New(codex.Options{Command: commands[domain.RunnerCodex], Log: log}),
-		domain.RunnerOpenCode:   opencode.New(opencode.Options{Command: commands[domain.RunnerOpenCode], Log: log}),
+		domain.RunnerCodex:      codex.New(codex.Options{Command: commands[domain.RunnerCodex]}),
+		domain.RunnerOpenCode:   opencode.New(opencode.Options{Command: commands[domain.RunnerOpenCode]}),
 	}, nil
 }
 
@@ -159,7 +159,7 @@ func (s *smokeRun) run(ctx context.Context, o smokeOptions) error {
 		}
 	}()
 
-	runners, err := agentRunners(exe, &lockedWriter{mu: &s.out, w: s.env.stderr}, map[domain.Runner]string{o.runner: o.command})
+	runners, err := agentRunners(exe, map[domain.Runner]string{o.runner: o.command})
 	if err != nil {
 		return err
 	}
@@ -178,6 +178,7 @@ func (s *smokeRun) run(ctx context.Context, o smokeOptions) error {
 		MCPCommand: []string{exe, "mcp", "--ant", s.token},
 		ToolToken:  s.token,
 		Env:        domain.AgentEnv(os.Environ()),
+		Activity:   &lockedWriter{mu: &s.out, w: s.env.stderr},
 	}
 	var run ports.Run
 	if o.resume != "" {

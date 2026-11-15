@@ -166,10 +166,12 @@ type AntToolsDeps struct {
 	Git       ports.SourceControl
 	Clock     ports.Clock
 	Notifier  ports.Notifier
-	Runs      RunEnder
-	Finishes  FinishHandler
-	Reviews   ReviewSink
-	Fixes     FixSink
+	// Executor gives messages to runs as live input (design D21).
+	Executor ports.Executor
+	Runs     RunEnder
+	Finishes FinishHandler
+	Reviews  ReviewSink
+	Fixes    FixSink
 }
 
 // AntToolsOptions are the settings of the ant tools.

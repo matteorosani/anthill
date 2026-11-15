@@ -2,6 +2,7 @@ package ports
 
 import (
 	"context"
+	"io"
 	"time"
 )
 
@@ -41,6 +42,12 @@ type RunSpec struct {
 	// runner that supports it (spec observability, "Agent telemetry is
 	// switched on and linked"). It is nil when export is off.
 	Telemetry *AgentTelemetry
+	// Activity, when set, receives this run's activity: each line of the
+	// agent's output in one Write, with its line ending, once the run's
+	// SessionID and Usage take the line into account, and its standard
+	// error as it comes. It must be safe for concurrent use. Each run has
+	// its own, so the executor reports activity per run (design D21).
+	Activity io.Writer
 }
 
 // AgentTelemetry is where an agent exports its telemetry, and what links
