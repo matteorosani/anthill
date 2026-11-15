@@ -60,6 +60,16 @@ func (x *Executor) Execution(id ports.ExecID) *FakeExecution {
 	return nil
 }
 
+// Deadline is the deadline currently set for the execution with id: the
+// start's, or the last one SetDeadline gave. The zero time means none,
+// and so does an unknown id.
+func (x *Executor) Deadline(id ports.ExecID) time.Time {
+	if f := x.Execution(id); f != nil {
+		return f.Deadline()
+	}
+	return time.Time{}
+}
+
 // Start records spec and queues the started event. It returns
 // ports.ErrUnsupported for a resume without the Resume capability.
 func (x *Executor) Start(_ context.Context, spec ports.ExecSpec) (ports.Execution, error) {
@@ -123,11 +133,15 @@ func (x *Executor) SetDeadline(id ports.ExecID, deadline time.Time) error {
 }
 
 // Stop records grace and ends the execution with ExecExited and
-// StoppedExit.
+// StoppedExit. Stopping an ended execution records nothing and returns
+// nil, as the real executor does.
 func (x *Executor) Stop(id ports.ExecID, grace time.Duration) error {
-	f, err := x.active(id)
-	if err != nil {
-		return err
+	f := x.Execution(id)
+	if f == nil {
+		return fmt.Errorf("execution %s: %w", id, ports.ErrUnknownExecution)
+	}
+	if f.Ended() {
+		return nil
 	}
 	f.mu.Lock()
 	f.stops = append(f.stops, grace)

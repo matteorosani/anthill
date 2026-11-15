@@ -178,13 +178,13 @@ func (s *smokeRun) run(ctx context.Context, o smokeOptions) error {
 		MCPCommand: []string{exe, "mcp", "--ant", s.token},
 		ToolToken:  s.token,
 		Env:        domain.AgentEnv(os.Environ()),
-		Activity:   &lockedWriter{mu: &s.out, w: s.env.stderr},
 	}
+	out := ports.RunIO{Activity: &lockedWriter{mu: &s.out, w: s.env.stderr}}
 	var run ports.Run
 	if o.resume != "" {
-		run, err = r.Resume(ctx, o.resume, spec)
+		run, err = r.Resume(ctx, o.resume, spec, out)
 	} else {
-		run, err = r.Start(ctx, spec)
+		run, err = r.Start(ctx, spec, out)
 	}
 	if err != nil {
 		return err

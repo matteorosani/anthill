@@ -43,6 +43,10 @@ func TestExecutorRecordsAndDrivesEvents(t *testing.T) {
 	if err := x.Send(context.Background(), ex.ID, "12 minutes left"); err != nil {
 		t.Fatal(err)
 	}
+	later := deadline.Add(30 * time.Minute)
+	if err := x.SetDeadline(ex.ID, later); err != nil || !x.Deadline(ex.ID).Equal(later) {
+		t.Fatalf("deadline after SetDeadline = %v, %v; want %v", x.Deadline(ex.ID), err, later)
+	}
 	if err := x.SetDeadline(ex.ID, time.Time{}); err != nil {
 		t.Fatal(err)
 	}
@@ -57,11 +61,17 @@ func TestExecutorRecordsAndDrivesEvents(t *testing.T) {
 	if want := []ports.ExecEventKind{ports.ExecStarted, ports.ExecActivity, ports.ExecExited}; !slices.Equal(kinds, want) {
 		t.Errorf("events = %v, want %v", kinds, want)
 	}
-	if !slices.Equal(f.Inputs(), []string{"12 minutes left"}) || !f.Deadline().IsZero() || len(f.Deadlines()) != 1 || !slices.Equal(f.Stops(), []time.Duration{time.Second}) {
+	if !slices.Equal(f.Inputs(), []string{"12 minutes left"}) || !f.Deadline().IsZero() || len(f.Deadlines()) != 2 || !slices.Equal(f.Stops(), []time.Duration{time.Second}) {
 		t.Errorf("recorded inputs %q, deadline %v, deadlines %v, stops %v", f.Inputs(), f.Deadline(), f.Deadlines(), f.Stops())
 	}
 	if err := x.Send(context.Background(), ex.ID, "late"); !errors.Is(err, ports.ErrUnknownExecution) {
 		t.Errorf("send after the end: %v", err)
+	}
+	if err := x.Stop(ex.ID, 0); err != nil || len(f.Stops()) != 1 {
+		t.Errorf("stop after the end = %v, stops %v; want nil and nothing recorded", err, f.Stops())
+	}
+	if err := x.Stop("exec-9", 0); !errors.Is(err, ports.ErrUnknownExecution) {
+		t.Errorf("stop of an unknown id = %v", err)
 	}
 }
 

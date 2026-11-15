@@ -20,8 +20,9 @@ type ExecSpec struct {
 	// Session is the session to resume, or empty for a new session
 	// (design D17).
 	Session string
-	// Run is what the runner starts with. Run.Activity belongs to the
-	// executor: a value set here is ignored.
+	// Run is what the runner starts with. A short call, such as a comment
+	// classifier call (design D8), may leave out what its runner does not
+	// need, such as the MCP command or the worktree.
 	Run RunSpec
 	// Deadline is when the executor ends the process tree: the budget
 	// plus the grace period, which the timekeeper computes (spec
@@ -37,7 +38,10 @@ type Execution struct {
 	// Events has the process's events in order. The first is ExecStarted,
 	// and the last is ExecExited or ExecEndedAtDeadline, after which the
 	// channel is closed. The executor never holds up the process for a
-	// slow reader: events wait in a queue until they are read.
+	// slow reader: events wait in a queue until they are read. Lifecycle
+	// events (all but ExecActivity) are never dropped. Activity lines
+	// are, when too many wait unread: the oldest go, and one activity
+	// event in their place says how many.
 	Events <-chan ExecEvent
 }
 
@@ -81,7 +85,7 @@ func (e ExecEvent) Final() bool {
 }
 
 // ErrUnknownExecution is returned for an id that the executor never
-// started, or whose process has ended.
+// gave, and by Send and SetDeadline once the process has ended.
 var ErrUnknownExecution = errors.New("unknown or ended execution")
 
 // Executor starts and ends agent processes and reports their events
@@ -89,9 +93,16 @@ var ErrUnknownExecution = errors.New("unknown or ended execution")
 // out, messages, deadlines and stop requests in. It computes no budget
 // and sends no notice of its own: the warning and the notice to stop
 // come from the timekeeper as messages (design D5).
+//
+// Send, SetDeadline and Stop return ErrUnknownExecution for an id the
+// executor never gave; Send and SetDeadline also return it once the
+// process has ended.
 type Executor interface {
 	// Start starts a process with spec, resuming spec.Session when it is
-	// set. It returns ErrUnsupported for a resume the runner cannot do.
+	// set. It returns ErrUnsupported for a resume the runner cannot do,
+	// and the runner's own error when its CLI cannot be started
+	// (AgentRunner.Available). When Start fails, nothing runs and no
+	// events are sent.
 	Start(ctx context.Context, spec ExecSpec) (Execution, error)
 	// Send gives input to the process as live input. It returns
 	// ErrUnsupported when the runner has no live input, and another
@@ -99,10 +110,16 @@ type Executor interface {
 	// another means (design D5).
 	Send(ctx context.Context, id ExecID, input string) error
 	// SetDeadline moves the deadline later or earlier; the zero time
-	// clears it. A deadline that has passed ends the process at once.
+	// clears it, as while request_extension waits. A deadline that has
+	// passed ends the process at once. At the deadline the executor
+	// starts ending the process tree, and kills it after a short fixed
+	// grace of its own: the deadline is already the budget plus the
+	// grace period of ant-timebox (design D5).
 	SetDeadline(id ExecID, deadline time.Time) error
 	// Stop ends the process tree, killing it after grace. It returns
 	// once the process has ended; its last event is then ExecExited, or
-	// ExecEndedAtDeadline when the deadline came first.
+	// ExecEndedAtDeadline when the deadline came first. Stopping a
+	// process that has already ended returns nil, so a stop that races
+	// the process's exit does not fail.
 	Stop(id ExecID, grace time.Duration) error
 }

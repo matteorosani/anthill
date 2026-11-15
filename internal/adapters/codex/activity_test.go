@@ -5,6 +5,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/matteorosani/anthill/internal/ports"
 	"github.com/matteorosani/anthill/internal/testkit"
 )
 
@@ -27,8 +28,7 @@ func TestActivityIsPerRun(t *testing.T) {
 		wt, _ := worktree(t)
 		f := newFake(t, "start")
 		spec := f.spec(wt)
-		spec.Activity = &buffers[i]
-		run, err := f.runner.Start(context.Background(), spec)
+		run, err := f.runner.Start(context.Background(), spec, ports.RunIO{Activity: &buffers[i]})
 		if err != nil {
 			t.Fatal(err)
 		}

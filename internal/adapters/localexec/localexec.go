@@ -9,6 +9,7 @@ import (
 	"context"
 	"fmt"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -19,13 +20,26 @@ import (
 // DefaultStopGrace is how long a process ended at its deadline has to
 // end on its own, such as to save its session, before its tree is
 // killed.
-const DefaultStopGrace = 10 * time.Second
+//
+// It is not the grace period of ant-timebox: that one is already in the
+// deadline, which is the budget plus that grace (design D5, D21). At the
+// deadline the executor starts ending the tree at once, and StopGrace
+// only bounds how long that takes, so no second grace period is added.
+const DefaultStopGrace = 5 * time.Second
+
+// DefaultMaxQueuedActivity is how many activity lines wait for a slow
+// reader before the oldest are dropped.
+const DefaultMaxQueuedActivity = 10000
 
 // Options configure the executor.
 type Options struct {
 	// StopGrace is the grace of a process ended at its deadline; zero
 	// means DefaultStopGrace.
 	StopGrace time.Duration
+	// MaxQueuedActivity is how many activity lines of one execution wait
+	// unread before the oldest are dropped; zero means
+	// DefaultMaxQueuedActivity.
+	MaxQueuedActivity int
 }
 
 // Executor runs agents on this machine. It is safe for concurrent use.
@@ -33,6 +47,7 @@ type Executor struct {
 	clock   ports.Clock
 	runners map[domain.Runner]ports.AgentRunner
 	grace   time.Duration
+	maxAct  int
 
 	mu    sync.Mutex
 	next  int64
@@ -50,54 +65,64 @@ func New(clock ports.Clock, runners map[domain.Runner]ports.AgentRunner, opts Op
 	if opts.StopGrace <= 0 {
 		opts.StopGrace = DefaultStopGrace
 	}
-	return &Executor{clock: clock, runners: m, grace: opts.StopGrace, execs: map[ports.ExecID]*execution{}}
+	if opts.MaxQueuedActivity <= 0 {
+		opts.MaxQueuedActivity = DefaultMaxQueuedActivity
+	}
+	return &Executor{
+		clock: clock, runners: m, grace: opts.StopGrace, maxAct: opts.MaxQueuedActivity,
+		execs: map[ports.ExecID]*execution{},
+	}
 }
 
-// Start starts a process with the runner spec.Runner names.
+// Start starts a process with the runner spec.Runner names. The runner
+// decides what the spec needs: a short call, such as a comment
+// classifier call, can go without MCP command or worktree when its
+// runner allows it. It returns the runner's own error when its CLI
+// cannot be started (AgentRunner.Available).
 func (e *Executor) Start(ctx context.Context, spec ports.ExecSpec) (ports.Execution, error) {
 	runner, ok := e.runners[spec.Runner]
 	if !ok {
-		return ports.Execution{}, fmt.Errorf("executor: no runner %s", spec.Runner)
+		return ports.Execution{}, fmt.Errorf("executor: this build has no runner %s", spec.Runner)
 	}
 	caps := runner.Capabilities()
 	if spec.Session != "" && !caps.Resume {
 		return ports.Execution{}, fmt.Errorf("executor: resume with %s: %w", spec.Runner, ports.ErrUnsupported)
 	}
-
-	e.mu.Lock()
-	e.next++
-	id := ports.ExecID("exec-" + strconv.FormatInt(e.next, 10))
-	e.mu.Unlock()
+	if err := runner.Available(ctx); err != nil {
+		return ports.Execution{}, err
+	}
 
 	events := make(chan ports.ExecEvent)
 	x := &execution{
-		id:        id,
 		caps:      caps,
 		clock:     e.clock,
 		grace:     e.grace,
-		queue:     &queue{wake: make(chan struct{}, 1)},
+		queue:     &queue{wake: make(chan struct{}, 1), maxActivity: e.maxAct},
 		deadlines: make(chan deadlineRequest),
 		done:      make(chan struct{}),
 	}
-	runSpec := spec.Run
-	runSpec.Activity = x
+	out := ports.RunIO{Activity: x}
 	var (
 		run ports.Run
 		err error
 	)
 	if spec.Session != "" {
-		run, err = runner.Resume(ctx, spec.Session, runSpec)
+		run, err = runner.Resume(ctx, spec.Session, spec.Run, out)
 	} else {
-		run, err = runner.Start(ctx, runSpec)
+		run, err = runner.Start(ctx, spec.Run, out)
 	}
 	if err != nil {
 		return ports.Execution{}, err
 	}
-	x.start(run, spec.Deadline, events)
 
+	// The id is given only to a process that started, so that every id
+	// up to next is one that ran.
 	e.mu.Lock()
+	e.next++
+	id := ports.ExecID(idPrefix + strconv.FormatInt(e.next, 10))
 	e.execs[id] = x
 	e.mu.Unlock()
+	x.start(run, spec.Deadline, events)
 	go func() {
 		x.supervise()
 		e.mu.Lock()
@@ -137,10 +162,14 @@ func (e *Executor) SetDeadline(id ports.ExecID, deadline time.Time) error {
 }
 
 // Stop ends the process tree, killing it after grace, and returns once
-// the process has ended.
+// the process has ended. Stopping a process that has ended does nothing,
+// so a stop that races the process's exit does not fail.
 func (e *Executor) Stop(id ports.ExecID, grace time.Duration) error {
 	x, err := e.find(id)
 	if err != nil {
+		if e.ran(id) {
+			return nil
+		}
 		return err
 	}
 	x.mu.Lock()
@@ -149,6 +178,18 @@ func (e *Executor) Stop(id ports.ExecID, grace time.Duration) error {
 	err = x.run.Stop(grace)
 	<-x.done
 	return err
+}
+
+// idPrefix starts every ExecID, which ends with the execution's number.
+const idPrefix = "exec-"
+
+// ran reports whether id is one this executor gave, to a process that
+// may have ended since.
+func (e *Executor) ran(id ports.ExecID) bool {
+	n, err := strconv.ParseInt(strings.TrimPrefix(string(id), idPrefix), 10, 64)
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	return err == nil && strings.HasPrefix(string(id), idPrefix) && n >= 1 && n <= e.next
 }
 
 func (e *Executor) find(id ports.ExecID) (*execution, error) {
@@ -175,7 +216,6 @@ type deadlineRequest struct {
 
 // execution is one process. It is the run's activity output too.
 type execution struct {
-	id    ports.ExecID
 	caps  ports.Capabilities
 	clock ports.Clock
 	grace time.Duration
@@ -308,26 +348,81 @@ func equalPtr[T comparable](a, b *T) bool {
 
 // queue holds events until they are read, so that a slow reader never
 // holds up the process: its output is read while events wait here.
+// Lifecycle events are never dropped. Activity lines are, beyond
+// maxActivity unread: the oldest go, and one activity event in their
+// place says how many.
 type queue struct {
-	mu     sync.Mutex
-	items  []ports.ExecEvent
-	closed bool
+	mu          sync.Mutex
+	items       []queued
+	activity    int
+	maxActivity int
+	closed      bool
 	// wake has a value when items or closed changed.
 	wake chan struct{}
 }
 
+// queued is a waiting event. dropped, on an activity event, is how many
+// lines it stands for, which were dropped.
+type queued struct {
+	ev      ports.ExecEvent
+	dropped int
+}
+
+// DroppedActivity is the line of the activity event that stands for
+// lines dropped while the reader was slow.
+func DroppedActivity(n int) string {
+	return fmt.Sprintf("anthill: %d activity lines dropped while the reader was slow", n)
+}
+
 func (q *queue) push(ev ports.ExecEvent) {
 	q.mu.Lock()
-	q.items = append(q.items, ev)
+	q.items = append(q.items, queued{ev: ev})
+	if ev.Kind == ports.ExecActivity {
+		q.activity++
+		for q.maxActivity > 0 && q.activity > q.maxActivity {
+			if !q.dropOldest() {
+				break
+			}
+		}
+	}
 	q.mu.Unlock()
 	q.signal()
+}
+
+// dropOldest drops the oldest activity line. The first one dropped
+// becomes the event saying how many were; later ones are added to it.
+// It returns false when there is nothing left to drop.
+func (q *queue) dropOldest() bool {
+	marker := -1
+	for i, it := range q.items {
+		if it.ev.Kind != ports.ExecActivity {
+			continue
+		}
+		if it.dropped > 0 {
+			marker = i
+			continue
+		}
+		if marker < 0 {
+			q.items[i].dropped = 1
+			q.items[i].ev.Line = DroppedActivity(1)
+			// The line became the marker, which is not counted.
+			q.activity--
+			return true
+		}
+		q.items[marker].dropped++
+		q.items[marker].ev.Line = DroppedActivity(q.items[marker].dropped)
+		q.items = append(q.items[:i], q.items[i+1:]...)
+		q.activity--
+		return true
+	}
+	return false
 }
 
 // pushFront puts ev ahead of the events queued so far: the started event
 // comes before activity written while the runner was starting.
 func (q *queue) pushFront(ev ports.ExecEvent) {
 	q.mu.Lock()
-	q.items = append([]ports.ExecEvent{ev}, q.items...)
+	q.items = append([]queued{{ev: ev}}, q.items...)
 	q.mu.Unlock()
 	q.signal()
 }
@@ -346,23 +441,27 @@ func (q *queue) signal() {
 	}
 }
 
-// send sends the events to out, in order, and closes out after the
-// last one.
+// send sends the events to out, in order, one at a time so that what
+// waits can still be dropped, and closes out after the last one.
 func (q *queue) send(out chan<- ports.ExecEvent) {
 	defer close(out)
 	for {
 		q.mu.Lock()
-		items, closed := q.items, q.closed
-		q.items = nil
-		q.mu.Unlock()
-		for _, ev := range items {
-			out <- ev
-		}
-		if closed && len(items) == 0 {
-			return
-		}
-		if len(items) == 0 {
+		if len(q.items) == 0 {
+			closed := q.closed
+			q.mu.Unlock()
+			if closed {
+				return
+			}
 			<-q.wake
+			continue
 		}
+		it := q.items[0]
+		q.items = q.items[1:]
+		if it.ev.Kind == ports.ExecActivity && it.dropped == 0 {
+			q.activity--
+		}
+		q.mu.Unlock()
+		out <- it.ev
 	}
 }

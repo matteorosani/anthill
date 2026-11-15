@@ -27,28 +27,29 @@ func TestMain(m *testing.M) {
 // the agent's script, as JSON. Its session id is fake-<pid>, and its
 // usage is the last usage the agent printed.
 type fakeRunner struct {
-	caps ports.Capabilities
+	caps        ports.Capabilities
+	unavailable error
 
 	mu   sync.Mutex
 	runs []*fakeRun
 }
 
 func (r *fakeRunner) Capabilities() ports.Capabilities { return r.caps }
-func (r *fakeRunner) Available(context.Context) error  { return nil }
+func (r *fakeRunner) Available(context.Context) error  { return r.unavailable }
 func (r *fakeRunner) runsSoFar() []*fakeRun {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	return append([]*fakeRun(nil), r.runs...)
 }
-func (r *fakeRunner) Start(ctx context.Context, spec ports.RunSpec) (ports.Run, error) {
-	return r.start(spec, "")
+func (r *fakeRunner) Start(_ context.Context, spec ports.RunSpec, out ports.RunIO) (ports.Run, error) {
+	return r.start(spec, out, "")
 }
 
-func (r *fakeRunner) Resume(_ context.Context, session string, spec ports.RunSpec) (ports.Run, error) {
-	return r.start(spec, session)
+func (r *fakeRunner) Resume(_ context.Context, session string, spec ports.RunSpec, out ports.RunIO) (ports.Run, error) {
+	return r.start(spec, out, session)
 }
 
-func (r *fakeRunner) start(spec ports.RunSpec, session string) (ports.Run, error) {
+func (r *fakeRunner) start(spec ports.RunSpec, out ports.RunIO, session string) (ports.Run, error) {
 	var script testkit.AgentScript
 	if err := json.Unmarshal([]byte(spec.Brief), &script); err != nil {
 		return nil, err
@@ -57,7 +58,7 @@ func (r *fakeRunner) start(spec ports.RunSpec, session string) (ports.Run, error
 	if err != nil {
 		return nil, err
 	}
-	rn := &fakeRun{session: session, activity: spec.Activity}
+	rn := &fakeRun{session: session, activity: out.Activity}
 	proc, err := agentproc.Start(agentproc.Spec{
 		Path:   exe,
 		Args:   testkit.FakeAgentArgs(script),
@@ -65,7 +66,7 @@ func (r *fakeRunner) start(spec ports.RunSpec, session string) (ports.Run, error
 		Env:    os.Environ(),
 		Stdin:  r.caps.LiveInput,
 		Line:   rn.line,
-		Stderr: spec.Activity,
+		Stderr: out.Activity,
 		Drain:  time.Second,
 	})
 	if err != nil {
@@ -135,13 +136,16 @@ type env struct {
 }
 
 func newEnv(caps ports.Capabilities) *env {
+	return newEnvWith(caps, localexec.Options{StopGrace: 200 * time.Millisecond})
+}
+
+func newEnvWith(caps ports.Capabilities, opts localexec.Options) *env {
 	clock := testkit.NewClock(start)
 	runner := &fakeRunner{caps: caps}
 	return &env{
 		clock:  clock,
 		runner: runner,
-		exec: localexec.New(clock, map[domain.Runner]ports.AgentRunner{fakeRunnerName: runner},
-			localexec.Options{StopGrace: 200 * time.Millisecond}),
+		exec:   localexec.New(clock, map[domain.Runner]ports.AgentRunner{fakeRunnerName: runner}, opts),
 	}
 }
 
@@ -402,10 +406,19 @@ func TestStop(t *testing.T) {
 	for name, err := range map[string]error{
 		"send":     e.exec.Send(context.Background(), x.ID, "late"),
 		"deadline": e.exec.SetDeadline(x.ID, start),
-		"stop":     e.exec.Stop(x.ID, 0),
 	} {
 		if !errors.Is(err, ports.ErrUnknownExecution) {
 			t.Errorf("%s after the end: %v, want ErrUnknownExecution", name, err)
+		}
+	}
+	// A stop that comes after the process ended, as when it races the
+	// exit, does not fail; an id the executor never gave does.
+	if err := e.exec.Stop(x.ID, 0); err != nil {
+		t.Errorf("stop after the end = %v, want nil", err)
+	}
+	for _, id := range []ports.ExecID{"exec-99", "other"} {
+		if err := e.exec.Stop(id, 0); !errors.Is(err, ports.ErrUnknownExecution) {
+			t.Errorf("stop of %s = %v, want ErrUnknownExecution", id, err)
 		}
 	}
 }
@@ -478,5 +491,83 @@ func TestResume(t *testing.T) {
 	}
 	if _, err := e.exec.Start(context.Background(), ports.ExecSpec{Runner: "nobody"}); err == nil {
 		t.Error("an unknown runner started")
+	}
+}
+
+// Task 14.10: when a reader stalls, the oldest activity lines are
+// dropped beyond the limit, and one activity event says how many;
+// lifecycle events are all kept.
+func TestActivityDroppedForASlowReader(t *testing.T) {
+	e := newEnvWith(ports.Capabilities{}, localexec.Options{MaxQueuedActivity: 3})
+	var steps []testkit.AgentStep
+	for i := 1; i <= 10; i++ {
+		steps = append(steps, testkit.AgentStep{Op: testkit.StepPrint, Text: fmt.Sprintf("line-%d", i)})
+	}
+	steps = append(steps, testkit.AgentStep{Op: testkit.StepUsage, Tokens: 7})
+	brief, _ := json.Marshal(testkit.AgentScript{Steps: steps})
+	x, err := e.exec.Start(context.Background(), ports.ExecSpec{Runner: fakeRunnerName, Run: ports.RunSpec{Brief: string(brief)}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Nothing reads the events until the process has ended and all its
+	// output was taken.
+	e.runner.runsSoFar()[0].proc.Wait()
+	rec := record(x.Events)
+	if last := rec.waitEnd(t); last.Kind != ports.ExecExited {
+		t.Errorf("last event = %+v", last)
+	}
+	var lines []string
+	kinds := map[ports.ExecEventKind]int{}
+	for _, ev := range rec.all() {
+		kinds[ev.Kind]++
+		if ev.Kind == ports.ExecActivity {
+			lines = append(lines, ev.Line)
+		}
+	}
+	// The process wrote 12 lines: start, 10 prints and usage. The last 3
+	// wait, after one event for the 9 dropped.
+	if len(lines) != 4 || lines[0] != localexec.DroppedActivity(9) || lines[1] != "line-9" || lines[2] != "line-10" || !strings.Contains(lines[3], `"usage"`) {
+		t.Errorf("activity = %q, want the dropped count, line-9, line-10 and the usage line", lines)
+	}
+	if kinds[ports.ExecStarted] != 1 || kinds[ports.ExecSessionID] != 1 || kinds[ports.ExecUsage] != 1 || kinds[ports.ExecExited] != 1 {
+		t.Errorf("lifecycle events = %v, want each once", kinds)
+	}
+}
+
+// Task 14.10: a failed start runs nothing and sends no events; an
+// unavailable runner's own error is returned.
+func TestStartFails(t *testing.T) {
+	e := newEnv(ports.Capabilities{})
+	notInstalled := errors.New("fake: executable file not found")
+	e.runner.unavailable = notInstalled
+	if _, err := e.exec.Start(context.Background(), ports.ExecSpec{Runner: fakeRunnerName, Run: ports.RunSpec{Brief: "{}"}}); !errors.Is(err, notInstalled) {
+		t.Errorf("start = %v, want the runner's error", err)
+	}
+	e.runner.unavailable = nil
+	if _, err := e.exec.Start(context.Background(), ports.ExecSpec{Runner: fakeRunnerName, Run: ports.RunSpec{Brief: "not a script"}}); err == nil {
+		t.Error("a start the runner refused succeeded")
+	}
+	if n := len(e.runner.runsSoFar()); n != 0 {
+		t.Errorf("%d processes started", n)
+	}
+	// The failed starts used no id.
+	if err := e.exec.Stop("exec-1", 0); !errors.Is(err, ports.ErrUnknownExecution) {
+		t.Errorf("stop of exec-1 = %v, want ErrUnknownExecution", err)
+	}
+}
+
+// Task 14.10: a short call, such as a comment classifier call, starts
+// from a spec with only a brief when the runner allows it.
+func TestShortCall(t *testing.T) {
+	e := newEnv(ports.Capabilities{})
+	brief, _ := json.Marshal(testkit.AgentScript{Steps: []testkit.AgentStep{{Op: testkit.StepPrint, Text: "informational"}}})
+	x, err := e.exec.Start(context.Background(), ports.ExecSpec{Runner: fakeRunnerName, Run: ports.RunSpec{Brief: string(brief)}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	rec := record(x.Events)
+	rec.waitActivity(t, "informational")
+	if last := rec.waitEnd(t); last.Kind != ports.ExecExited || last.Exit != (ports.Exit{}) {
+		t.Errorf("last event = %+v", last)
 	}
 }

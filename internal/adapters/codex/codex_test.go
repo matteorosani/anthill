@@ -153,7 +153,7 @@ func TestStart(t *testing.T) {
 	wt, gitDir := worktree(t)
 	f := newFake(t, "start")
 	spec := f.spec(wt)
-	run, err := f.runner.Start(context.Background(), spec)
+	run, err := f.runner.Start(context.Background(), spec, ports.RunIO{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -214,7 +214,7 @@ func TestStart(t *testing.T) {
 func TestResume(t *testing.T) {
 	wt, _ := worktree(t)
 	f := newFake(t, "resume")
-	run, err := f.runner.Resume(context.Background(), recordedThread, f.spec(wt))
+	run, err := f.runner.Resume(context.Background(), recordedThread, f.spec(wt), ports.RunIO{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -230,7 +230,7 @@ func TestResume(t *testing.T) {
 	if u := run.Usage(); u.Tokens == nil || *u.Tokens != 31002+64 {
 		t.Errorf("tokens = %v", u.Tokens)
 	}
-	if _, err := f.runner.Resume(context.Background(), "", f.spec(wt)); err == nil {
+	if _, err := f.runner.Resume(context.Background(), "", f.spec(wt), ports.RunIO{}); err == nil {
 		t.Error("Resume without a session id succeeded")
 	}
 }
@@ -240,7 +240,7 @@ func TestResume(t *testing.T) {
 func TestFailedTurn(t *testing.T) {
 	wt, _ := worktree(t)
 	f := newFake(t, "failed")
-	run, err := f.runner.Start(context.Background(), f.spec(wt))
+	run, err := f.runner.Start(context.Background(), f.spec(wt), ports.RunIO{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -262,7 +262,7 @@ func TestStop(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(f.dir, "block"), nil, 0o600); err != nil {
 		t.Fatal(err)
 	}
-	run, err := f.runner.Start(context.Background(), f.spec(wt))
+	run, err := f.runner.Start(context.Background(), f.spec(wt), ports.RunIO{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -281,7 +281,7 @@ func TestStartOutsideGit(t *testing.T) {
 		t.Skip("git is not installed")
 	}
 	t.Setenv("GIT_CEILING_DIRECTORIES", os.TempDir())
-	if _, err := f.runner.Start(context.Background(), f.spec(t.TempDir())); err == nil {
+	if _, err := f.runner.Start(context.Background(), f.spec(t.TempDir()), ports.RunIO{}); err == nil {
 		t.Error("Start outside a git worktree succeeded")
 	}
 }
@@ -299,7 +299,7 @@ func TestTelemetry(t *testing.T) {
 		ResourceAttributes: map[string]string{"anthill.item": "gh-12", "anthill.ant_id": "7", "anthill.instance": "mrosani@LAPTOP-42"},
 		TraceParent:        "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01",
 	}
-	run, err := f.runner.Start(context.Background(), spec)
+	run, err := f.runner.Start(context.Background(), spec, ports.RunIO{})
 	if err != nil {
 		t.Fatal(err)
 	}

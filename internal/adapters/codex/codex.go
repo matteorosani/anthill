@@ -75,19 +75,19 @@ func (r *Runner) Available(context.Context) error {
 }
 
 // Start starts a run with a new session.
-func (r *Runner) Start(ctx context.Context, spec ports.RunSpec) (ports.Run, error) {
-	return r.start(ctx, "", spec)
+func (r *Runner) Start(ctx context.Context, spec ports.RunSpec, out ports.RunIO) (ports.Run, error) {
+	return r.start(ctx, "", spec, out)
 }
 
 // Resume starts a run that continues sessionID.
-func (r *Runner) Resume(ctx context.Context, sessionID string, spec ports.RunSpec) (ports.Run, error) {
+func (r *Runner) Resume(ctx context.Context, sessionID string, spec ports.RunSpec, out ports.RunIO) (ports.Run, error) {
 	if sessionID == "" {
 		return nil, errors.New("codex: resume needs a session id")
 	}
-	return r.start(ctx, sessionID, spec)
+	return r.start(ctx, sessionID, spec, out)
 }
 
-func (r *Runner) start(ctx context.Context, resume string, spec ports.RunSpec) (ports.Run, error) {
+func (r *Runner) start(ctx context.Context, resume string, spec ports.RunSpec, out ports.RunIO) (ports.Run, error) {
 	if len(spec.MCPCommand) == 0 {
 		return nil, errors.New("codex: the run has no MCP command")
 	}
@@ -103,7 +103,7 @@ func (r *Runner) start(ctx context.Context, resume string, spec ports.RunSpec) (
 	// command line.
 	args = append(args, "-")
 
-	rn := &run{session: resume, log: spec.Activity}
+	rn := &run{session: resume, log: out.Activity}
 	env := spec.Env
 	if spec.Telemetry != nil {
 		env = agentenv.With(env, agentenv.OTLP(spec.Telemetry))
@@ -115,7 +115,7 @@ func (r *Runner) start(ctx context.Context, resume string, spec ports.RunSpec) (
 		Env:    env,
 		Stdin:  true,
 		Line:   rn.line,
-		Stderr: spec.Activity,
+		Stderr: out.Activity,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("starting codex: %w", err)

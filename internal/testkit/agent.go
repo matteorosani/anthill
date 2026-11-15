@@ -71,13 +71,13 @@ func (r *AgentRunner) Available(context.Context) error {
 }
 
 // Start starts a run with a new session.
-func (r *AgentRunner) Start(_ context.Context, spec ports.RunSpec) (ports.Run, error) {
+func (r *AgentRunner) Start(_ context.Context, spec ports.RunSpec, _ ports.RunIO) (ports.Run, error) {
 	return r.start(spec, "")
 }
 
 // Resume starts a run that continues sessionID, or returns
 // ports.ErrUnsupported when the capabilities have no Resume.
-func (r *AgentRunner) Resume(_ context.Context, sessionID string, spec ports.RunSpec) (ports.Run, error) {
+func (r *AgentRunner) Resume(_ context.Context, sessionID string, spec ports.RunSpec, _ ports.RunIO) (ports.Run, error) {
 	if !r.caps.Resume {
 		return nil, fmt.Errorf("resume: %w", ports.ErrUnsupported)
 	}
