@@ -60,6 +60,7 @@ func TestPrepareNewAnt(t *testing.T) {
 		Branch:   wsBranch,
 		Base:     "main",
 		Worktree: filepath.Join(wsRoot, "gh-acme-web", "ant", "gh-12-fix-login-timeout-on-safari"),
+		Created:  true,
 	}
 	if got != want {
 		t.Errorf("Prepare() = %+v, want %+v", got, want)
@@ -134,8 +135,11 @@ func TestPrepareSecondRun(t *testing.T) {
 	req := f.request()
 	req.Branch, req.Worktree = first.Branch, first.Worktree
 	second, err := f.ws.Prepare(context.Background(), req)
-	if err != nil || second != first {
-		t.Errorf("second Prepare() = %+v, %v; want %+v", second, err, first)
+	// A reused branch is not one Prepare created.
+	want := first
+	want.Created = false
+	if err != nil || second != want {
+		t.Errorf("second Prepare() = %+v, %v; want %+v", second, err, want)
 	}
 	if got := f.git.LocalBranches("/src/web"); !slices.Equal(got, []string{wsBranch}) {
 		t.Errorf("branches = %v", got)
@@ -161,7 +165,9 @@ func TestPrepareRecreatesWorktree(t *testing.T) {
 	req := f.request()
 	req.Branch = first.Branch
 	got, err := f.ws.Prepare(ctx, req)
-	if err != nil || got != first {
+	want := first
+	want.Created = false
+	if err != nil || got != want {
 		t.Fatalf("Prepare() = %+v, %v", got, err)
 	}
 	commits, _ := f.git.NewCommits(ctx, f.clone, got.Worktree, "main")
@@ -179,6 +185,21 @@ func TestPrepareUndoesBranchWhenWorktreeFails(t *testing.T) {
 	}
 	if got := f.git.LocalBranches("/src/web"); len(got) != 0 {
 		t.Errorf("branch left behind: %v", got)
+	}
+}
+
+// Discard undoes the Prepare of a new ant whose start failed.
+func TestDiscardUndoesPrepare(t *testing.T) {
+	f := newWorkspace(t)
+	ant := f.prepare(t)
+	if err := f.ws.Discard(context.Background(), f.clone, ant); err != nil {
+		t.Fatalf("Discard() = %v", err)
+	}
+	if got := f.git.Worktrees("/src/web"); len(got) != 0 {
+		t.Errorf("worktrees = %v", got)
+	}
+	if got := f.git.LocalBranches("/src/web"); slices.Contains(got, wsBranch) {
+		t.Errorf("branches = %v", got)
 	}
 }
 

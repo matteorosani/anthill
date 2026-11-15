@@ -288,6 +288,20 @@ func (t *AntTools) Revoke(token string) {
 	t.mu.Unlock()
 }
 
+// Attach sets the channel of a token's run once its process has started
+// in the executor, for live input (design D21). The token is issued
+// before the start because the run's spec carries it. Attaching to an
+// unknown or revoked token does nothing.
+func (t *AntTools) Attach(token string, ch RunChannel) {
+	key := sha256.Sum256([]byte(token))
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if s, ok := t.sessions[key]; ok {
+		s.Channel = ch
+		t.sessions[key] = s
+	}
+}
+
 func (t *AntTools) session(token string) (ToolSession, tokenKey, bool) {
 	key := sha256.Sum256([]byte(token))
 	t.mu.Lock()

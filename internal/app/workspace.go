@@ -45,6 +45,9 @@ type AntWorkspace struct {
 	Branch   string
 	Base     string
 	Worktree string
+	// Created reports that Prepare created the local branch, which
+	// Discard then deletes.
+	Created bool
 }
 
 // Prepare fetches, resolves the base branch, and returns the ant's branch
@@ -101,7 +104,24 @@ func (w *Workspace) Prepare(ctx context.Context, req PrepareRequest) (AntWorkspa
 		}
 		return AntWorkspace{}, fmt.Errorf("adding worktree %s: %w", path, err)
 	}
-	return AntWorkspace{Branch: branch, Base: base, Worktree: path}, nil
+	return AntWorkspace{Branch: branch, Base: base, Worktree: path, Created: created}, nil
+}
+
+// Discard undoes a Prepare for a new ant whose start failed (spec
+// ant-execution, "Starting an ant on acceptance"): it removes the
+// worktree, and deletes the local branch when Prepare created it. The
+// remote is left alone: nothing was pushed.
+func (w *Workspace) Discard(ctx context.Context, clone ports.Clone, ws AntWorkspace) error {
+	var errs []error
+	if err := w.git.RemoveWorktree(ctx, clone, ws.Worktree, true); err != nil && !errors.Is(err, ports.ErrNotFound) {
+		errs = append(errs, fmt.Errorf("removing worktree %s: %w", ws.Worktree, err))
+	}
+	if ws.Created {
+		if err := w.git.DeleteBranch(ctx, clone, ws.Branch, false); err != nil && !errors.Is(err, ports.ErrNotFound) {
+			errs = append(errs, fmt.Errorf("deleting branch %s: %w", ws.Branch, err))
+		}
+	}
+	return errors.Join(errs...)
 }
 
 // base resolves the base branch and checks that the remote has it.

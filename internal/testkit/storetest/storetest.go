@@ -50,6 +50,7 @@ func Run(t *testing.T, open Open) {
 		{"Extensions", testExtensions},
 		{"Proposals", testProposals},
 		{"HeldClaims", testHeldClaims},
+		{"RunStarts", testRunStarts},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -394,4 +395,31 @@ func testHeldClaims(t *testing.T, s ports.StateStore) {
 	check(t, s.DeleteClaim(ctx, Item(9), domain.ClaimTask))
 	check(t, s.DeleteClaim(ctx, PR(3), domain.ClaimTask))
 	equal(t, "after changes", must(s.HeldClaims(ctx)), []ports.HeldClaim{task, review})
+}
+
+func testRunStarts(t *testing.T, s ports.StateStore) {
+	ctx := context.Background()
+	queued := Ant(1, domain.AntQueued)
+	queued.ID = must(s.CreateAnt(ctx, queued))
+	edit := domain.ChangeEvent{Ref: Item(1), Kind: domain.ChangeCommentAdded, Body: "also Safari 17", At: T0}
+	check(t, s.StoreChange(ctx, ports.StoredChange{Ant: queued.ID, Source: 7, Event: edit, StoredAt: T0}))
+	change := must(s.StoredChanges(ctx, queued.ID))[0]
+
+	starting := withState(queued, domain.AntStarting)
+	run := ports.RunRecord{Ant: queued.ID, Kind: ports.RunTask, StartedAt: T0.Add(time.Hour)}
+	run.ID = must(s.BeginRun(ctx, ports.RunStart{Ant: starting, Run: run, Consumed: []int64{change.ID}, At: T0.Add(time.Hour)}))
+	equal(t, "ant after BeginRun", must(s.Ant(ctx, queued.ID)), starting)
+	equal(t, "runs after BeginRun", must(s.Runs(ctx, queued.ID)), []ports.RunRecord{run})
+	equal(t, "changes after BeginRun", must(s.StoredChanges(ctx, queued.ID)), []ports.StoredChange(nil))
+
+	// A missing change fails the whole start: the ant, the runs and the
+	// changes are as before.
+	check(t, s.StoreChange(ctx, ports.StoredChange{Ant: queued.ID, Source: 8, Event: edit, StoredAt: T0}))
+	running := withState(starting, domain.AntRunning)
+	if _, err := s.BeginRun(ctx, ports.RunStart{Ant: running, Run: run, Consumed: []int64{99}, At: T0}); err == nil {
+		t.Fatal("BeginRun with a missing change succeeded")
+	}
+	equal(t, "ant after a failed BeginRun", must(s.Ant(ctx, queued.ID)), starting)
+	equal(t, "runs after a failed BeginRun", len(must(s.Runs(ctx, queued.ID))), 1)
+	equal(t, "changes after a failed BeginRun", len(must(s.StoredChanges(ctx, queued.ID))), 1)
 }

@@ -527,3 +527,22 @@ func (c *Claiming) Release(ctx context.Context, ref domain.Ref, kind domain.Clai
 	}
 	return nil
 }
+
+// Holder returns the instance holding the live claim of the kind on ref,
+// or "" when none does, and this instance's id on ref's provider, for
+// the not-claimed prerequisite (spec task-eligibility). Only the claims
+// of users with write access count.
+func (c *Claiming) Holder(ctx context.Context, ref domain.Ref, kind domain.ClaimKind) (holder, instance string, err error) {
+	t, err := c.route(ctx, ref)
+	if err != nil {
+		return "", "", err
+	}
+	_, v, err := c.read(ctx, t, ref)
+	if err != nil {
+		return "", "", err
+	}
+	if winner, found := domain.ResolveClaim(v, ref, kind); found {
+		holder = winner.Instance
+	}
+	return holder, t.Instance, nil
+}
