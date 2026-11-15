@@ -38,10 +38,11 @@ func NewBriefBuilder(deps BriefDeps) *BriefBuilder {
 	return &BriefBuilder{deps: deps}
 }
 
-// Task builds the task brief of the ant. The item is read fresh, and
+// Task builds the task brief of the ant, with the run's input: the
+// answer and the stored changes, if any. The item is read fresh, and
 // Anthill's own comments are left out.
-func (b *BriefBuilder) Task(ctx context.Context, ant ports.AntRecord) (string, error) {
-	in, _, err := b.taskInput(ctx, ant)
+func (b *BriefBuilder) Task(ctx context.Context, ant ports.AntRecord, answer *domain.ChangeEvent, changes []domain.AntChange) (string, error) {
+	in, _, err := b.taskInput(ctx, ant, answer, changes)
 	if err != nil {
 		return "", err
 	}
@@ -50,9 +51,9 @@ func (b *BriefBuilder) Task(ctx context.Context, ant ports.AntRecord) (string, e
 
 // Summary builds the summary brief of the ant: the task brief's content
 // plus the time left, the earlier runs, the commits of the ant branch and
-// the ant PR with its human conversation.
-func (b *BriefBuilder) Summary(ctx context.Context, ant ports.AntRecord) (string, error) {
-	task, ws, err := b.taskInput(ctx, ant)
+// the ant PR with its human conversation, and the run's input.
+func (b *BriefBuilder) Summary(ctx context.Context, ant ports.AntRecord, answer *domain.ChangeEvent, changes []domain.AntChange) (string, error) {
+	task, ws, err := b.taskInput(ctx, ant, answer, changes)
 	if err != nil {
 		return "", err
 	}
@@ -88,8 +89,14 @@ func (b *BriefBuilder) Summary(ctx context.Context, ant ports.AntRecord) (string
 	return domain.RenderSummaryBrief(in), nil
 }
 
+// Resume builds the input of a run that resumes the ant's session: the
+// answer and the stored changes. It reads nothing.
+func (b *BriefBuilder) Resume(_ context.Context, _ ports.AntRecord, answer *domain.ChangeEvent, changes []domain.AntChange) (string, error) {
+	return domain.RenderResumeInput(answer, changes), nil
+}
+
 // taskInput reads what both briefs hold, and the ant's workspace.
-func (b *BriefBuilder) taskInput(ctx context.Context, ant ports.AntRecord) (domain.TaskBriefInput, ToolWorkspace, error) {
+func (b *BriefBuilder) taskInput(ctx context.Context, ant ports.AntRecord, answer *domain.ChangeEvent, changes []domain.AntChange) (domain.TaskBriefInput, ToolWorkspace, error) {
 	tracker, err := b.deps.Tracker(ctx, ant.Item)
 	if err != nil {
 		return domain.TaskBriefInput{}, ToolWorkspace{}, err
@@ -115,6 +122,8 @@ func (b *BriefBuilder) taskInput(ctx context.Context, ant ports.AntRecord) (doma
 		BaseBranch:        ant.BaseBranch,
 		Budget:            ant.Budget.Total(),
 		AgentInstructions: ws.Settings.AgentInstructions,
+		Answer:            answer,
+		Changes:           changes,
 	}
 	return in, ws, nil
 }
@@ -130,7 +139,9 @@ func prComments(pr domain.PullRequest) []domain.BriefComment {
 	return out
 }
 
-// briefComments keeps the human comments, which the marker decides.
+// briefComments keeps the comments a brief quotes: the human ones, which
+// the marker decides. It is the one place that filters Anthill comments
+// out of both briefs.
 func briefComments(comments []domain.Comment, path string, line int) []domain.BriefComment {
 	out := []domain.BriefComment{}
 	for _, c := range domain.HumanComments(comments) {

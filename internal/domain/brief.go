@@ -40,6 +40,10 @@ type TaskBriefInput struct {
 	// AgentInstructions is the repository's agent instructions file, a
 	// path relative to the repository, or "" when there is none.
 	AgentInstructions string
+	// Answer and Changes are the run's input: the answer to the ant's
+	// question and the stored changes (RenderRunInput).
+	Answer  *ChangeEvent
+	Changes []AntChange
 }
 
 // BriefRun is one earlier run of the ant as the summary brief lists it.
@@ -112,6 +116,7 @@ func RenderTaskBrief(in TaskBriefInput) string {
 	b.WriteString("You are an ant of Anthill. Work on the item below in this worktree, then open a pull request through the ant tools.\n\n")
 	writeItem(&b, in)
 	writeWork(&b, in, in.Budget, "")
+	b.WriteString(RenderRunInput(in.Answer, in.Changes))
 	writeConventions(&b, in.AgentInstructions)
 	return b.String()
 }
@@ -129,6 +134,7 @@ func RenderSummaryBrief(in SummaryBriefInput) string {
 	writeItem(&b, in.TaskBriefInput)
 	writeWork(&b, in.TaskBriefInput, in.Budget, FormatRemaining(in.Remaining))
 	writeEarlierWork(&b, in)
+	b.WriteString(RenderRunInput(in.Answer, in.Changes))
 	writeConventions(&b, in.AgentInstructions)
 	return b.String()
 }
@@ -170,7 +176,7 @@ func writeEarlierWork(b *strings.Builder, in SummaryBriefInput) {
 		b.WriteString("No earlier run is recorded.\n")
 	}
 	for i, r := range in.Runs {
-		fmt.Fprintf(b, "%d. %s run started %s", i+1, runName(r.Kind), r.StartedAt.UTC().Format(time.RFC3339))
+		fmt.Fprintf(b, "%d. %s run started %s", i+1, runName(r.Kind), stamp(r.StartedAt))
 		if r.Outcome != "" {
 			fmt.Fprintf(b, ", ended %s", r.Outcome)
 		}
@@ -207,9 +213,7 @@ func writeEarlierWork(b *strings.Builder, in SummaryBriefInput) {
 
 func writeConventions(b *strings.Builder, instructions string) {
 	b.WriteString("## Conventions\n\n")
-	if instructions != "" {
-		fmt.Fprintf(b, "Read and follow the repository's agent instructions in `%s`.\n\n", instructions)
-	}
+	b.WriteString(agentInstructions(instructions))
 	b.WriteString("Everything that leaves this machine goes through the ant tools. You have no credentials: never run `git push`, `gh` or `az`.\n\n")
 	fmt.Fprintf(b, "- To read the item and its comments fresh, call `%s`.\n", ToolGetTask)
 	fmt.Fprintf(b, "- If you need information you cannot find, call `%s`. Your run ends after the question; Anthill starts a new run with the answer.\n", ToolAskQuestion)
@@ -218,6 +222,16 @@ func writeConventions(b *strings.Builder, instructions string) {
 	fmt.Fprintf(b, "- Call `%s` to open the pull request against the base branch.\n", ToolOpenPullRequest)
 	fmt.Fprintf(b, "- When you are done, call `%s` with status `%s`, `%s` with the open points, or `%s` with the reason no change is needed. Your run ends after it.\n",
 		ToolFinish, FinishComplete, FinishPartial, FinishNoChange)
+}
+
+// agentInstructions tells the agent about the repository's agent
+// instructions file, or is "" when there is none. The agent reads the file
+// in its worktree.
+func agentInstructions(path string) string {
+	if path == "" {
+		return ""
+	}
+	return fmt.Sprintf("Read and follow the repository's agent instructions in %s.\n\n", code(path))
 }
 
 // writeComments quotes each comment with its author and time.
@@ -230,9 +244,9 @@ func writeComments(b *strings.Builder, comments []BriefComment, none string) {
 		if i > 0 {
 			b.WriteString("\n")
 		}
-		fmt.Fprintf(b, "Comment by %s at %s", oneLine(c.Author), c.CreatedAt.UTC().Format(time.RFC3339))
+		fmt.Fprintf(b, "Comment by %s at %s", actor(c.Author), stamp(c.CreatedAt))
 		if c.Path != "" {
-			fmt.Fprintf(b, " on `%s`", oneLine(c.Path))
+			fmt.Fprintf(b, " on %s", code(c.Path))
 			if c.Line > 0 {
 				fmt.Fprintf(b, " line %d", c.Line)
 			}

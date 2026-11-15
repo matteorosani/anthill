@@ -16,8 +16,9 @@ import (
 // briefs is the interface ant supervision declares for the briefs it
 // starts runs with. This copy checks that BriefBuilder satisfies it.
 type briefs interface {
-	Task(ctx context.Context, ant ports.AntRecord) (string, error)
-	Summary(ctx context.Context, ant ports.AntRecord) (string, error)
+	Task(ctx context.Context, ant ports.AntRecord, answer *domain.ChangeEvent, changes []domain.AntChange) (string, error)
+	Summary(ctx context.Context, ant ports.AntRecord, answer *domain.ChangeEvent, changes []domain.AntChange) (string, error)
+	Resume(ctx context.Context, ant ports.AntRecord, answer *domain.ChangeEvent, changes []domain.AntChange) (string, error)
 }
 
 var _ briefs = (*app.BriefBuilder)(nil)
@@ -120,7 +121,7 @@ func TestBriefIncludesDiscussion(t *testing.T) {
 	e.gh.Comment(ghRef(12), "mrosani", anthillComment(domain.CommentStatus, "Working on it."))
 	e.gh.Comment(ghRef(12), "ann", "Keep the API unchanged.")
 
-	got, err := e.builder.Task(context.Background(), e.ant)
+	got, err := e.builder.Task(context.Background(), e.ant, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -188,7 +189,11 @@ func TestSummaryBriefSummarizesPriorWork(t *testing.T) {
 	e.ant.Budget, e.ant.History = ant.Budget, ant.History()
 	e.clock.Advance(3 * time.Hour)
 
-	got, err := e.builder.Summary(ctx, e.ant)
+	answer := &domain.ChangeEvent{
+		Ref: ghRef(12), Kind: domain.ChangeCommentAdded, Actor: "ann", At: t0.Add(150 * time.Minute),
+		Origin: domain.OriginHuman, CommentID: "a1", Body: "60 seconds.",
+	}
+	got, err := e.builder.Summary(ctx, e.ant, answer, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -201,6 +206,7 @@ func TestSummaryBriefSummarizesPriorWork(t *testing.T) {
 		"Please use a 60 second timeout.",
 		"Comment by dave at 2026-10-01T12:00:00Z on `login.go` line 7", "Rename this variable.",
 		"Time left: 40 minutes",
+		"### Answer to your question", "ann answered at 2026-10-01T13:00:00Z", "60 seconds.",
 	)
 	lacks(t, got, "30 or 60 seconds?", "Done: retry added.", "<!-- anthill")
 	if strings.Index(got, "Rename this variable.") > strings.Index(got, "Please use a 60 second timeout.") {
@@ -210,7 +216,7 @@ func TestSummaryBriefSummarizesPriorWork(t *testing.T) {
 
 func TestSummaryBriefBeforeThePR(t *testing.T) {
 	e := newBriefEnv(t)
-	got, err := e.builder.Summary(context.Background(), e.ant)
+	got, err := e.builder.Summary(context.Background(), e.ant, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -221,10 +227,41 @@ func TestBriefReportsProviderErrors(t *testing.T) {
 	e := newBriefEnv(t)
 	boom := errors.New("provider down")
 	e.gh.Fail(testkit.OpItem, boom)
-	if _, err := e.builder.Task(context.Background(), e.ant); !errors.Is(err, boom) {
+	if _, err := e.builder.Task(context.Background(), e.ant, nil, nil); !errors.Is(err, boom) {
 		t.Fatalf("Task: want %v, got %v", boom, err)
 	}
-	if _, err := e.builder.Summary(context.Background(), e.ant); !errors.Is(err, boom) {
+	if _, err := e.builder.Summary(context.Background(), e.ant, nil, nil); !errors.Is(err, boom) {
 		t.Fatalf("Summary: want %v, got %v", boom, err)
 	}
+}
+
+// An ant queued at acceptance starts its task run with the changes stored
+// meanwhile (spec change-reaction, "Changes while the ant is between
+// runs").
+func TestTaskBriefCarriesStoredChanges(t *testing.T) {
+	e := newBriefEnv(t)
+	changes := []domain.AntChange{{ID: 1, Event: domain.ChangeEvent{
+		Ref: ghRef(12), Kind: domain.ChangeItemEdited, Actor: "ann", At: t0, Origin: domain.OriginHuman,
+		Field: domain.FieldBody, Old: "Logins time out.", Body: "Logins time out on Safari.",
+	}}}
+	got, err := e.builder.Task(context.Background(), e.ant, nil, changes)
+	if err != nil {
+		t.Fatal(err)
+	}
+	contains(t, got, "## Input for this run", "ann edited the description of gh-12", "Logins time out.")
+	if strings.Index(got, "## Input for this run") > strings.Index(got, "## Conventions") {
+		t.Errorf("the conventions must end the brief:\n%s", got)
+	}
+}
+
+func TestResumeInputReadsNothing(t *testing.T) {
+	e := newBriefEnv(t)
+	e.gh.Fail(testkit.OpItem, errors.New("provider down"))
+	answer := &domain.ChangeEvent{Ref: ghRef(12), Kind: domain.ChangeCommentAdded, Actor: "ann", At: t0, Body: "60 seconds."}
+	got, err := e.builder.Resume(context.Background(), e.ant, answer, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	contains(t, got, "60 seconds.")
+	lacks(t, got, "Logins time out on Safari.", "## Conventions")
 }
