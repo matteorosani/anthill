@@ -99,6 +99,7 @@ func (e *Executor) Start(ctx context.Context, spec ports.ExecSpec) (ports.Execut
 		grace:     e.grace,
 		queue:     &queue{wake: make(chan struct{}, 1), maxActivity: e.maxAct},
 		deadlines: make(chan deadlineRequest),
+		exited:    make(chan struct{}),
 		done:      make(chan struct{}),
 	}
 	out := ports.RunIO{Activity: x}
@@ -140,6 +141,11 @@ func (e *Executor) Send(ctx context.Context, id ports.ExecID, input string) erro
 	}
 	if !x.caps.LiveInput {
 		return fmt.Errorf("live input: %w", ports.ErrUnsupported)
+	}
+	select {
+	case <-x.exited:
+		return unknown(id)
+	default:
 	}
 	return x.run.Send(ctx, input)
 }
@@ -225,8 +231,10 @@ type execution struct {
 	deadlines chan deadlineRequest
 	// timer fires at the deadline; it is nil without one.
 	timer <-chan time.Time
-	// done is closed once the last event is queued.
-	done chan struct{}
+	// exited is closed once the process has ended, and done once the
+	// last event is queued.
+	exited chan struct{}
+	done   chan struct{}
 
 	mu       sync.Mutex
 	started  bool
@@ -263,7 +271,11 @@ func (x *execution) arm(deadline time.Time) {
 // deadline, and queues the last event.
 func (x *execution) supervise() {
 	exited := make(chan ports.Exit, 1)
-	go func() { exited <- x.run.Wait() }()
+	go func() {
+		exit := x.run.Wait()
+		close(x.exited)
+		exited <- exit
+	}()
 	for {
 		select {
 		case exit := <-exited:
@@ -348,9 +360,10 @@ func equalPtr[T comparable](a, b *T) bool {
 
 // queue holds events until they are read, so that a slow reader never
 // holds up the process: its output is read while events wait here.
-// Lifecycle events are never dropped. Activity lines are, beyond
-// maxActivity unread: the oldest go, and one activity event in their
-// place says how many.
+// What waits is bounded: started and the last event come once, an
+// unread usage or session id event is replaced by the next one, and
+// beyond maxActivity unread activity lines the oldest go, with one
+// activity event in their place saying how many.
 type queue struct {
 	mu          sync.Mutex
 	items       []queued
@@ -376,6 +389,11 @@ func DroppedActivity(n int) string {
 
 func (q *queue) push(ev ports.ExecEvent) {
 	q.mu.Lock()
+	if ev.Kind == ports.ExecUsage || ev.Kind == ports.ExecSessionID {
+		// A running value: an unread one of the same kind is replaced,
+		// so that a stalled reader keeps at most one of each.
+		q.removeKind(ev.Kind)
+	}
 	q.items = append(q.items, queued{ev: ev})
 	if ev.Kind == ports.ExecActivity {
 		q.activity++
@@ -387,6 +405,18 @@ func (q *queue) push(ev ports.ExecEvent) {
 	}
 	q.mu.Unlock()
 	q.signal()
+}
+
+// removeKind removes the unread event of kind, if any. Usage and
+// session id events are coalesced this way, so at most one of each
+// waits.
+func (q *queue) removeKind(kind ports.ExecEventKind) {
+	for i, it := range q.items {
+		if it.ev.Kind == kind {
+			q.items = append(q.items[:i], q.items[i+1:]...)
+			return
+		}
+	}
 }
 
 // dropOldest drops the oldest activity line. The first one dropped

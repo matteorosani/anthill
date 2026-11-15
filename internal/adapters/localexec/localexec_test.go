@@ -571,3 +571,42 @@ func TestShortCall(t *testing.T) {
 		t.Errorf("last event = %+v", last)
 	}
 }
+
+// Task 14.10: with a stalled reader, what waits stays bounded even when
+// every line changes the usage: unread usage events are merged into the
+// latest, which is never lost.
+func TestUsageCoalescedForAStalledReader(t *testing.T) {
+	const limit, lines = 3, 200
+	e := newEnvWith(ports.Capabilities{}, localexec.Options{MaxQueuedActivity: limit})
+	var steps []testkit.AgentStep
+	for i := 1; i <= lines; i++ {
+		steps = append(steps, testkit.AgentStep{Op: testkit.StepUsage, Tokens: int64(i)})
+	}
+	brief, _ := json.Marshal(testkit.AgentScript{Steps: steps})
+	x, err := e.exec.Start(context.Background(), ports.ExecSpec{Runner: fakeRunnerName, Run: ports.RunSpec{Brief: string(brief)}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	e.runner.runsSoFar()[0].proc.Wait()
+	rec := record(x.Events)
+	last := rec.waitEnd(t)
+	if last.Kind != ports.ExecExited || last.Usage.Tokens == nil || *last.Usage.Tokens != lines {
+		t.Errorf("last event = %+v, want exited with %d tokens", last, lines)
+	}
+	all := rec.all()
+	// Everything was queued while nothing read: started, the session id,
+	// the dropped-lines event, the last activity lines, one usage event
+	// and exited.
+	if max := limit + 5; len(all) > max {
+		t.Errorf("%d events waited, want at most %d", len(all), max)
+	}
+	var usages []ports.ExecEvent
+	for _, ev := range all {
+		if ev.Kind == ports.ExecUsage {
+			usages = append(usages, ev)
+		}
+	}
+	if len(usages) != 1 || *usages[0].Usage.Tokens != lines {
+		t.Errorf("usage events = %+v, want one with the latest %d tokens", usages, lines)
+	}
+}

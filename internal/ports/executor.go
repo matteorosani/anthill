@@ -38,10 +38,12 @@ type Execution struct {
 	// Events has the process's events in order. The first is ExecStarted,
 	// and the last is ExecExited or ExecEndedAtDeadline, after which the
 	// channel is closed. The executor never holds up the process for a
-	// slow reader: events wait in a queue until they are read. Lifecycle
-	// events (all but ExecActivity) are never dropped. Activity lines
-	// are, when too many wait unread: the oldest go, and one activity
-	// event in their place says how many.
+	// slow reader: events wait in a queue until they are read, and what
+	// waits is bounded. Started and the last event are never dropped.
+	// The latest usage and session id are never lost, but unread
+	// intermediate values may be merged into the latest one. Activity
+	// lines are dropped when too many wait unread: the oldest go, and
+	// one activity event in their place says how many.
 	Events <-chan ExecEvent
 }
 
@@ -107,7 +109,8 @@ type Executor interface {
 	// Send gives input to the process as live input. It returns
 	// ErrUnsupported when the runner has no live input, and another
 	// error when sending fails; the caller then delivers the message by
-	// another means (design D5).
+	// another means (design D5). A send that races the process's exit
+	// may return such another error rather than ErrUnknownExecution.
 	Send(ctx context.Context, id ExecID, input string) error
 	// SetDeadline moves the deadline later or earlier; the zero time
 	// clears it, as while request_extension waits. A deadline that has
