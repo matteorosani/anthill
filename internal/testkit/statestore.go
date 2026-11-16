@@ -78,11 +78,16 @@ func cloneUsage(u ports.Usage) ports.Usage {
 		t := *u.Tokens
 		u.Tokens = &t
 	}
-	if u.CostUSD != nil {
-		c := *u.CostUSD
-		u.CostUSD = &c
-	}
+	u.CostUSD = cloneFloat(u.CostUSD)
 	return u
+}
+
+func cloneFloat(p *float64) *float64 {
+	if p == nil {
+		return nil
+	}
+	v := *p
+	return &v
 }
 
 // CreateAnt stores a new ant.
@@ -165,7 +170,7 @@ func (s *StateStore) StartRun(_ context.Context, r ports.RunRecord) (ports.RunID
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	r.ID = ports.RunID(len(s.runs) + 1)
-	r.Usage = cloneUsage(r.Usage)
+	r.Usage, r.SessionCostUSD = cloneUsage(r.Usage), cloneFloat(r.SessionCostUSD)
 	s.runs = append(s.runs, r)
 	return r.ID, nil
 }
@@ -180,6 +185,7 @@ func (s *StateStore) EndRun(_ context.Context, r ports.RunRecord) error {
 	}
 	run := &s.runs[i]
 	run.EndedAt, run.Outcome, run.Reason, run.Usage = r.EndedAt, r.Outcome, r.Reason, cloneUsage(r.Usage)
+	run.SessionCostUSD = cloneFloat(r.SessionCostUSD)
 	if r.SessionID != "" {
 		run.SessionID = r.SessionID
 	}
@@ -193,7 +199,7 @@ func (s *StateStore) Runs(_ context.Context, ant ports.AntID) ([]ports.RunRecord
 	var out []ports.RunRecord
 	for _, r := range s.runs {
 		if r.Ant == ant {
-			r.Usage = cloneUsage(r.Usage)
+			r.Usage, r.SessionCostUSD = cloneUsage(r.Usage), cloneFloat(r.SessionCostUSD)
 			out = append(out, r)
 		}
 	}
@@ -244,7 +250,7 @@ func (s *StateStore) Usage(_ context.Context, from, to time.Time) ([]ports.RunRe
 	var runs []ports.RunRecord
 	for _, r := range s.runs {
 		if in(r.StartedAt) {
-			r.Usage = cloneUsage(r.Usage)
+			r.Usage, r.SessionCostUSD = cloneUsage(r.Usage), cloneFloat(r.SessionCostUSD)
 			runs = append(runs, r)
 		}
 	}
