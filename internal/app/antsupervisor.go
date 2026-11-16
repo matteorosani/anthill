@@ -33,6 +33,14 @@ type Briefs interface {
 	Resume(ctx context.Context, ant ports.AntRecord, answer *domain.ChangeEvent, changes []domain.AntChange) (string, error)
 }
 
+// The services that implement the supervisor's seams.
+var (
+	_ Briefs     = (*BriefBuilder)(nil)
+	_ RunEnds    = (*UsageRecorder)(nil)
+	_ TaskClaims = (*Claiming)(nil)
+	_ RunTokens  = (*AntTools)(nil)
+)
+
 // TaskClaims is the part of Claiming the supervisor uses for task claims.
 type TaskClaims interface {
 	Acquire(ctx context.Context, ref domain.Ref, kind domain.ClaimKind) (ports.HeldClaim, error)

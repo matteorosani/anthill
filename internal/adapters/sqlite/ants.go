@@ -231,10 +231,10 @@ type execer interface {
 
 func startRun(ctx context.Context, db execer, r ports.RunRecord) (ports.RunID, error) {
 	res, err := db.ExecContext(ctx, `INSERT INTO runs
-		(ant_id, kind, session_id, started_at, ended_at, outcome, reason, tokens, cost_usd)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		(ant_id, kind, session_id, started_at, ended_at, outcome, reason, tokens, cost_usd, session_cost_usd)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		r.Ant, string(r.Kind), r.SessionID, r.StartedAt.UnixNano(), unixNano(r.EndedAt),
-		string(r.Outcome), r.Reason, nullInt(r.Usage.Tokens), nullFloat(r.Usage.CostUSD))
+		string(r.Outcome), r.Reason, nullInt(r.Usage.Tokens), nullFloat(r.Usage.CostUSD), nullFloat(r.SessionCostUSD))
 	if err != nil {
 		return 0, err
 	}
@@ -266,11 +266,11 @@ func (s *Store) BeginRun(ctx context.Context, st ports.RunStart) (ports.RunID, e
 // one.
 func (s *Store) EndRun(ctx context.Context, r ports.RunRecord) error {
 	res, err := s.db.ExecContext(ctx, `UPDATE runs SET
-		ended_at = ?, outcome = ?, reason = ?, tokens = ?, cost_usd = ?,
+		ended_at = ?, outcome = ?, reason = ?, tokens = ?, cost_usd = ?, session_cost_usd = ?,
 		session_id = CASE WHEN ? = '' THEN session_id ELSE ? END
 		WHERE id = ?`,
 		unixNano(r.EndedAt), string(r.Outcome), r.Reason, nullInt(r.Usage.Tokens), nullFloat(r.Usage.CostUSD),
-		r.SessionID, r.SessionID, r.ID)
+		nullFloat(r.SessionCostUSD), r.SessionID, r.SessionID, r.ID)
 	if err != nil {
 		return err
 	}
@@ -284,7 +284,7 @@ func (s *Store) Runs(ctx context.Context, ant ports.AntID) ([]ports.RunRecord, e
 
 func (s *Store) runs(ctx context.Context, where string, args ...any) ([]ports.RunRecord, error) {
 	rows, err := s.db.QueryContext(ctx, `SELECT id, ant_id, kind, session_id, started_at, ended_at,
-		outcome, reason, tokens, cost_usd FROM runs `+where, args...)
+		outcome, reason, tokens, cost_usd, session_cost_usd FROM runs `+where, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -296,14 +296,17 @@ func (s *Store) runs(ctx context.Context, where string, args ...any) ([]ports.Ru
 			kind, outcome string
 			started       int64
 			ended, tokens sql.NullInt64
-			cost          sql.NullFloat64
+			cost, total   sql.NullFloat64
 		)
-		if err := rows.Scan(&r.ID, &r.Ant, &kind, &r.SessionID, &started, &ended, &outcome, &r.Reason, &tokens, &cost); err != nil {
+		if err := rows.Scan(&r.ID, &r.Ant, &kind, &r.SessionID, &started, &ended, &outcome, &r.Reason, &tokens, &cost, &total); err != nil {
 			return nil, err
 		}
 		r.Kind, r.Outcome = ports.RunKind(kind), ports.RunOutcome(outcome)
 		r.StartedAt, r.EndedAt = time.Unix(0, started).UTC(), fromUnixNano(ended)
 		r.Usage = usage(tokens, cost)
+		if total.Valid {
+			r.SessionCostUSD = &total.Float64
+		}
 		out = append(out, r)
 	}
 	return out, rows.Err()

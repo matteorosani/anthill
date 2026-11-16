@@ -122,7 +122,16 @@ type RunRecord struct {
 	// Outcome is empty while the run is active.
 	Outcome RunOutcome
 	Reason  string
-	Usage   Usage
+	// Usage is the run's own usage: when the runner reports cost as a
+	// running total for its session, CostUSD is already the run's share
+	// of it and CostIsSessionTotal is false (spec ant-execution, "Cost
+	// reported for a whole session").
+	Usage Usage
+	// SessionCostUSD is the running total of its session that the runner
+	// reported last during the run, when it reports cost that way, and
+	// nil otherwise or when it reported none. The next run that resumes
+	// the session takes its cost as the difference from it.
+	SessionCostUSD *float64
 }
 
 // Duration is how long the run lasted, or 0 while it is active.
@@ -155,7 +164,8 @@ type RunLog interface {
 	// StartRun stores an active run and returns its ID. r.ID is ignored.
 	StartRun(ctx context.Context, r RunRecord) (RunID, error)
 	// EndRun stores the end of run r.ID: its end time, outcome, reason,
-	// session and usage.
+	// session, usage and session cost. An empty r.SessionID keeps the
+	// stored one.
 	EndRun(ctx context.Context, r RunRecord) error
 	// Runs lists an ant's runs, oldest first.
 	Runs(ctx context.Context, ant AntID) ([]RunRecord, error)

@@ -223,6 +223,22 @@ func testRunLog(t *testing.T, s ports.StateStore) {
 	}
 	notFound(t, "EndRun of a missing run", s.EndRun(ctx, ports.RunRecord{ID: 99}))
 
+	// The session's running total is kept with the run, and unknown
+	// stays unknown.
+	total := 0.30
+	resumed := ports.RunRecord{Ant: ant, Kind: ports.RunFollowUp, SessionID: "session-1", StartedAt: T0.Add(25 * time.Hour)}
+	resumed.ID = must(s.StartRun(ctx, resumed))
+	resumed.EndedAt, resumed.Outcome = resumed.StartedAt.Add(time.Minute), ports.OutcomeComplete
+	resumed.Usage, resumed.SessionCostUSD = ports.Usage{CostUSD: &cost}, &total
+	check(t, s.EndRun(ctx, resumed))
+	got = must(s.Runs(ctx, ant))
+	equal(t, "run with a session total", got[2], resumed)
+	if got[1].SessionCostUSD != nil {
+		t.Errorf("run without a session total has %v", *got[1].SessionCostUSD)
+	}
+	*got[2].SessionCostUSD = 9
+	equal(t, "session total after changing a listed copy", must(s.Runs(ctx, ant))[2], resumed)
+
 	round := ports.RoundRecord{PR: PR(7), Head: "abc", Requested: true, StartedAt: T0.Add(time.Hour)}
 	round.ID = must(s.StartRound(ctx, round))
 	round.EndedAt, round.Usage = T0.Add(70*time.Minute), ports.Usage{CostUSD: &cost}
