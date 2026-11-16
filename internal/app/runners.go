@@ -68,3 +68,13 @@ func (r *Runners) available(ctx context.Context, name domain.Runner) (domain.Run
 	}
 	return name, runner, nil
 }
+
+// Capabilities returns what a runner of this build supports, and false
+// for a runner it has no adapter for.
+func (r *Runners) Capabilities(name domain.Runner) (ports.Capabilities, bool) {
+	runner, ok := r.runners[name]
+	if !ok {
+		return ports.Capabilities{}, false
+	}
+	return runner.Capabilities(), true
+}

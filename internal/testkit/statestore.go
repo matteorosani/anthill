@@ -526,3 +526,31 @@ func (s *StateStore) HeldClaims(_ context.Context) ([]ports.HeldClaim, error) {
 func refKey(r domain.Ref) string {
 	return string(r.Repo.Provider) + ":" + r.Full()
 }
+
+// BeginRun saves the ant, stores the run and marks the consumed changes,
+// all or none.
+func (s *StateStore) BeginRun(_ context.Context, st ports.RunStart) (ports.RunID, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	i := int(st.Ant.ID) - 1
+	if i < 0 || i >= len(s.ants) {
+		return 0, fmt.Errorf("ant %d: %w", st.Ant.ID, ports.ErrNotFound)
+	}
+	if len(st.Ant.History) < len(s.ants[i].History) {
+		return 0, fmt.Errorf("ant %d: history cannot shrink from %d to %d transitions", st.Ant.ID, len(s.ants[i].History), len(st.Ant.History))
+	}
+	for _, id := range st.Consumed {
+		if id < 1 || int(id) > len(s.changes) {
+			return 0, fmt.Errorf("stored change %d: %w", id, ports.ErrNotFound)
+		}
+	}
+	s.ants[i] = cloneAnt(st.Ant)
+	r := st.Run
+	r.ID = ports.RunID(len(s.runs) + 1)
+	r.Usage = cloneUsage(r.Usage)
+	s.runs = append(s.runs, r)
+	for _, id := range st.Consumed {
+		s.changes[id-1].consumed = true
+	}
+	return r.ID, nil
+}

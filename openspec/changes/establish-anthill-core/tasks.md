@@ -118,8 +118,8 @@ Terms follow `openspec/glossary.md`. Every group lands its own tests and docs. U
 
 ## 14. Ant supervision
 
-- [ ] 14.1 Implement acceptance: re-check eligibility on fresh data, claim, branch and worktree, start the first run through the executor (14.10), and undo every done step on failure, and verify the "claim lost at start" and "became ineligible" tests
-- [ ] 14.2 Implement capacity and the scheduling of due runs decided by the default playbook (14.11), with `queued` ants started when a slot frees if the run is still due, and verify the "queued for capacity" and "answer arrives while capacity is full" tests
+- [x] 14.1 Implement acceptance: re-check eligibility on fresh data, claim, branch and worktree, start the first run through the executor (14.10), and undo every done step on failure, and verify the "claim lost at start" and "became ineligible" tests
+- [x] 14.2 Implement capacity and the scheduling of due runs decided by the default playbook (14.11), with `queued` ants started when a slot frees if the run is still due, and verify the "queued for capacity" and "answer arrives while capacity is full" tests
 - [x] 14.3 Implement the task brief and the summary brief for a new session, excluding Anthill comments (the summary brief keeps the ant's own question and summary comments), and verify the "brief includes discussion" test
 - [ ] 14.4 Implement finish handling by acting on the playbook's decision (14.11): `complete`, `partial` (forced draft with open points), `no-change` (explanation, hold label, release, `done`), opening the PR when the agent did not, and ending the run itself when `finish`, `submit_review` or `finish_fixes` returns, as after `ask_question`, and verify each ant-execution finish scenario and the "background command after finish" test
 - [ ] 14.5 Implement exit without finishing: `failed`, push when there are new commits, no PR, draft an open PR, failure summary on the ticket, and verify the three exit scenarios

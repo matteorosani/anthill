@@ -22,6 +22,7 @@ type StateStore interface {
 	Extensions
 	Proposals
 	HeldClaims
+	RunStarts
 }
 
 // AntID identifies one ant. An item can have several ants over time, such
@@ -347,4 +348,26 @@ type Proposals interface {
 	// Unhide removes it. Unhiding an item that is not hidden does nothing.
 	Unhide(ctx context.Context, item domain.Ref) error
 	Hidden(ctx context.Context) ([]HiddenProposal, error)
+}
+
+// RunStart is the start of a run with its effect on the ant (design D22):
+// the ant's new state and budget, and the stored changes given to the
+// run.
+type RunStart struct {
+	// Ant is the ant's record, moved to starting.
+	Ant AntRecord
+	// Run is the run; its ID is ignored.
+	Run RunRecord
+	// Consumed are the stored changes the run gets as input.
+	Consumed []int64
+	At       time.Time
+}
+
+// RunStarts records the start of a run in one transaction, so that a
+// crash keeps the ant, the run and the consumed changes all or none
+// (design D22: the effect of a decision is recorded with its action).
+type RunStarts interface {
+	// BeginRun saves s.Ant, stores s.Run as active and marks s.Consumed
+	// as given to a run, and returns the run's ID.
+	BeginRun(ctx context.Context, s RunStart) (RunID, error)
 }

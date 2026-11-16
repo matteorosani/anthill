@@ -206,17 +206,21 @@ func (s *Store) StoredChanges(ctx context.Context, ant ports.AntID) ([]ports.Sto
 // ConsumeChanges marks changes as given to a run, all or none.
 func (s *Store) ConsumeChanges(ctx context.Context, ids []int64, at time.Time) error {
 	return s.inTx(ctx, func(tx *sql.Tx) error {
-		for _, id := range ids {
-			res, err := tx.ExecContext(ctx, "UPDATE stored_changes SET consumed_at = ? WHERE id = ?", unixNano(at), id)
-			if err != nil {
-				return err
-			}
-			if err := mustAffect(res, fmt.Sprintf("stored change %d", id)); err != nil {
-				return err
-			}
-		}
-		return nil
+		return consumeChanges(ctx, tx, ids, at)
 	})
+}
+
+func consumeChanges(ctx context.Context, tx *sql.Tx, ids []int64, at time.Time) error {
+	for _, id := range ids {
+		res, err := tx.ExecContext(ctx, "UPDATE stored_changes SET consumed_at = ? WHERE id = ?", unixNano(at), id)
+		if err != nil {
+			return err
+		}
+		if err := mustAffect(res, fmt.Sprintf("stored change %d", id)); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // SaveQuestion stores or updates a question.

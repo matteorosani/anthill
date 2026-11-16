@@ -43,29 +43,33 @@ func (s *Store) CreateAnt(ctx context.Context, r ports.AntRecord) (ports.AntID, 
 // SaveAnt updates an ant and appends its new transitions.
 func (s *Store) SaveAnt(ctx context.Context, r ports.AntRecord) error {
 	return s.inTx(ctx, func(tx *sql.Tx) error {
-		var stored int
-		if err := tx.QueryRowContext(ctx, "SELECT COUNT(*) FROM transitions WHERE ant_id = ?", r.ID).Scan(&stored); err != nil {
-			return err
-		}
-		if len(r.History) < stored {
-			return fmt.Errorf("ant %d: history cannot shrink from %d to %d transitions", r.ID, stored, len(r.History))
-		}
-		row, err := antRow(r)
-		if err != nil {
-			return err
-		}
-		res, err := tx.ExecContext(ctx, `UPDATE ants SET
-			item_key = ?, item = ?, state = ?, base_ns = ?, budget = ?, runner = ?,
-			session_id = ?, worktree = ?, branch = ?, base_branch = ?, pr = ?
-			WHERE id = ?`, append(row, r.ID)...)
-		if err != nil {
-			return err
-		}
-		if err := mustAffect(res, fmt.Sprintf("ant %d", r.ID)); err != nil {
-			return err
-		}
-		return insertTransitions(ctx, tx, r.ID, r.History[stored:], stored)
+		return saveAnt(ctx, tx, r)
 	})
+}
+
+func saveAnt(ctx context.Context, tx *sql.Tx, r ports.AntRecord) error {
+	var stored int
+	if err := tx.QueryRowContext(ctx, "SELECT COUNT(*) FROM transitions WHERE ant_id = ?", r.ID).Scan(&stored); err != nil {
+		return err
+	}
+	if len(r.History) < stored {
+		return fmt.Errorf("ant %d: history cannot shrink from %d to %d transitions", r.ID, stored, len(r.History))
+	}
+	row, err := antRow(r)
+	if err != nil {
+		return err
+	}
+	res, err := tx.ExecContext(ctx, `UPDATE ants SET
+		item_key = ?, item = ?, state = ?, base_ns = ?, budget = ?, runner = ?,
+		session_id = ?, worktree = ?, branch = ?, base_branch = ?, pr = ?
+		WHERE id = ?`, append(row, r.ID)...)
+	if err != nil {
+		return err
+	}
+	if err := mustAffect(res, fmt.Sprintf("ant %d", r.ID)); err != nil {
+		return err
+	}
+	return insertTransitions(ctx, tx, r.ID, r.History[stored:], stored)
 }
 
 // antRow returns the values of the ants columns after id, in order.
@@ -213,16 +217,49 @@ func (s *Store) history(ctx context.Context, ant ports.AntID) ([]domain.Transiti
 
 // StartRun stores an active run.
 func (s *Store) StartRun(ctx context.Context, r ports.RunRecord) (ports.RunID, error) {
-	res, err := s.db.ExecContext(ctx, `INSERT INTO runs
+	id, err := startRun(ctx, s.db, r)
+	if err != nil {
+		return 0, fmt.Errorf("start run of ant %d: %w", r.Ant, err)
+	}
+	return id, nil
+}
+
+// execer is a *sql.DB or a *sql.Tx.
+type execer interface {
+	ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error)
+}
+
+func startRun(ctx context.Context, db execer, r ports.RunRecord) (ports.RunID, error) {
+	res, err := db.ExecContext(ctx, `INSERT INTO runs
 		(ant_id, kind, session_id, started_at, ended_at, outcome, reason, tokens, cost_usd, session_cost_usd)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		r.Ant, string(r.Kind), r.SessionID, r.StartedAt.UnixNano(), unixNano(r.EndedAt),
 		string(r.Outcome), r.Reason, nullInt(r.Usage.Tokens), nullFloat(r.Usage.CostUSD), nullFloat(r.SessionCostUSD))
 	if err != nil {
-		return 0, fmt.Errorf("start run of ant %d: %w", r.Ant, err)
+		return 0, err
 	}
 	id, err := res.LastInsertId()
 	return ports.RunID(id), err
+}
+
+// BeginRun saves the ant, stores the run and marks the consumed changes
+// in one transaction.
+func (s *Store) BeginRun(ctx context.Context, st ports.RunStart) (ports.RunID, error) {
+	var id ports.RunID
+	err := s.inTx(ctx, func(tx *sql.Tx) error {
+		if err := saveAnt(ctx, tx, st.Ant); err != nil {
+			return err
+		}
+		var err error
+		if id, err = startRun(ctx, tx, st.Run); err != nil {
+			return err
+		}
+		return consumeChanges(ctx, tx, st.Consumed, st.At)
+	})
+	if err != nil {
+		return 0, fmt.Errorf("begin run of ant %d: %w", st.Ant.ID, err)
+	}
+	return id, nil
 }
 
 // EndRun stores the end of a run. An empty session ID keeps the stored

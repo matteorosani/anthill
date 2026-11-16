@@ -184,6 +184,8 @@ func TestPrepareSecondRunReusesWorktree(t *testing.T) {
 	req := f.request()
 	req.Branch, req.Worktree = first.Branch, first.Worktree
 	second, err := f.workspace().Prepare(f.ctx, req)
+	// A reused branch is not one Prepare created.
+	first.Created = false
 	if err != nil || second != first {
 		t.Errorf("second Prepare() = %+v, %v", second, err)
 	}
