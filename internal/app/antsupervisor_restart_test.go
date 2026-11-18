@@ -27,10 +27,10 @@ type wrapUpCall struct {
 	req   app.WrapUpRequest
 }
 
-func (f *fakeWrapUp) WrapUp(_ context.Context, rec ports.AntRecord, run ports.RunID, w app.WrapUpRequest) (ports.AntRecord, app.WrapUpResult, error) {
+func (f *fakeWrapUp) WrapUp(_ context.Context, rec ports.AntRecord, w app.WrapUpRequest) (ports.AntRecord, app.WrapUpResult, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	f.calls = append(f.calls, wrapUpCall{rec.ID, rec.State(), run, w})
+	f.calls = append(f.calls, wrapUpCall{rec.ID, rec.State(), w.Run, w})
 	return rec, app.WrapUpResult{}, nil
 }
 

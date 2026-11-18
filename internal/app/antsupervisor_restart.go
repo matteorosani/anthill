@@ -16,10 +16,12 @@ import (
 // TODO(#90): replace with WrapUp and WrappedUp once the helper of exit
 // without finishing lands.
 type WrapUpRequest struct {
+	// Run is the run that ended, or 0 when it is not known.
+	Run        ports.RunID
 	Reason     string
-	OpenDraft  bool
 	Summary    string
 	OpenPoints []string
+	OpenDraft  bool
 }
 
 // WrapUpResult is what the wrap-up did. See WrapUpRequest.
@@ -33,12 +35,11 @@ type WrapUpResult struct {
 // ant-execution, "Exit without finishing"): push the ant branch when it
 // has new commits, turn an open ant PR into a draft, post the summary,
 // and park the claim. It never changes the ant's state: the ant is
-// already failed when it is called. run is the interrupted run, or 0
-// when it is not known. The caller notifies the queen.
+// already failed when it is called. The caller notifies the queen.
 //
 // TODO(#90): replace with the supervisor's wrapUp helper once it lands.
 type ExitWrapUp interface {
-	WrapUp(ctx context.Context, rec ports.AntRecord, run ports.RunID, w WrapUpRequest) (ports.AntRecord, WrapUpResult, error)
+	WrapUp(ctx context.Context, rec ports.AntRecord, w WrapUpRequest) (ports.AntRecord, WrapUpResult, error)
 }
 
 // Retrier retries a failed ant the way the queen does: the same worktree,
@@ -181,7 +182,7 @@ func (s *AntSupervisor) interrupted(ctx context.Context, id ports.AntID, deps Re
 func wrapUpInterrupted(ctx context.Context, w ExitWrapUp, rec ports.AntRecord, run ports.RunID, notifier ports.Notifier) error {
 	var err error
 	if w != nil {
-		_, _, err = w.WrapUp(ctx, rec, run, WrapUpRequest{Reason: ReasonInterruptedByRestart, Summary: SummaryInterruptedByRestart})
+		_, _, err = w.WrapUp(ctx, rec, WrapUpRequest{Run: run, Reason: ReasonInterruptedByRestart, Summary: SummaryInterruptedByRestart})
 	}
 	if notifier != nil {
 		item := rec.Item
