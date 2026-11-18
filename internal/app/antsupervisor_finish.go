@@ -279,6 +279,11 @@ func (s *AntSupervisor) postOnce(ctx context.Context, tracker ports.TrackerPort,
 // new commits, as the push tool does, and returns the number of new
 // commits. A branch without new commits is not pushed.
 func (s *AntSupervisor) pushBranch(ctx context.Context, rec ports.AntRecord, ws ToolWorkspace) (int, error) {
+	if rec.Worktree == "" {
+		// An ant rebuilt without a branch has no work to push (spec
+		// ant-execution, "Session index recovery").
+		return 0, nil
+	}
 	commits, err := s.deps.Git.NewCommits(ctx, ws.Clone, rec.Worktree, rec.BaseBranch)
 	if err != nil {
 		return 0, fmt.Errorf("counting the new commits of %s: %w", rec.Item, err)

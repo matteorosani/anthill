@@ -23,12 +23,11 @@ const (
 type recEnv struct {
 	*supEnv
 	recovery *app.SessionRecovery
-	wrap     *fakeWrapUp
 }
 
 func newRecEnv(t *testing.T) *recEnv {
 	t.Helper()
-	e := &recEnv{supEnv: newSupEnv(t, 2), wrap: &fakeWrapUp{}}
+	e := &recEnv{supEnv: newSupEnv(t, 2)}
 	e.recovery = app.NewSessionRecovery(app.SessionRecoveryDeps{
 		Store:     e.store,
 		Claims:    e.claiming,
@@ -41,9 +40,8 @@ func newRecEnv(t *testing.T) *recEnv {
 				CodeHost: client, Tracker: client, TrackerRepo: shop,
 			}}, nil
 		},
-		Clock:    e.clock,
-		WrapUp:   e.wrap,
-		Notifier: e.notifier,
+		Clock:       e.clock,
+		Interrupted: e.sup,
 	})
 	return e
 }
@@ -148,8 +146,8 @@ func TestLocalDatabaseLost(t *testing.T) {
 		if h, ok := e.heldClaim(12); !ok || !h.Parked || h.Instance != instanceA {
 			t.Errorf("held claim %+v, %v", h, ok)
 		}
-		if calls := e.wrap.all(); len(calls) != 0 {
-			t.Errorf("wrap-ups %+v", calls)
+		if c := e.restartWrapUps(12); len(c) != 0 {
+			t.Errorf("restart wrap-ups %+v", c)
 		}
 		marks := countOps(e.gh, testkit.OpMark, "mrosani")
 		if runs := e.runs(id); len(runs) != 0 {
@@ -286,16 +284,14 @@ func TestRecoveryLiveClaimInterrupted(t *testing.T) {
 		if lastReason(rec) != app.ReasonInterruptedByRestart || rec.PR == nil {
 			t.Errorf("rebuilt %+v", rec)
 		}
-		if calls := e.wrap.all(); len(calls) != 1 {
-			t.Errorf("wrap-ups %+v", calls)
-		} else {
-			wantInterruptedWrapUp(t, calls[0], rec.ID, 0)
+		if c := e.restartWrapUps(12); len(c) != 1 {
+			t.Errorf("restart wrap-ups %+v", c)
 		}
 		if n := countKind(e.notifier, domain.NotifyFailed); n != 1 {
 			t.Errorf("%d failure notifications", n)
 		}
-		if _, ok := e.heldClaim(12); !ok {
-			t.Error("the claim was not adopted")
+		if h, ok := e.heldClaim(12); !ok || !h.Parked {
+			t.Errorf("held claim %+v, %v, want it adopted and parked", h, ok)
 		}
 	})
 }

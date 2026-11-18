@@ -2,6 +2,9 @@ package app_test
 
 import (
 	"context"
+	"fmt"
+	"slices"
+	"strings"
 	"sync"
 	"testing"
 	"testing/synctest"
@@ -14,40 +17,27 @@ import (
 	"github.com/matteorosani/anthill/internal/testkit/storetest"
 )
 
-// fakeWrapUp records the wrap-ups of exits without finishing.
-type fakeWrapUp struct {
-	mu    sync.Mutex
-	calls []wrapUpCall
-}
-
-type wrapUpCall struct {
-	ant   ports.AntID
-	state domain.AntState
-	run   ports.RunID
-	req   app.WrapUpRequest
-}
-
-func (f *fakeWrapUp) WrapUp(_ context.Context, rec ports.AntRecord, w app.WrapUpRequest) (ports.AntRecord, app.WrapUpResult, error) {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	f.calls = append(f.calls, wrapUpCall{rec.ID, rec.State(), w.Run, w})
-	return rec, app.WrapUpResult{}, nil
-}
-
-// wantInterruptedWrapUp checks one call: the ant failed, the run, and the
-// restart's reason and summary, with no draft opened.
-func wantInterruptedWrapUp(t *testing.T, c wrapUpCall, ant ports.AntID, run ports.RunID) {
-	t.Helper()
-	if c.ant != ant || c.state != domain.AntFailed || c.run != run || c.req.Reason != app.ReasonInterruptedByRestart ||
-		c.req.OpenDraft || c.req.Summary != app.SummaryInterruptedByRestart {
-		t.Errorf("wrap-up %+v, want ant %d failed, run %d, interrupted by restart", c, ant, run)
+// restartWrapUps returns the wrap-up comments of a restart on item n.
+func (e *supEnv) restartWrapUps(n int) []domain.Comment {
+	e.t.Helper()
+	item, _ := e.gh.Item(ghRef(n))
+	var out []domain.Comment
+	for _, c := range item.Comments {
+		if strings.Contains(c.Body, app.ReasonInterruptedByRestart) && strings.Contains(c.Body, app.SummaryInterruptedByRestart) {
+			out = append(out, c)
+		}
 	}
+	return out
 }
 
-func (f *fakeWrapUp) all() []wrapUpCall {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	return append([]wrapUpCall(nil), f.calls...)
+// parked reports whether this instance holds item n's task claim parked.
+func (e *supEnv) parked(n int) bool {
+	e.t.Helper()
+	held, err := e.store.HeldClaims(e.ctx)
+	if err != nil {
+		e.t.Fatal(err)
+	}
+	return slices.ContainsFunc(held, func(h ports.HeldClaim) bool { return h.Ref == ghRef(n) && h.Parked })
 }
 
 // fakeRetrier records the ants retried.
@@ -85,6 +75,16 @@ func (e *supEnv) leftRunning(n int, sess string, states ...domain.AntState) (por
 	}
 	rec := storetest.Ant(n, states...)
 	rec.Item, rec.Runner, rec.SessionID = ghRef(n), string(domain.RunnerClaudeCode), sess
+	rec.Worktree = fmt.Sprintf("/home/me/.anthill/worktrees/gh-%d", n)
+	if err := e.git.Fetch(e.ctx, e.clone); err != nil {
+		e.t.Fatal(err)
+	}
+	if err := e.git.CreateBranch(e.ctx, e.clone, rec.Branch, "main"); err != nil {
+		e.t.Fatal(err)
+	}
+	if err := e.git.AddWorktree(e.ctx, e.clone, rec.Worktree, rec.Branch, domain.NewTrailers(ghRef(n), domain.RunnerClaudeCode, instanceA)); err != nil {
+		e.t.Fatal(err)
+	}
 	id, err := e.store.CreateAnt(e.ctx, rec)
 	if err != nil {
 		e.t.Fatal(err)
@@ -129,8 +129,8 @@ func TestDaemonRestartedMidRun(t *testing.T) {
 					states = states[:2]
 				}
 				id, run := e.leftRunning(12, "sess-12", states...)
-				wrap := &fakeWrapUp{}
-				e.reconcile(app.RestartDeps{WrapUp: wrap, Retry: &fakeRetrier{}})
+				e.git.Commit(fmt.Sprintf("/home/me/.anthill/worktrees/gh-%d", 12), "half done")
+				e.reconcile(app.RestartDeps{Retry: &fakeRetrier{}})
 
 				rec := e.wantState(id, domain.AntFailed)
 				if lastReason(rec) != app.ReasonInterruptedByRestart {
@@ -142,10 +142,17 @@ func TestDaemonRestartedMidRun(t *testing.T) {
 					ends[0].resumed != "sess-12" || !ends[0].run.EndedAt.Equal(e.clock.Now()) {
 					t.Errorf("run ends %+v", ends)
 				}
-				if calls := wrap.all(); len(calls) != 1 {
-					t.Errorf("wrap-ups %+v", calls)
-				} else {
-					wantInterruptedWrapUp(t, calls[0], id, run)
+				// The wrap-up of an exit without finishing: the new commit
+				// is pushed, the summary is on the ticket, and the claim
+				// is parked.
+				if c := e.restartWrapUps(12); len(c) != 1 {
+					t.Errorf("restart wrap-up comments %+v", c)
+				}
+				if got := e.git.RemoteCommits(supClone, rec.Branch); len(got) == 0 || got[len(got)-1].Subject != "half done" {
+					t.Errorf("remote %s = %+v, want the new commit pushed", rec.Branch, got)
+				}
+				if !e.parked(12) {
+					t.Error("the claim was not parked")
 				}
 				if n := countKind(e.notifier, domain.NotifyFailed); n != 1 {
 					t.Errorf("%d failure notifications", n)
@@ -161,8 +168,8 @@ func TestDaemonRestartedMidRun(t *testing.T) {
 				}
 
 				// A second reconciliation changes nothing.
-				e.reconcile(app.RestartDeps{WrapUp: wrap})
-				if len(wrap.all()) != 1 || len(e.ends.all()) != 1 || len(e.ant(id).History) != len(rec.History) {
+				e.reconcile(app.RestartDeps{})
+				if len(e.restartWrapUps(12)) != 1 || len(e.ends.all()) != 1 || len(e.ant(id).History) != len(rec.History) {
 					t.Error("a second reconciliation handled the ant again")
 				}
 			})
@@ -178,8 +185,8 @@ func TestDaemonRestartedMidRunAutoResume(t *testing.T) {
 		e := newSupEnv(t, 2)
 		e.settings.AutoResume = true
 		id, _ := e.leftRunning(12, "sess-12", domain.AntStarting, domain.AntRunning)
-		wrap, retry := &fakeWrapUp{}, &fakeRetrier{}
-		e.reconcile(app.RestartDeps{WrapUp: wrap, Retry: retry})
+		retry := &fakeRetrier{}
+		e.reconcile(app.RestartDeps{Retry: retry})
 
 		rec := e.wantState(id, domain.AntFailed)
 		if lastReason(rec) != app.ReasonInterruptedByRestart {
@@ -188,8 +195,8 @@ func TestDaemonRestartedMidRunAutoResume(t *testing.T) {
 		if got := retry.all(); len(got) != 1 || got[0] != id {
 			t.Errorf("retried %v", got)
 		}
-		if calls := wrap.all(); len(calls) != 0 {
-			t.Errorf("wrap-ups %+v", calls)
+		if c := e.restartWrapUps(12); len(c) != 0 || e.parked(12) {
+			t.Errorf("wrapped up: comments %+v, parked %v", c, e.parked(12))
 		}
 		if ends := e.ends.all(); len(ends) != 1 || ends[0].run.Reason != app.ReasonInterruptedByRestart {
 			t.Errorf("run ends %+v", ends)
@@ -207,33 +214,30 @@ func TestRestartAutoResumeWithoutRetrier(t *testing.T) {
 		e := newSupEnv(t, 2)
 		e.settings.AutoResume = true
 		id, _ := e.leftRunning(12, "sess-12", domain.AntStarting, domain.AntRunning)
-		wrap := &fakeWrapUp{}
-		e.reconcile(app.RestartDeps{WrapUp: wrap})
+		e.reconcile(app.RestartDeps{})
 		e.wantState(id, domain.AntFailed)
-		if len(wrap.all()) != 1 {
-			t.Errorf("wrap-ups %+v", wrap.all())
+		if c := e.restartWrapUps(12); len(c) != 1 || !e.parked(12) {
+			t.Errorf("restart wrap-up comments %+v, parked %v", c, e.parked(12))
 		}
 	})
 }
 
 // Task 14.8: a finishing ant whose finish is stored is not interrupted:
-// the playbook carries out the finish.
-func TestRestartTriggersAFinishingAnt(t *testing.T) {
+// the playbook carries out the finish, here a task run's no-change
+// finish, which makes the ant done.
+func TestRestartCarriesOutAStoredFinish(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		e := newSupEnv(t, 2)
 		id, _ := e.leftRunning(12, "sess-12", domain.AntStarting, domain.AntRunning, domain.AntFinishing)
-		wrap := &fakeWrapUp{}
-		var asked []ports.AntID
-		e.reconcile(app.RestartDeps{WrapUp: wrap, PendingFinish: func(rec ports.AntRecord) bool {
-			asked = append(asked, rec.ID)
-			return true
-		}})
-		e.wantState(id, domain.AntFinishing)
-		if len(asked) != 1 || asked[0] != id {
-			t.Errorf("pending finish asked for %v", asked)
+		rec := e.ant(id)
+		rec.Finish = &domain.AntFinish{Status: domain.FinishNoChange, Summary: "Already fixed by #11."}
+		if err := e.store.SaveAnt(e.ctx, rec); err != nil {
+			t.Fatal(err)
 		}
-		if len(wrap.all()) != 0 || len(e.ends.all()) != 0 {
-			t.Errorf("wrap-ups %+v, run ends %+v", wrap.all(), e.ends.all())
+		e.reconcile(app.RestartDeps{})
+		rec = e.wantState(id, domain.AntDone)
+		if lastReason(rec) == app.ReasonInterruptedByRestart || len(e.restartWrapUps(12)) != 0 {
+			t.Errorf("the finishing ant was interrupted: %+v", rec.History)
 		}
 	})
 }
@@ -247,7 +251,7 @@ func TestRestartStartsQueuedAnts(t *testing.T) {
 		e.clock.Advance(time.Minute)
 		second := e.queuedAnt(13)
 
-		e.reconcile(app.RestartDeps{WrapUp: &fakeWrapUp{}})
+		e.reconcile(app.RestartDeps{})
 		e.wantState(first, domain.AntRunning)
 		e.wantState(second, domain.AntQueued)
 		e.wantActive(12)
@@ -265,8 +269,7 @@ func TestRestartLeavesRunsOfThisDaemon(t *testing.T) {
 		e := newSupEnv(t, 2)
 		interrupted, _ := e.leftRunning(12, "sess-12", domain.AntStarting, domain.AntRunning)
 		mine := e.mustAccept(13)
-		wrap := &fakeWrapUp{}
-		e.reconcile(app.RestartDeps{WrapUp: wrap})
+		e.reconcile(app.RestartDeps{})
 
 		e.wantState(mine, domain.AntRunning)
 		e.wantState(interrupted, domain.AntFailed)
@@ -274,8 +277,8 @@ func TestRestartLeavesRunsOfThisDaemon(t *testing.T) {
 		if x := e.exec.Executions(); len(x) != 1 {
 			t.Errorf("%d runs started, want only gh-13's", len(x))
 		}
-		if calls := wrap.all(); len(calls) != 1 || calls[0].ant != interrupted {
-			t.Errorf("wrap-ups %+v", calls)
+		if len(e.restartWrapUps(12)) != 1 || len(e.restartWrapUps(13)) != 0 {
+			t.Errorf("restart wrap-ups: gh-12 %d, gh-13 %d", len(e.restartWrapUps(12)), len(e.restartWrapUps(13)))
 		}
 	})
 }

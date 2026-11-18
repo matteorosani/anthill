@@ -61,11 +61,18 @@ type SessionRecoveryDeps struct {
 	// Sources lists the enabled repository entries.
 	Sources func(ctx context.Context) ([]RecoverySource, error)
 	Clock   ports.Clock
-	// WrapUp wraps up an ant rebuilt with its run interrupted, as an exit
-	// without finishing, which parks its claim; Notifier tells the queen.
-	WrapUp   ExitWrapUp
-	Notifier ports.Notifier
+	// Interrupted wraps up an ant rebuilt with its run interrupted, as an
+	// exit without finishing, which parks its claim and tells the queen.
+	// The ant supervisor implements it.
+	Interrupted InterruptedWrapUp
 }
+
+// InterruptedWrapUp wraps up an ant whose run a restart interrupted.
+type InterruptedWrapUp interface {
+	WrapUpInterrupted(ctx context.Context, ant ports.AntID) error
+}
+
+var _ InterruptedWrapUp = (*AntSupervisor)(nil)
 
 // SessionRecovery rebuilds the session index records of the items this
 // instance holds a task claim on, when they are missing, such as after
@@ -257,7 +264,7 @@ func (r *SessionRecovery) recoverItem(ctx context.Context, src RecoverySource, r
 		// A live claim: the record was lost while a run was active. The
 		// ant is handled as an exit without finishing, whose wrap-up
 		// parks the claim (spec work-claiming, "Long-lived task claims").
-		if err := wrapUpInterrupted(ctx, r.deps.WrapUp, rec, 0, r.deps.Notifier); err != nil {
+		if err := r.deps.Interrupted.WrapUpInterrupted(ctx, rec.ID); err != nil {
 			errs = append(errs, err)
 		}
 	}

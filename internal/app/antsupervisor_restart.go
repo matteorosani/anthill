@@ -9,39 +9,6 @@ import (
 	"github.com/matteorosani/anthill/internal/ports"
 )
 
-// WrapUpRequest is what the wrap-up of an exit without finishing is asked
-// to do, and WrapUpResult what it did. They have the shape of the
-// wrap-up helper's WrapUp and WrappedUp.
-//
-// TODO(#90): replace with WrapUp and WrappedUp once the helper of exit
-// without finishing lands.
-type WrapUpRequest struct {
-	// Run is the run that ended, or 0 when it is not known.
-	Run        ports.RunID
-	Reason     string
-	Summary    string
-	OpenPoints []string
-	OpenDraft  bool
-}
-
-// WrapUpResult is what the wrap-up did. See WrapUpRequest.
-type WrapUpResult struct {
-	Pushed bool
-	PR     *domain.Ref
-	Opened bool
-}
-
-// ExitWrapUp is the wrap-up of an ant that ended without finishing (spec
-// ant-execution, "Exit without finishing"): push the ant branch when it
-// has new commits, turn an open ant PR into a draft, post the summary,
-// and park the claim. It never changes the ant's state: the ant is
-// already failed when it is called. The caller notifies the queen.
-//
-// TODO(#90): replace with the supervisor's wrapUp helper once it lands.
-type ExitWrapUp interface {
-	WrapUp(ctx context.Context, rec ports.AntRecord, w WrapUpRequest) (ports.AntRecord, WrapUpResult, error)
-}
-
 // Retrier retries a failed ant the way the queen does: the same worktree,
 // the session resumed with a note about the failure (spec ant-execution,
 // "Retry after crash"). It is called without the ant's lock.
@@ -53,16 +20,9 @@ type Retrier interface {
 
 // RestartDeps are what reconciliation hands an interrupted ant to.
 type RestartDeps struct {
-	WrapUp ExitWrapUp
 	// Retry resumes the ants of repositories that set auto-resume. Nil
 	// handles them as exits without finishing too.
 	Retry Retrier
-	// PendingFinish reports whether a finishing ant has its finish
-	// stored, which the playbook then carries out. Nil means none has.
-	//
-	// TODO(#89): replace with the finish stored on the ant's record once
-	// finish handling lands.
-	PendingFinish func(ports.AntRecord) bool
 }
 
 // SummaryInterruptedByRestart is the summary of the wrap-up of an ant
@@ -142,7 +102,7 @@ func (s *AntSupervisor) interrupted(ctx context.Context, id ports.AntID, deps Re
 	if !rec.State().HasActiveRun() || s.hasRun(rec.Item) {
 		return afterRestartNothing, nil
 	}
-	if rec.State() == domain.AntFinishing && deps.PendingFinish != nil && deps.PendingFinish(rec) {
+	if rec.State() == domain.AntFinishing && rec.Finish != nil {
 		return afterRestartTrigger, nil
 	}
 	ws, err := s.deps.Route(ctx, rec.Item)
@@ -174,28 +134,37 @@ func (s *AntSupervisor) interrupted(ctx context.Context, id ports.AntID, deps Re
 	if ws.Settings.AutoResume && deps.Retry != nil {
 		return afterRestartResume, nil
 	}
-	return afterRestartNothing, wrapUpInterrupted(ctx, deps.WrapUp, rec, last, s.deps.Notifier)
+	return afterRestartNothing, s.wrapUpInterrupted(ctx, rec, last)
 }
 
-// wrapUpInterrupted gives an ant whose run a restart interrupted the
-// wrap-up of an exit without finishing, and tells the queen.
-func wrapUpInterrupted(ctx context.Context, w ExitWrapUp, rec ports.AntRecord, run ports.RunID, notifier ports.Notifier) error {
-	var err error
-	if w != nil {
-		_, _, err = w.WrapUp(ctx, rec, WrapUpRequest{Run: run, Reason: ReasonInterruptedByRestart, Summary: SummaryInterruptedByRestart})
-	}
-	if notifier != nil {
-		item := rec.Item
-		// A notification that cannot be shown is not a reason to fail.
-		_ = notifier.Notify(ctx, ports.Notification{
-			Kind: domain.NotifyFailed, Title: "Ant interrupted by restart",
-			Body: item.String() + ": " + ReasonInterruptedByRestart, Ref: &item,
-		})
-	}
+// wrapUpInterrupted gives an ant whose run a restart interrupted, already
+// failed, the wrap-up of an exit without finishing, which parks its
+// claim, and tells the queen. run is the interrupted run, or 0 when it is
+// not known. The caller holds the ant's lock.
+func (s *AntSupervisor) wrapUpInterrupted(ctx context.Context, rec ports.AntRecord, run ports.RunID) error {
+	_, _, err := s.wrapUp(ctx, rec, run, WrapUp{Reason: ReasonInterruptedByRestart, Summary: SummaryInterruptedByRestart})
+	s.notifyAnt(ctx, domain.NotifyFailed, rec.Item, "Ant interrupted by restart", ReasonInterruptedByRestart)
 	if err != nil {
 		return fmt.Errorf("wrapping up after the restart: %w", err)
 	}
 	return nil
+}
+
+// WrapUpInterrupted wraps up the ant id, failed with its run interrupted
+// by a restart but not found by Reconcile, such as one session index
+// recovery rebuilt from a live claim (spec ant-execution, "Session index
+// recovery"). It takes the ant's lock, and does nothing for an ant in
+// another state.
+func (s *AntSupervisor) WrapUpInterrupted(ctx context.Context, id ports.AntID) error {
+	defer s.lockAnt(id)()
+	rec, err := s.store.Ant(ctx, id)
+	if err != nil {
+		return fmt.Errorf("reading ant %d: %w", id, err)
+	}
+	if rec.State() != domain.AntFailed {
+		return nil
+	}
+	return s.wrapUpInterrupted(ctx, rec, 0)
 }
 
 // hasRun reports whether the item has a run this supervisor started or
