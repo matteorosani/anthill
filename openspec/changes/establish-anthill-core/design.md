@@ -201,7 +201,7 @@ An ant is the worker for one item and lives until its PR is merged or closed (`d
 
 ### D21. Executor: running agents is separate from deciding what to run
 
-Application services never start agent processes themselves. They go through one port, the `Executor`. It starts and resumes runs, review agents, fix agents and the short agent calls that classify comments (D8) through the runner adapters (D6), ends them, gives live input to them, and reports their events: started, session id captured, activity, usage, exited, ended at the deadline. Polling, eligibility, claims, scheduling, budget accounting, change reaction, the shepherd, provider writes and push stay in the application services.
+Application services never start agent processes themselves. They go through one port, the `Executor`. It starts and resumes runs, review agents, fix agents and the short agent calls that classify comments (D8) through the runner adapters (D6), ends them, gives live input to them, and reports their events: started, session id captured, activity, usage, last message, exited, ended at the deadline. Polling, eligibility, claims, scheduling, budget accounting, change reaction, the shepherd, provider writes and push stay in the application services.
 
 - Message delivery (D5) is split. The executor gives a message to a run as live input when the runner supports it, and reports when it cannot. The ant tools service keeps the queue that the runner's hook or the next ant-tool result takes a message from, and it reaches the run only through the executor.
 - Each run has its own activity output, so the executor reports activity per run. The runner adapters take it with the run, not once for every run.
