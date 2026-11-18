@@ -86,3 +86,28 @@ func WithSuffix(branch string, n int) string {
 	}
 	return fmt.Sprintf("%s-%d", branch, n)
 }
+
+// BranchItem reads the item an ant branch is for from its name, the
+// reverse of BranchName: ant/gh-12-fix-login, ant/gh-12 and
+// ant/gh-12-fix-login-2 give gh-12 in repo. It returns false for a name
+// outside prefix/ or without an item reference after it. Session index
+// recovery finds an instance's items from its ant branches with it (spec
+// ant-execution, "Session index recovery").
+func BranchItem(prefix, branch string, repo Repository) (Ref, bool) {
+	rest, ok := strings.CutPrefix(branch, prefix+"/")
+	if !ok {
+		return Ref{}, false
+	}
+	// The short form is <provider>-<number>; the slug follows after one
+	// more hyphen.
+	provider, tail, ok := strings.Cut(rest, "-")
+	if !ok {
+		return Ref{}, false
+	}
+	number, _, _ := strings.Cut(tail, "-")
+	ref, err := ParseRef(provider+"-"+number, repo)
+	if err != nil || ref.Kind != KindItem {
+		return Ref{}, false
+	}
+	return ref, true
+}

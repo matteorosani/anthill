@@ -120,4 +120,10 @@ type SourceControl interface {
 	// the remote one when remote is set. It returns ErrNotFound when the
 	// branch does not exist.
 	DeleteBranch(ctx context.Context, c Clone, name string, remote bool) error
+
+	// Branches lists, sorted and once each, the names of the local and
+	// fetched remote branches under prefix/, such as ant/gh-12-fix for
+	// the prefix ant. Session index recovery finds an instance's ant
+	// branches with it (spec ant-execution, "Session index recovery").
+	Branches(ctx context.Context, c Clone, prefix string) ([]string, error)
 }

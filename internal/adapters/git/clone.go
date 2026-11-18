@@ -143,6 +143,27 @@ func (g *Git) resolve(ctx context.Context, dir, ref string) (string, error) {
 	return out, err
 }
 
+// Branches lists the local and fetched remote branches under prefix/.
+func (g *Git) Branches(ctx context.Context, c ports.Clone, prefix string) ([]string, error) {
+	out, err := g.output(ctx, c.Path, "for-each-ref", "--format=%(refname)",
+		localRef(prefix)+"/", remoteRef(c, prefix)+"/")
+	if err != nil {
+		return nil, err
+	}
+	var names []string
+	for _, line := range strings.Split(out, "\n") {
+		name, ok := strings.CutPrefix(line, "refs/heads/")
+		if !ok {
+			name, ok = strings.CutPrefix(line, "refs/remotes/"+c.Remote+"/")
+		}
+		if ok && !slices.Contains(names, name) {
+			names = append(names, name)
+		}
+	}
+	slices.Sort(names)
+	return names, nil
+}
+
 // Branch looks up the local branch and the fetched remote branch, and
 // reads the owners from the trailers of their commits after base.
 func (g *Git) Branch(ctx context.Context, c ports.Clone, name, base string) (ports.BranchInfo, error) {
