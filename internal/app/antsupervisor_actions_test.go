@@ -72,27 +72,6 @@ func (e *supEnv) mustDo(action func() error) {
 	}
 }
 
-func (e *supEnv) heldClaim(n int) (ports.HeldClaim, bool) {
-	e.t.Helper()
-	held, err := e.store.HeldClaims(e.ctx)
-	if err != nil {
-		e.t.Fatal(err)
-	}
-	for _, h := range held {
-		if h.Ref == ghRef(n) {
-			return h, true
-		}
-	}
-	return ports.HeldClaim{}, false
-}
-
-func (e *supEnv) wantParked(n int) {
-	e.t.Helper()
-	if h, ok := e.heldClaim(n); !ok || !h.Parked {
-		e.t.Fatalf("claim on gh-%d = %+v (held %v), want parked", n, h, ok)
-	}
-}
-
 // Spec ant-execution, "Stop and retry later".
 func TestStopAndRetryLater(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {

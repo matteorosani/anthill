@@ -81,7 +81,8 @@ func (s *AntSupervisor) Stop(ctx context.Context, id ports.AntID, reason string)
 		park = fmt.Errorf("parking the claim on %s: %w", rec.Item, park)
 	}
 	unlock()
-	return errors.Join(park, s.stopExec(exec))
+	s.stopRun(exec)
+	return park
 }
 
 // Abandon ends any active run within 10 seconds, releases the task claim
@@ -116,7 +117,7 @@ func (s *AntSupervisor) Abandon(ctx context.Context, id ports.AntID, reason stri
 	}
 	errs := []error{s.closeExtension(ctx, id, closed, "closed: the ant was abandoned")}
 	unlock()
-	errs = append(errs, s.stopExec(exec))
+	s.stopRun(exec)
 	if err := s.deps.Claims.Release(ctx, rec.Item, domain.ClaimTask); err != nil {
 		errs = append(errs, fmt.Errorf("releasing the claim on %s: %w", rec.Item, err))
 	}
@@ -280,16 +281,12 @@ func (s *AntSupervisor) endingRun(item domain.Ref, outcome ports.RunOutcome, rea
 	return ""
 }
 
-// stopExec ends a run's process tree within StopGrace. The run's events
-// then record its end and free its slot.
-func (s *AntSupervisor) stopExec(exec ports.ExecID) error {
-	if exec == "" {
-		return nil
+// stopRun ends a run's process tree within StopGrace, in the
+// background. The run's events then record its end and free its slot.
+func (s *AntSupervisor) stopRun(exec ports.ExecID) {
+	if exec != "" {
+		s.stopInBackground(exec)
 	}
-	if err := s.deps.Executor.Stop(exec, StopGrace); err != nil && !errors.Is(err, ports.ErrUnknownExecution) {
-		return fmt.Errorf("stopping run %s: %w", exec, err)
-	}
-	return nil
 }
 
 // closeExtension stores an open extension request as closed, for the

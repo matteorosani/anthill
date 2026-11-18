@@ -134,11 +134,15 @@ func TestWarningWithoutLiveInput(t *testing.T) {
 	})
 }
 
-// Spec ant-timebox, "Time runs out".
-func TestTimeRunsOut(t *testing.T) {
+// Spec ant-timebox, "Time runs out", end to end through the timekeeper:
+// the notice to stop when the budget runs out, the end at the deadline,
+// and the wrap-up of the timed-out ant. TestTimeRunsOut and
+// TestTimeRunsOutWithNoCommits check the wrap-up in detail.
+func TestTimeRunsOutEndToEnd(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		e := newActionsEnv(t, 2)
 		id := e.startRunning(12, "sess-12")
+		e.commit(id, "WIP")
 		start := e.clock.Now()
 		x := e.execOf(ghRef(12))
 		e.wantDeadline(12, start.Add(63*time.Minute))
@@ -163,6 +167,21 @@ func TestTimeRunsOut(t *testing.T) {
 		if ends := e.ends.all(); len(ends) != 1 || ends[0].run.Outcome != ports.OutcomeTimedOut {
 			t.Errorf("ends = %+v", ends)
 		}
+		if got := e.pushed(rec); len(got) != 1 {
+			t.Errorf("pushed commits = %v", got)
+		}
+		pr := e.onePR(id)
+		if !pr.Draft || rec.PR == nil || *rec.PR != pr.Ref {
+			t.Errorf("PR = %+v, record PR %v; want a draft", pr, rec.PR)
+		}
+		if got := e.summaries(12); len(got) != 1 || !strings.Contains(got[0], pr.URL) {
+			t.Errorf("summary comments = %q, want one linking %s", got, pr.URL)
+		}
+		e.wantParked(12)
+		if !slices.Contains(e.notifier.Kinds(), domain.NotifyTimedOut) {
+			t.Errorf("notifications = %v, want timed-out", e.notifier.Kinds())
+		}
+		e.wantNoErrors()
 	})
 }
 
@@ -340,72 +359,6 @@ func TestCeilingReached(t *testing.T) {
 			t.Errorf("request_extension = %+v, want maximum budget reached", out)
 		}
 		e.wantDeadline(12, e.clock.Now().Add(180*time.Minute+domain.DefaultGracePeriod))
-	})
-}
-
-// skipUntilWrapUp skips the time-out tests that need the wrap-up of an
-// ant that ends without finishing (push, draft PR, summary on the
-// ticket, parked claim), which 14.4+14.5 (#89, #90) adds to endRun.
-func skipUntilWrapUp(t *testing.T) {
-	t.Helper()
-	t.Skip("needs the wrap-up of an ant that ends without finishing from 14.4+14.5 (#89, #90): unskip once it is merged")
-}
-
-// Spec ant-timebox, "Time runs out": the wrap-up after the deadline.
-func TestTimeRunsOutWrapUp(t *testing.T) {
-	skipUntilWrapUp(t)
-	synctest.Test(t, func(t *testing.T) {
-		e := newActionsEnv(t, 2)
-		id := e.startRunning(12, "sess-12")
-		rec := e.ant(id)
-		e.git.Commit(rec.Worktree, "wip: parse the input")
-		e.git.Commit(rec.Worktree, "wip: half the tests")
-		e.pass(63 * time.Minute)
-		e.end(ghRef(12), ports.ExecEndedAtDeadline)
-
-		rec = e.wantState(id, domain.AntTimedOut)
-		if got := e.git.RemoteCommits(supClone, rec.Branch); len(got) < 2 {
-			t.Errorf("remote commits on %s = %v, want the WIP commits pushed", rec.Branch, got)
-		}
-		if rec.PR == nil {
-			t.Fatal("no PR")
-		}
-		pr, ok := e.gh.PullRequest(*rec.PR)
-		if !ok || !pr.Draft {
-			t.Errorf("PR = %+v, want a draft", pr)
-		}
-		item, _ := e.gh.Item(ghRef(12))
-		if !slices.ContainsFunc(item.Comments, func(c domain.Comment) bool { return strings.Contains(c.Body, pr.URL) }) {
-			t.Errorf("comments = %+v, want one linking %s", item.Comments, pr.URL)
-		}
-		e.wantParked(12)
-		if !slices.Contains(e.notifier.Kinds(), ports.NotifyTimedOut) {
-			t.Errorf("notifications = %v, want timed-out", e.notifier.Kinds())
-		}
-	})
-}
-
-// Spec ant-timebox, "Time runs out with no commits".
-func TestTimeRunsOutWithNoCommits(t *testing.T) {
-	skipUntilWrapUp(t)
-	synctest.Test(t, func(t *testing.T) {
-		e := newActionsEnv(t, 2)
-		id := e.startRunning(12, "sess-12")
-		before, _ := e.gh.Item(ghRef(12))
-		e.pass(63 * time.Minute)
-		e.end(ghRef(12), ports.ExecEndedAtDeadline)
-
-		rec := e.wantState(id, domain.AntTimedOut)
-		if rec.PR != nil {
-			t.Errorf("PR = %v, want none", rec.PR)
-		}
-		if got := e.git.RemoteBranches(supClone); slices.Contains(got, rec.Branch) {
-			t.Errorf("remote branches = %v: nothing to push", got)
-		}
-		if item, _ := e.gh.Item(ghRef(12)); len(item.Comments) != len(before.Comments)+1 {
-			t.Errorf("comments = %+v, want only the progress comment added", item.Comments)
-		}
-		e.wantParked(12)
 	})
 }
 

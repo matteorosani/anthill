@@ -11,7 +11,7 @@ import (
 	"github.com/matteorosani/anthill/internal/ports"
 )
 
-const antColumns = "id, item, base_ns, budget, runner, session_id, worktree, branch, base_branch, pr"
+const antColumns = "id, item, base_ns, budget, runner, session_id, worktree, branch, base_branch, pr, finish"
 
 // CreateAnt stores a new ant with its transitions.
 func (s *Store) CreateAnt(ctx context.Context, r ports.AntRecord) (ports.AntID, error) {
@@ -22,8 +22,8 @@ func (s *Store) CreateAnt(ctx context.Context, r ports.AntRecord) (ports.AntID, 
 			return err
 		}
 		res, err := tx.ExecContext(ctx, `INSERT INTO ants
-			(item_key, item, state, base_ns, budget, runner, session_id, worktree, branch, base_branch, pr)
-			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, row...)
+			(item_key, item, state, base_ns, budget, runner, session_id, worktree, branch, base_branch, pr, finish)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, row...)
 		if err != nil {
 			return err
 		}
@@ -61,7 +61,7 @@ func saveAnt(ctx context.Context, tx *sql.Tx, r ports.AntRecord) error {
 	}
 	res, err := tx.ExecContext(ctx, `UPDATE ants SET
 		item_key = ?, item = ?, state = ?, base_ns = ?, budget = ?, runner = ?,
-		session_id = ?, worktree = ?, branch = ?, base_branch = ?, pr = ?
+		session_id = ?, worktree = ?, branch = ?, base_branch = ?, pr = ?, finish = ?
 		WHERE id = ?`, append(row, r.ID)...)
 	if err != nil {
 		return err
@@ -89,7 +89,14 @@ func antRow(r ports.AntRecord) ([]any, error) {
 		}
 		pr.Valid = true
 	}
-	return []any{refKey(r.Item), item, string(r.State()), int64(r.Base), budget, r.Runner, r.SessionID, r.Worktree, r.Branch, r.BaseBranch, pr}, nil
+	var finish sql.NullString
+	if r.Finish != nil {
+		if finish.String, err = toJSON(r.Finish); err != nil {
+			return nil, err
+		}
+		finish.Valid = true
+	}
+	return []any{refKey(r.Item), item, string(r.State()), int64(r.Base), budget, r.Runner, r.SessionID, r.Worktree, r.Branch, r.BaseBranch, pr, finish}, nil
 }
 
 func insertTransitions(ctx context.Context, tx *sql.Tx, ant ports.AntID, history []domain.Transition, first int) error {
@@ -153,9 +160,9 @@ func (s *Store) ants(ctx context.Context, where string, args ...any) ([]ports.An
 			r            ports.AntRecord
 			item, budget string
 			base         int64
-			pr           sql.NullString
+			pr, finish   sql.NullString
 		)
-		if err := rows.Scan(&r.ID, &item, &base, &budget, &r.Runner, &r.SessionID, &r.Worktree, &r.Branch, &r.BaseBranch, &pr); err != nil {
+		if err := rows.Scan(&r.ID, &item, &base, &budget, &r.Runner, &r.SessionID, &r.Worktree, &r.Branch, &r.BaseBranch, &pr, &finish); err != nil {
 			_ = rows.Close()
 			return nil, err
 		}
@@ -171,6 +178,13 @@ func (s *Store) ants(ctx context.Context, where string, args ...any) ([]ports.An
 		if pr.Valid {
 			r.PR = new(domain.Ref)
 			if err := fromJSON(pr.String, r.PR); err != nil {
+				_ = rows.Close()
+				return nil, err
+			}
+		}
+		if finish.Valid {
+			r.Finish = new(domain.AntFinish)
+			if err := fromJSON(finish.String, r.Finish); err != nil {
 				_ = rows.Close()
 				return nil, err
 			}

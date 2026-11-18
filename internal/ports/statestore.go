@@ -51,6 +51,11 @@ type AntRecord struct {
 	BaseBranch string
 	// PR is the ant PR, or nil before it is opened.
 	PR *domain.Ref
+	// Finish is the finish of the active run that Anthill has not carried
+	// out yet: the finish tool stores it with the move to finishing, and
+	// the decision that ends the finish clears it with the ant's next
+	// state (design D22). It is nil otherwise.
+	Finish *domain.AntFinish
 }
 
 // State is the ant's state: the target of its last transition.

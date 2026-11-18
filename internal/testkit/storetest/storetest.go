@@ -135,10 +135,17 @@ func testSessionIndex(t *testing.T, s ports.StateStore) {
 		t.Errorf("State() = %s", got.State())
 	}
 
-	// Saving appends transitions and changes fields.
+	// Saving appends transitions and changes fields, such as the pending
+	// finish stored with the move to finishing and cleared with the next
+	// state.
+	first.History = append(first.History, domain.Transition{From: domain.AntRunning, To: domain.AntFinishing, At: T0.Add(time.Hour), Reason: "finish: partial"})
+	first.Finish = &domain.AntFinish{Status: domain.FinishPartial, Summary: "half done", OpenPoints: []string{"docs", "tests"}, NewCommits: 2}
+	check(t, s.SaveAnt(ctx, first))
+	equal(t, "Ant with a finish", must(s.Ant(ctx, id1)), first)
+
 	pr := PR(7)
-	first.History = append(first.History, domain.Transition{From: domain.AntRunning, To: domain.AntSucceeded, At: T0.Add(time.Hour), Reason: "finished"})
-	first.SessionID, first.PR, first.Budget.Open = "session-1", &pr, nil
+	first.History = append(first.History, domain.Transition{From: domain.AntFinishing, To: domain.AntSucceeded, At: T0.Add(time.Hour), Reason: "finished"})
+	first.SessionID, first.PR, first.Budget.Open, first.Finish = "session-1", &pr, nil, nil
 	check(t, s.SaveAnt(ctx, first))
 	equal(t, "saved Ant", must(s.Ant(ctx, id1)), first)
 

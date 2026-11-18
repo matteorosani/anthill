@@ -70,6 +70,11 @@ func cloneAnt(r ports.AntRecord) ports.AntRecord {
 		pr := *r.PR
 		r.PR = &pr
 	}
+	if r.Finish != nil {
+		f := *r.Finish
+		f.OpenPoints = slices.Clone(f.OpenPoints)
+		r.Finish = &f
+	}
 	return r
 }
 
