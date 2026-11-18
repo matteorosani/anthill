@@ -2,10 +2,14 @@ package app_test
 
 import (
 	"context"
+	"slices"
 	"testing"
+	"testing/synctest"
+	"time"
 
 	"github.com/matteorosani/anthill/internal/app"
 	"github.com/matteorosani/anthill/internal/domain"
+	"github.com/matteorosani/anthill/internal/ports"
 )
 
 type acceptedOut struct {
@@ -58,8 +62,14 @@ func TestFinishHandedOver(t *testing.T) {
 		len(f.OpenPoints) != 2 || f.OpenPoints[1] != "key [REDACTED]" {
 		t.Errorf("handed over = %+v", f)
 	}
-	if got := e.antRecord().State(); got != domain.AntFinishing {
+	rec := e.antRecord()
+	if got := rec.State(); got != domain.AntFinishing {
 		t.Errorf("state = %s, want finishing", got)
+	}
+	// The finish is stored with the move to finishing, for ant
+	// supervision to carry out, also after a restart.
+	if s := rec.Finish; s == nil || s.Status != f.Status || s.Summary != f.Summary || !slices.Equal(s.OpenPoints, f.OpenPoints) || s.NewCommits != 2 {
+		t.Errorf("stored finish = %+v", s)
 	}
 	refused(t, e.call(token, domain.ToolPush, `{}`), "the run is finishing: no more tool calls")
 }
@@ -167,4 +177,35 @@ func TestOneFixSkipped(t *testing.T) {
 	if out.Message != "1 fixed and 1 skipped: Anthill verifies the fixes before pushing" {
 		t.Errorf("result = %+v", out)
 	}
+}
+
+// Spec ant-tools, "Closing tools end the run": once submit_review has
+// handed the result over, Anthill stops the review agent's process tree
+// itself, after the result is returned. finish_fixes shares the path.
+func TestReviewAgentStoppedAfterSubmitReview(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		e := newToolsEnv(t, domain.DefaultBudgetPolicy())
+		e.claimReview()
+		token := e.issue(domain.RoleReviewAgent)
+		x, err := e.executor.Start(context.Background(), ports.ExecSpec{Runner: domain.RunnerClaudeCode})
+		if err != nil {
+			t.Fatal(err)
+		}
+		e.tools.Attach(token, app.RunChannel{Exec: x.ID})
+		var out acceptedOut
+		e.mustCall(token, domain.ToolSubmitReview, `{"summary":"No issues.","findings":[]}`, &out)
+		synctest.Wait()
+		f := e.executor.Execution(x.ID)
+		if stops := f.Stops(); !slices.Equal(stops, []time.Duration{app.StopGrace}) || !f.Ended() {
+			t.Errorf("stops = %v, ended %v: want the agent stopped once", stops, f.Ended())
+		}
+		// A refused second report stops nothing more.
+		refused(t, e.call(token, domain.ToolSubmitReview, `{"summary":"x","findings":[]}`), app.MessageAlreadyReported)
+		synctest.Wait()
+		if stops := f.Stops(); len(stops) != 1 {
+			t.Errorf("stops = %v", stops)
+		}
+		for range x.Events {
+		}
+	})
 }
