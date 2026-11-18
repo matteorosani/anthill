@@ -105,6 +105,9 @@ func (s *AntSupervisor) exited(ctx context.Context, r *activeRun, ev ports.ExecE
 	err := s.endRun(ctx, r, ev)
 	s.deps.Tokens.Revoke(r.token)
 	s.unreserve(r.item)
+	// A run that ended is a trigger (design D22): a finishing ant's finish
+	// is carried out now that its process has ended.
+	err = errors.Join(err, s.Trigger(ctx, r.ant))
 	s.slotFreed(ctx)
 	return err
 }
@@ -118,15 +121,20 @@ func (s *AntSupervisor) endRun(ctx context.Context, r *activeRun, ev ports.ExecE
 	if err != nil {
 		return fmt.Errorf("reading ant %d: %w", r.ant, err)
 	}
-	var errs []error
-	if state := rec.State(); state.HasActiveRun() {
+	var (
+		errs  []error
+		ended domain.AntState
+	)
+	if state := rec.State(); state.HasActiveRun() && !finished(rec) {
 		to := domain.AntFailed
 		outcome, reason = ports.OutcomeFailed, ReasonExitedWithoutFinish
 		if ev.Kind == ports.ExecEndedAtDeadline && domain.CanTransition(state, domain.AntTimedOut) {
 			to, outcome, reason = domain.AntTimedOut, ports.OutcomeTimedOut, ReasonBudgetUsedUp
 		}
-		if _, err := s.transition(ctx, rec, to, reason); err != nil {
+		if rec, err = s.transition(ctx, rec, to, reason); err != nil {
 			errs = append(errs, err)
+		} else {
+			ended = to
 		}
 	} else if outcome == "" {
 		outcome, reason = outcomeOf(rec)
@@ -136,7 +144,17 @@ func (s *AntSupervisor) endRun(ctx context.Context, r *activeRun, ev ports.ExecE
 	if err := s.deps.Runs.EndRun(ctx, run, r.usage, r.resumed); err != nil {
 		errs = append(errs, fmt.Errorf("recording the end of run %d: %w", run.ID, err))
 	}
+	if ended != "" {
+		errs = append(errs, s.endedWithoutFinish(ctx, rec, r, ended, reason))
+	}
 	return errors.Join(errs...)
+}
+
+// finished reports whether the ant's active run called finish: the ant is
+// finishing with its finish stored. Its run ends however its process
+// ends, and the finish is carried out.
+func finished(rec ports.AntRecord) bool {
+	return rec.State() == domain.AntFinishing && rec.Finish != nil
 }
 
 // outcomeOf is the outcome of a run whose ant some service moved out of
@@ -147,6 +165,10 @@ func outcomeOf(rec ports.AntRecord) (ports.RunOutcome, string) {
 		reason = rec.History[n-1].Reason
 	}
 	switch rec.State() {
+	case domain.AntFinishing:
+		if rec.Finish != nil {
+			return finishOutcome(rec.Finish.Status), finishReason(rec.Finish.Status)
+		}
 	case domain.AntFailed:
 		return ports.OutcomeFailed, reason
 	case domain.AntTimedOut:

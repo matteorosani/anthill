@@ -220,6 +220,9 @@ type AntTools struct {
 	notices map[ports.AntID][]string
 	// statuses holds the status comment of each run, by session.
 	statuses map[tokenKey]string
+	// progress holds the text of each run's last progress report, by
+	// session.
+	progress map[tokenKey]string
 	// done holds the review and fix sessions that reported already.
 	done map[tokenKey]bool
 }
@@ -244,6 +247,7 @@ func NewAntTools(deps AntToolsDeps, opts AntToolsOptions) *AntTools {
 		waiters:  map[ports.AntID]chan domain.ExtensionRequest{},
 		notices:  map[ports.AntID][]string{},
 		statuses: map[tokenKey]string{},
+		progress: map[tokenKey]string{},
 		done:     map[tokenKey]bool{},
 	}
 }
@@ -284,6 +288,7 @@ func (t *AntTools) Revoke(token string) {
 	}
 	delete(t.sessions, key)
 	delete(t.statuses, key)
+	delete(t.progress, key)
 	delete(t.done, key)
 	t.mu.Unlock()
 }
@@ -300,6 +305,16 @@ func (t *AntTools) Attach(token string, ch RunChannel) {
 		s.Channel = ch
 		t.sessions[key] = s
 	}
+}
+
+// Progress returns the text of the last progress report of the token's
+// run, already safe to post, or "" when it reported none or the token is
+// unknown or revoked.
+func (t *AntTools) Progress(token string) string {
+	key := sha256.Sum256([]byte(token))
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	return t.progress[key]
 }
 
 func (t *AntTools) session(token string) (ToolSession, tokenKey, bool) {

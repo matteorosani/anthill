@@ -174,7 +174,8 @@ func (t *AntTools) reportProgress(ctx context.Context, c *toolCall) (any, error)
 	}
 	item := c.ant.Item
 	id := fmt.Sprintf("status-%d-%d", c.session.Ant, c.session.Run)
-	ac := c.antComment(domain.CommentStatus, item, id, t.summary(c, args.Text))
+	text := t.summary(c, args.Text)
+	ac := c.antComment(domain.CommentStatus, item, id, text)
 	tracker, err := t.tracker(ctx, item)
 	if err != nil {
 		return nil, err
@@ -194,6 +195,7 @@ func (t *AntTools) reportProgress(ctx context.Context, c *toolCall) (any, error)
 	t.mu.Lock()
 	if _, ok := t.sessions[c.key]; ok {
 		t.statuses[c.key] = posted.ID
+		t.progress[c.key] = text
 	}
 	t.mu.Unlock()
 	return postedResult{URL: posted.URL}, nil
