@@ -27,6 +27,8 @@ type activeRun struct {
 	usage   ports.Usage
 	outcome ports.RunOutcome
 	reason  string
+	// clock is the timekeeper's record of the run, which mu guards.
+	clock runClock
 }
 
 // reserve takes a slot for a run of the item, within the machine's
@@ -264,6 +266,7 @@ func (s *AntSupervisor) launch(ctx context.Context, rec ports.AntRecord, tw Tool
 		return s.endUnstarted(ctx, r, err)
 	}
 	r.exec = exec.ID
+	r.clock.deadline = spec.Deadline
 	s.deps.Tokens.Attach(token, RunChannel{Capabilities: exec.Capabilities, Exec: exec.ID})
 	s.mu.Lock()
 	s.runs[rec.Item] = r
@@ -341,6 +344,9 @@ func (s *AntSupervisor) input(ctx context.Context, rec ports.AntRecord, d domain
 	}
 	if err != nil {
 		return "", fmt.Errorf("writing the input of a run of %s: %w", rec.Item, err)
+	}
+	if d.Note != "" {
+		in = d.Note + "\n\n" + in
 	}
 	return in, nil
 }

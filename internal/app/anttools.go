@@ -222,6 +222,9 @@ type AntTools struct {
 	statuses map[tokenKey]string
 	// done holds the review and fix sessions that reported already.
 	done map[tokenKey]bool
+	// budgets is told when an ant's budget pauses, counts again or grows
+	// (see WatchBudgets).
+	budgets BudgetWatcher
 }
 
 // tokenKey is the SHA-256 of a token.

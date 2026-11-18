@@ -45,6 +45,7 @@ var (
 type TaskClaims interface {
 	Acquire(ctx context.Context, ref domain.Ref, kind domain.ClaimKind) (ports.HeldClaim, error)
 	Unpark(ctx context.Context, item domain.Ref) error
+	Park(ctx context.Context, item domain.Ref) error
 	Release(ctx context.Context, ref domain.Ref, kind domain.ClaimKind) error
 	Held(ctx context.Context) ([]ports.HeldClaim, error)
 }
@@ -100,6 +101,7 @@ type AntSupervisorStore interface {
 	ports.RunLog
 	ports.StoredChanges
 	ports.RunStarts
+	ports.Extensions
 }
 
 // AntSupervisorDeps are the ports and services the supervisor uses.
@@ -130,6 +132,13 @@ type AntSupervisorDeps struct {
 	// queued.
 	Activity RunActivity
 	Due      DueRuns
+	// Messages delivers the timekeeper's warning and notice to stop to
+	// the agent of an active run, and Extensions applies the queen's
+	// extension decisions; the ant tools implement both. Both are
+	// optional: without Messages the timekeeper only moves deadlines, and
+	// without Extensions DecideExtension fails.
+	Messages   RunMessages
+	Extensions ExtensionDecider
 }
 
 // AntSupervisorOptions are the settings of the supervisor.
@@ -190,6 +199,11 @@ func NewAntSupervisor(deps AntSupervisorDeps, opts AntSupervisorOptions) *AntSup
 		items:    map[domain.Ref]*sync.Mutex{},
 	}
 	handle(s, s.startRun)
+	if s.deps.Due == nil {
+		// The queen actions say which run is due after a retry or a
+		// continue.
+		s.deps.Due = s
+	}
 	return s
 }
 

@@ -52,7 +52,7 @@ type supEnv struct {
 	errs []error
 }
 
-func newSupEnv(t *testing.T, capacity int) *supEnv {
+func newSupEnv(t *testing.T, capacity int, opts ...func(*app.AntSupervisorDeps)) *supEnv {
 	t.Helper()
 	e := &supEnv{t: t, ctx: context.Background(), capacity: capacity}
 	e.clock = testkit.NewClock(t0)
@@ -75,7 +75,7 @@ func newSupEnv(t *testing.T, capacity int) *supEnv {
 	}
 	e.claiming = app.NewClaiming(route, e.store, e.clock, e.notifier, &testkit.ClaimLossHandler{}, app.ClaimingOptions{})
 	e.claims = &racingClaims{TaskClaims: e.claiming}
-	e.tools = app.NewAntTools(app.AntToolsDeps{Store: e.store, Clock: e.clock, Executor: e.exec}, app.AntToolsOptions{})
+	e.tools = app.NewAntTools(app.AntToolsDeps{Store: e.store, Claims: e.claiming, Clock: e.clock, Executor: e.exec}, app.AntToolsOptions{})
 	e.briefs = &fakeBriefs{}
 	e.answers = &fakeAnswers{answers: map[ports.AntID]*domain.ChangeEvent{}}
 	e.ends = &fakeRunEnds{log: e.store}
@@ -88,7 +88,7 @@ func newSupEnv(t *testing.T, capacity int) *supEnv {
 	workspace := func(context.Context, domain.Ref) (app.ToolWorkspace, error) {
 		return app.ToolWorkspace{Clone: e.clone, Repo: shop, Settings: e.settings}, nil
 	}
-	e.sup = app.NewAntSupervisor(app.AntSupervisorDeps{
+	deps := app.AntSupervisorDeps{
 		Store:       e.store,
 		Claims:      e.claims,
 		Eligibility: app.NewEligibility(tracker, e.claiming, target, e.store),
@@ -104,7 +104,11 @@ func newSupEnv(t *testing.T, capacity int) *supEnv {
 		Capacity:    func() int { return e.capacity },
 		Runs:        e.ends,
 		Due:         e.due,
-	}, app.AntSupervisorOptions{
+	}
+	for _, o := range opts {
+		o(&deps)
+	}
+	e.sup = app.NewAntSupervisor(deps, app.AntSupervisorOptions{
 		MCPCommand: func(token string) []string { return []string{"anthill", "mcp", "--ant", token} },
 		Environ:    []string{"PATH=/usr/bin", "GH_TOKEN=secret"},
 		Errors: func(err error) {
