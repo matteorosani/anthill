@@ -52,15 +52,11 @@ func (t *AntTools) finish(ctx context.Context, c *toolCall) (any, error) {
 	if err := toState(ant, domain.AntFinishing, t.clock.Now(), "finish: "+string(args.Status)); err != nil {
 		return nil, err
 	}
-	end := context.WithoutCancel(ctx)
-	if err := t.store.SaveAnt(end, withAnt(rec, ant)); err != nil {
-		return nil, err
-	}
 	points := make([]string, len(args.OpenPoints))
 	for i, p := range args.OpenPoints {
 		points[i] = t.safe(c, p)
 	}
-	err = t.deps.Finishes.Finish(end, FinishRequest{
+	f := FinishRequest{
 		Ant:        c.session.Ant,
 		Run:        c.session.Run,
 		Role:       c.session.Role,
@@ -68,7 +64,16 @@ func (t *AntTools) finish(ctx context.Context, c *toolCall) (any, error) {
 		Summary:    t.summary(c, args.Summary),
 		OpenPoints: points,
 		NewCommits: len(commits),
-	})
+	}
+	// The finish is stored with the move to finishing, in one write, so
+	// that ant supervision finds it after a restart (design D22).
+	rec = withAnt(rec, ant)
+	rec.Finish = &domain.AntFinish{Status: f.Status, Summary: f.Summary, OpenPoints: f.OpenPoints, NewCommits: f.NewCommits}
+	end := context.WithoutCancel(ctx)
+	if err := t.store.SaveAnt(end, rec); err != nil {
+		return nil, err
+	}
+	err = t.deps.Finishes.Finish(end, f)
 	if err != nil {
 		return nil, fmt.Errorf("handing over the finish: %w", err)
 	}
@@ -174,7 +179,12 @@ func (t *AntTools) finishFixes(ctx context.Context, c *toolCall) (any, error) {
 	return acceptedResult{Status: "submitted", Message: fmt.Sprintf("%d fixed and %d skipped: Anthill verifies the fixes before pushing", fixed, len(results)-fixed)}, nil
 }
 
-// report hands a review or fix agent's result over once.
+// report hands a review or fix agent's result over once, then ends the
+// agent: once submit_review or finish_fixes returns, Anthill stops the
+// agent's process tree itself, so that nothing it started keeps it
+// running (spec ant-tools, "Closing tools end the run"). The stop runs in
+// the background, so the result reaches the agent first; the shepherd
+// records the round when the agent's process has ended.
 func (t *AntTools) report(c *toolCall, handOver func() error) error {
 	t.mu.Lock()
 	if t.done[c.key] {
@@ -188,6 +198,11 @@ func (t *AntTools) report(c *toolCall, handOver func() error) error {
 		delete(t.done, c.key)
 		t.mu.Unlock()
 		return err
+	}
+	if exec := c.session.Channel.Exec; exec != "" && t.deps.Executor != nil {
+		// A stop that fails leaves the agent to the deadline the
+		// executor holds; the result is already handed over.
+		go func() { _ = t.deps.Executor.Stop(exec, StopGrace) }()
 	}
 	return nil
 }

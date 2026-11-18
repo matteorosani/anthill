@@ -75,19 +75,27 @@ func newSupEnv(t *testing.T, capacity int) *supEnv {
 	}
 	e.claiming = app.NewClaiming(route, e.store, e.clock, e.notifier, &testkit.ClaimLossHandler{}, app.ClaimingOptions{})
 	e.claims = &racingClaims{TaskClaims: e.claiming}
-	e.tools = app.NewAntTools(app.AntToolsDeps{Store: e.store, Clock: e.clock, Executor: e.exec}, app.AntToolsOptions{})
 	e.briefs = &fakeBriefs{}
 	e.answers = &fakeAnswers{answers: map[ports.AntID]*domain.ChangeEvent{}}
 	e.ends = &fakeRunEnds{log: e.store}
 	e.due = &fakeDue{}
 
 	tracker := func(context.Context, domain.Ref) (ports.TrackerPort, error) { return e.gh.Client("mrosani"), nil }
+	codeHost := func(context.Context, domain.Repository) (ports.CodeHostPort, error) {
+		return e.gh.Client("mrosani"), nil
+	}
 	target := func(context.Context, domain.WorkItem) (app.ItemTarget, error) {
 		return app.ItemTarget{Repository: shop, Available: true, Settings: e.settings}, nil
 	}
 	workspace := func(context.Context, domain.Ref) (app.ToolWorkspace, error) {
 		return app.ToolWorkspace{Clone: e.clone, Repo: shop, Settings: e.settings}, nil
 	}
+	// The ant tools hand finishes to the supervisor, made below.
+	e.tools = app.NewAntTools(app.AntToolsDeps{
+		Store: e.store, Clock: e.clock, Executor: e.exec, Claims: e.claiming,
+		Tracker: tracker, CodeHost: codeHost, Workspace: workspace, Git: e.git, Notifier: e.notifier,
+		Finishes: supFinishes{e}, Runs: supFinishes{e},
+	}, app.AntToolsOptions{})
 	e.sup = app.NewAntSupervisor(app.AntSupervisorDeps{
 		Store:       e.store,
 		Claims:      e.claims,
@@ -104,6 +112,9 @@ func newSupEnv(t *testing.T, capacity int) *supEnv {
 		Capacity:    func() int { return e.capacity },
 		Runs:        e.ends,
 		Due:         e.due,
+		Tracker:     tracker,
+		CodeHost:    codeHost,
+		Git:         e.git,
 	}, app.AntSupervisorOptions{
 		MCPCommand: func(token string) []string { return []string{"anthill", "mcp", "--ant", token} },
 		Environ:    []string{"PATH=/usr/bin", "GH_TOKEN=secret"},
@@ -278,6 +289,18 @@ func (e *supEnv) wantActive(items ...int) {
 	if got := e.sup.ActiveRuns(); !slices.Equal(got, want) {
 		e.t.Fatalf("active runs = %v, want %v", got, want)
 	}
+}
+
+// supFinishes hands finishes to the env's supervisor, which is made after
+// the ant tools.
+type supFinishes struct{ e *supEnv }
+
+func (f supFinishes) Finish(ctx context.Context, r app.FinishRequest) error {
+	return f.e.sup.Finish(ctx, r)
+}
+
+func (f supFinishes) EndRun(ctx context.Context, ant ports.AntID, run ports.RunID, reason string) error {
+	return f.e.sup.EndRun(ctx, ant, run, reason)
 }
 
 // racingClaims lets a test act just before an acquisition, such as
@@ -632,7 +655,8 @@ func TestQueuedAntNoLongerEligibleWhenASlotFrees(t *testing.T) {
 		if e.claimed(13) || len(e.exec.Executions()) != 1 {
 			t.Error("the ineligible ant was claimed or started")
 		}
-		if got := e.notifier.Kinds(); !slices.Equal(got, []ports.NotificationKind{domain.NotifyFailed}) {
+		// gh-12's run exited without finish, then gh-13 was not started.
+		if got := e.notifier.Kinds(); !slices.Equal(got, []ports.NotificationKind{domain.NotifyFailed, domain.NotifyFailed}) {
 			t.Errorf("notifications = %v", got)
 		}
 	})

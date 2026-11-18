@@ -39,12 +39,16 @@ var (
 	_ RunEnds    = (*UsageRecorder)(nil)
 	_ TaskClaims = (*Claiming)(nil)
 	_ RunTokens  = (*AntTools)(nil)
+
+	_ FinishHandler = (*AntSupervisor)(nil)
+	_ RunEnder      = (*AntSupervisor)(nil)
 )
 
 // TaskClaims is the part of Claiming the supervisor uses for task claims.
 type TaskClaims interface {
 	Acquire(ctx context.Context, ref domain.Ref, kind domain.ClaimKind) (ports.HeldClaim, error)
 	Unpark(ctx context.Context, item domain.Ref) error
+	Park(ctx context.Context, item domain.Ref) error
 	Release(ctx context.Context, ref domain.Ref, kind domain.ClaimKind) error
 	Held(ctx context.Context) ([]ports.HeldClaim, error)
 }
@@ -56,6 +60,9 @@ type RunTokens interface {
 	Issue(s ToolSession) (string, error)
 	Attach(token string, ch RunChannel)
 	Revoke(token string)
+	// Progress is the last progress report of the token's run, or "",
+	// for the summary of a run that ended without finishing.
+	Progress(token string) string
 }
 
 // EligibilityChecker re-evaluates an item's eligibility on fresh provider
@@ -125,6 +132,12 @@ type AntSupervisorDeps struct {
 	Capacity func() int
 	// Runs records the end of each run.
 	Runs RunEnds
+	// Tracker and CodeHost reach the item's tracker and the code host of
+	// its repository, and Git counts an ant branch's new commits, for the
+	// finish and the wrap-up of a run that ended without finishing.
+	Tracker  TrackerRoute
+	CodeHost CodeHostRoute
+	Git      ports.SourceControl
 	// Activity and Due are optional. Without Activity, activity lines are
 	// dropped; without Due, ants queued for a retry or continue stay
 	// queued.
@@ -190,6 +203,9 @@ func NewAntSupervisor(deps AntSupervisorDeps, opts AntSupervisorOptions) *AntSup
 		items:    map[domain.Ref]*sync.Mutex{},
 	}
 	handle(s, s.startRun)
+	handle(s, s.openPR)
+	handle(s, s.completeFinish)
+	handle(s, s.finishWithNoChange)
 	return s
 }
 
@@ -301,8 +317,8 @@ func (s *AntSupervisor) decision(ctx context.Context, rec ports.AntRecord, snap 
 }
 
 // snapshot builds what the playbook decides from (design D22). The
-// finish of the active run, the answer to a pending question and the
-// changes not yet routed are filled in by the services that own them.
+// answer to a pending question and the changes not yet routed are filled
+// in by the services that own them.
 func (s *AntSupervisor) snapshot(ctx context.Context, rec ports.AntRecord, settings domain.Effective) (domain.AntSnapshot, error) {
 	snap := domain.AntSnapshot{
 		State:           rec.State(),
@@ -333,6 +349,11 @@ func (s *AntSupervisor) snapshot(ctx context.Context, rec ports.AntRecord, setti
 	}
 	if rec.PR != nil {
 		snap.PR = &domain.AntPR{Ref: *rec.PR}
+	}
+	if snap.State == domain.AntFinishing && rec.Finish != nil {
+		if err := s.finishSnapshot(ctx, rec, runs, &snap); err != nil {
+			return domain.AntSnapshot{}, err
+		}
 	}
 	if s.deps.Answers != nil && (snap.State == domain.AntAwaitingInput || snap.QueuedFrom == domain.AntAwaitingInput) {
 		if snap.Answer, err = s.deps.Answers.Answer(ctx, rec.ID); err != nil {
