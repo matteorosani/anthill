@@ -9,22 +9,6 @@ import (
 	"github.com/matteorosani/anthill/internal/ports"
 )
 
-// Retrier retries a failed ant the way the queen does: the same worktree,
-// the session resumed with a note about the failure (spec ant-execution,
-// "Retry after crash"). It is called without the ant's lock.
-//
-// TODO(#91): replace with the supervisor's Retry once it lands.
-type Retrier interface {
-	Retry(ctx context.Context, ant ports.AntID) error
-}
-
-// RestartDeps are what reconciliation hands an interrupted ant to.
-type RestartDeps struct {
-	// Retry resumes the ants of repositories that set auto-resume. Nil
-	// handles them as exits without finishing too.
-	Retry Retrier
-}
-
 // SummaryInterruptedByRestart is the summary of the wrap-up of an ant
 // whose run a restart interrupted.
 const SummaryInterruptedByRestart = "Anthill restarted while this ant's run was active, so the run ended without finishing. The queen can retry it, which resumes the session, or abandon it."
@@ -48,7 +32,7 @@ const SummaryInterruptedByRestart = "Anthill restarted while this ant's run was 
 // Ants already handled are left alone, so calling it again does nothing
 // new, and an ant whose run this supervisor started is never touched, so
 // no work is started twice. Errors of one ant do not stop the others.
-func (s *AntSupervisor) Reconcile(ctx context.Context, deps RestartDeps) error {
+func (s *AntSupervisor) Reconcile(ctx context.Context) error {
 	var active []domain.AntState
 	for _, st := range domain.AntStates {
 		if st.HasActiveRun() {
@@ -61,14 +45,14 @@ func (s *AntSupervisor) Reconcile(ctx context.Context, deps RestartDeps) error {
 	}
 	var errs []error
 	for _, rec := range ants {
-		next, err := s.interrupted(ctx, rec.ID, deps)
+		next, err := s.interrupted(ctx, rec.ID)
 		if err != nil {
 			errs = append(errs, fmt.Errorf("reconciling ant %d of %s: %w", rec.ID, rec.Item, err))
 			continue
 		}
 		switch next {
 		case afterRestartResume:
-			err = deps.Retry.Retry(ctx, rec.ID)
+			err = s.Retry(ctx, rec.ID)
 		case afterRestartTrigger:
 			err = s.Trigger(ctx, rec.ID)
 		}
@@ -93,7 +77,7 @@ const (
 // interrupted ends the runs of an ant whose run the restart interrupted
 // and makes it failed, then wraps it up unless it is to be resumed. A
 // finishing ant with its finish stored is left to the playbook.
-func (s *AntSupervisor) interrupted(ctx context.Context, id ports.AntID, deps RestartDeps) (afterRestart, error) {
+func (s *AntSupervisor) interrupted(ctx context.Context, id ports.AntID) (afterRestart, error) {
 	defer s.lockAnt(id)()
 	rec, err := s.store.Ant(ctx, id)
 	if err != nil {
@@ -131,7 +115,7 @@ func (s *AntSupervisor) interrupted(ctx context.Context, id ports.AntID, deps Re
 	if rec, err = s.transition(ctx, rec, domain.AntFailed, ReasonInterruptedByRestart); err != nil {
 		return afterRestartNothing, err
 	}
-	if ws.Settings.AutoResume && deps.Retry != nil {
+	if ws.Settings.AutoResume {
 		return afterRestartResume, nil
 	}
 	return afterRestartNothing, s.wrapUpInterrupted(ctx, rec, last)

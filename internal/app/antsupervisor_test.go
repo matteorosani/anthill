@@ -52,7 +52,7 @@ type supEnv struct {
 	errs []error
 }
 
-func newSupEnv(t *testing.T, capacity int) *supEnv {
+func newSupEnv(t *testing.T, capacity int, opts ...func(*app.AntSupervisorDeps)) *supEnv {
 	t.Helper()
 	e := &supEnv{t: t, ctx: context.Background(), capacity: capacity}
 	e.clock = testkit.NewClock(t0)
@@ -96,7 +96,7 @@ func newSupEnv(t *testing.T, capacity int) *supEnv {
 		Tracker: tracker, CodeHost: codeHost, Workspace: workspace, Git: e.git, Notifier: e.notifier,
 		Finishes: supFinishes{e}, Runs: supFinishes{e},
 	}, app.AntToolsOptions{})
-	e.sup = app.NewAntSupervisor(app.AntSupervisorDeps{
+	deps := app.AntSupervisorDeps{
 		Store:       e.store,
 		Claims:      e.claims,
 		Eligibility: app.NewEligibility(tracker, e.claiming, target, e.store),
@@ -115,7 +115,11 @@ func newSupEnv(t *testing.T, capacity int) *supEnv {
 		Tracker:     tracker,
 		CodeHost:    codeHost,
 		Git:         e.git,
-	}, app.AntSupervisorOptions{
+	}
+	for _, o := range opts {
+		o(&deps)
+	}
+	e.sup = app.NewAntSupervisor(deps, app.AntSupervisorOptions{
 		MCPCommand: func(token string) []string { return []string{"anthill", "mcp", "--ant", token} },
 		Environ:    []string{"PATH=/usr/bin", "GH_TOKEN=secret"},
 		Errors: func(err error) {

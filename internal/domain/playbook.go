@@ -146,6 +146,10 @@ type StartRun struct {
 	// NewBudget is the follow-up budget of a follow-up run started for
 	// changes. 0 keeps the ant's budget.
 	NewBudget time.Duration
+	// Note is told to the run before its input, such as how the previous
+	// run ended for a retry or a continue (spec ant-execution, "Retry
+	// after crash"). The playbook never sets it: the queen actions do.
+	Note string
 }
 
 // DeliverChange gives a change to the active run. Its effect: the change

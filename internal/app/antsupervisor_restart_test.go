@@ -1,11 +1,9 @@
 package app_test
 
 import (
-	"context"
 	"fmt"
 	"slices"
 	"strings"
-	"sync"
 	"testing"
 	"testing/synctest"
 	"time"
@@ -40,25 +38,6 @@ func (e *supEnv) parked(n int) bool {
 	return slices.ContainsFunc(held, func(h ports.HeldClaim) bool { return h.Ref == ghRef(n) && h.Parked })
 }
 
-// fakeRetrier records the ants retried.
-type fakeRetrier struct {
-	mu   sync.Mutex
-	ants []ports.AntID
-}
-
-func (f *fakeRetrier) Retry(_ context.Context, ant ports.AntID) error {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	f.ants = append(f.ants, ant)
-	return nil
-}
-
-func (f *fakeRetrier) all() []ports.AntID {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	return append([]ports.AntID(nil), f.ants...)
-}
-
 // leftRunning stores what a daemon that stopped mid-run leaves for item
 // n: a live task claim, and an ant in state with an active run of session
 // sess. The process is gone.
@@ -75,7 +54,7 @@ func (e *supEnv) leftRunning(n int, sess string, states ...domain.AntState) (por
 	}
 	rec := storetest.Ant(n, states...)
 	rec.Item, rec.Runner, rec.SessionID = ghRef(n), string(domain.RunnerClaudeCode), sess
-	rec.Worktree = fmt.Sprintf("/home/me/.anthill/worktrees/gh-%d", n)
+	rec.Worktree = fmt.Sprintf("/home/me/.anthill/worktrees/gh-%d-fix", n)
 	if err := e.git.Fetch(e.ctx, e.clone); err != nil {
 		e.t.Fatal(err)
 	}
@@ -100,10 +79,10 @@ func (e *supEnv) leftRunning(n int, sess string, states ...domain.AntState) (por
 	return id, run
 }
 
-func (e *supEnv) reconcile(deps app.RestartDeps) {
+func (e *supEnv) reconcile() {
 	e.t.Helper()
 	done := make(chan error, 1)
-	go func() { done <- e.sup.Reconcile(e.ctx, deps) }()
+	go func() { done <- e.sup.Reconcile(e.ctx) }()
 	e.settle()
 	if err := <-done; err != nil {
 		e.t.Fatalf("Reconcile() = %v", err)
@@ -129,8 +108,8 @@ func TestDaemonRestartedMidRun(t *testing.T) {
 					states = states[:2]
 				}
 				id, run := e.leftRunning(12, "sess-12", states...)
-				e.git.Commit(fmt.Sprintf("/home/me/.anthill/worktrees/gh-%d", 12), "half done")
-				e.reconcile(app.RestartDeps{Retry: &fakeRetrier{}})
+				e.git.Commit(fmt.Sprintf("/home/me/.anthill/worktrees/gh-%d-fix", 12), "half done")
+				e.reconcile()
 
 				rec := e.wantState(id, domain.AntFailed)
 				if lastReason(rec) != app.ReasonInterruptedByRestart {
@@ -168,7 +147,7 @@ func TestDaemonRestartedMidRun(t *testing.T) {
 				}
 
 				// A second reconciliation changes nothing.
-				e.reconcile(app.RestartDeps{})
+				e.reconcile()
 				if len(e.restartWrapUps(12)) != 1 || len(e.ends.all()) != 1 || len(e.ant(id).History) != len(rec.History) {
 					t.Error("a second reconciliation handled the ant again")
 				}
@@ -178,46 +157,41 @@ func TestDaemonRestartedMidRun(t *testing.T) {
 }
 
 // Task 14.8, scenario "Daemon restarted mid-run", with auto-resume: the
-// ant is resumed automatically through the retry, gets no wrap-up, and
-// keeps its claim.
+// ant is resumed automatically through the queen's retry, which resumes
+// its session in the same worktree. It gets no wrap-up, and its claim is
+// kept and renewed.
 func TestDaemonRestartedMidRunAutoResume(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
-		e := newSupEnv(t, 2)
+		e := newActionsEnv(t, 2)
 		e.settings.AutoResume = true
 		id, _ := e.leftRunning(12, "sess-12", domain.AntStarting, domain.AntRunning)
-		retry := &fakeRetrier{}
-		e.reconcile(app.RestartDeps{Retry: retry})
+		e.reconcile()
 
-		rec := e.wantState(id, domain.AntFailed)
-		if lastReason(rec) != app.ReasonInterruptedByRestart {
-			t.Errorf("reason %q", lastReason(rec))
+		rec := e.wantState(id, domain.AntRunning)
+		if !slices.ContainsFunc(rec.History, func(tr domain.Transition) bool {
+			return tr.To == domain.AntFailed && tr.Reason == app.ReasonInterruptedByRestart
+		}) {
+			t.Errorf("history %+v, want failed with %q before the retry", rec.History, app.ReasonInterruptedByRestart)
 		}
-		if got := retry.all(); len(got) != 1 || got[0] != id {
-			t.Errorf("retried %v", got)
-		}
-		if c := e.restartWrapUps(12); len(c) != 0 || e.parked(12) {
-			t.Errorf("wrapped up: comments %+v, parked %v", c, e.parked(12))
-		}
-		if ends := e.ends.all(); len(ends) != 1 || ends[0].run.Reason != app.ReasonInterruptedByRestart {
+		if ends := e.ends.all(); len(ends) != 1 || ends[0].run.Reason != app.ReasonInterruptedByRestart || ends[0].reported != (ports.Usage{}) {
 			t.Errorf("run ends %+v", ends)
 		}
-		if !e.claimed(12) {
-			t.Error("the claim was not kept")
+		x := e.execOf(ghRef(12))
+		if x.Spec.Session != "sess-12" || x.Spec.Run.Worktree != rec.Worktree {
+			t.Errorf("resumed run spec %+v, want session sess-12 in %s", x.Spec, rec.Worktree)
 		}
-	})
-}
+		if runs := e.runs(id); len(runs) != 2 {
+			t.Errorf("runs %+v, want the interrupted one and the resumed one", runs)
+		}
+		if c := e.restartWrapUps(12); len(c) != 0 || e.parked(12) || !e.claimed(12) {
+			t.Errorf("wrap-up comments %+v, parked %v, claimed %v", c, e.parked(12), e.claimed(12))
+		}
 
-// Task 14.8: without a retry to resume with, an auto-resume repository's
-// ant is handled as an exit without finishing.
-func TestRestartAutoResumeWithoutRetrier(t *testing.T) {
-	synctest.Test(t, func(t *testing.T) {
-		e := newSupEnv(t, 2)
-		e.settings.AutoResume = true
-		id, _ := e.leftRunning(12, "sess-12", domain.AntStarting, domain.AntRunning)
-		e.reconcile(app.RestartDeps{})
-		e.wantState(id, domain.AntFailed)
-		if c := e.restartWrapUps(12); len(c) != 1 || !e.parked(12) {
-			t.Errorf("restart wrap-up comments %+v, parked %v", c, e.parked(12))
+		// A second reconciliation leaves the resumed run alone.
+		e.reconcile()
+		e.wantState(id, domain.AntRunning)
+		if n := len(e.exec.Executions()); n != 1 {
+			t.Errorf("%d runs started", n)
 		}
 	})
 }
@@ -234,7 +208,7 @@ func TestRestartCarriesOutAStoredFinish(t *testing.T) {
 		if err := e.store.SaveAnt(e.ctx, rec); err != nil {
 			t.Fatal(err)
 		}
-		e.reconcile(app.RestartDeps{})
+		e.reconcile()
 		rec = e.wantState(id, domain.AntDone)
 		if lastReason(rec) == app.ReasonInterruptedByRestart || len(e.restartWrapUps(12)) != 0 {
 			t.Errorf("the finishing ant was interrupted: %+v", rec.History)
@@ -251,7 +225,7 @@ func TestRestartStartsQueuedAnts(t *testing.T) {
 		e.clock.Advance(time.Minute)
 		second := e.queuedAnt(13)
 
-		e.reconcile(app.RestartDeps{})
+		e.reconcile()
 		e.wantState(first, domain.AntRunning)
 		e.wantState(second, domain.AntQueued)
 		e.wantActive(12)
@@ -269,7 +243,7 @@ func TestRestartLeavesRunsOfThisDaemon(t *testing.T) {
 		e := newSupEnv(t, 2)
 		interrupted, _ := e.leftRunning(12, "sess-12", domain.AntStarting, domain.AntRunning)
 		mine := e.mustAccept(13)
-		e.reconcile(app.RestartDeps{})
+		e.reconcile()
 
 		e.wantState(mine, domain.AntRunning)
 		e.wantState(interrupted, domain.AntFailed)
