@@ -254,3 +254,25 @@ func TestOpenCloneRefusesCommandURLs(t *testing.T) {
 		}
 	}
 }
+
+func TestBranches(t *testing.T) {
+	f := newFixture(t)
+	if got, err := f.git.Branches(f.ctx, f.c, "ant"); err != nil || len(got) != 0 {
+		t.Errorf("Branches() of a clone without ant branches = %v, %v", got, err)
+	}
+	gitIn(t, f.seed, "push", "--quiet", "origin", "main:ant/gh-12-fix", "main:ant/gh-13", "main:antler", "main:other/gh-14")
+	if err := f.git.Fetch(f.ctx, f.c); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.git.CreateBranch(f.ctx, f.c, "ant/gh-15-local", "main"); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.git.CreateBranch(f.ctx, f.c, "ant/gh-13", "main"); err != nil {
+		t.Fatal(err)
+	}
+	got, err := f.git.Branches(f.ctx, f.c, "ant")
+	want := []string{"ant/gh-12-fix", "ant/gh-13", "ant/gh-15-local"}
+	if err != nil || !slices.Equal(got, want) {
+		t.Errorf("Branches() = %v, %v, want %v", got, err, want)
+	}
+}

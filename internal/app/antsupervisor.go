@@ -349,6 +349,11 @@ func (s *AntSupervisor) snapshot(ctx context.Context, rec ports.AntRecord, setti
 		return domain.AntSnapshot{}, fmt.Errorf("reading the runs of ant %d: %w", rec.ID, err)
 	}
 	snap.Runs = len(runs)
+	if snap.Runs == 0 && rebuiltAnt(rec) {
+		// Its runs were lost with the local store: its next run is not
+		// its first.
+		snap.Runs = 1
+	}
 	for _, r := range runs {
 		if r.Kind == ports.RunFollowUp {
 			snap.FollowUpRuns++

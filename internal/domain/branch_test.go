@@ -102,3 +102,49 @@ func TestWithSuffix(t *testing.T) {
 		}
 	}
 }
+
+func TestBranchItem(t *testing.T) {
+	gh12 := domain.Ref{Repo: ghRepo, Kind: domain.KindItem, Number: 12}
+	ado7 := domain.Ref{Repo: adoProject, Kind: domain.KindItem, Number: 7}
+	tests := []struct {
+		name   string
+		prefix string
+		branch string
+		repo   domain.Repository
+		want   domain.Ref
+		ok     bool
+	}{
+		{"with slug", "ant", "ant/gh-12-fix-login", ghRepo, gh12, true},
+		{"without slug", "ant", "ant/gh-12", ghRepo, gh12, true},
+		{"with numeric suffix", "ant", "ant/gh-12-fix-login-2", ghRepo, gh12, true},
+		{"configured prefix", "bots/ant", "bots/ant/gh-12-fix", ghRepo, gh12, true},
+		{"azure devops item in a code repository", "ant", "ant/ado-7-add-export", adoCode, ado7, true},
+		{"other prefix", "ant", "feature/gh-12-fix", ghRepo, domain.Ref{}, false},
+		{"prefix only as a word start", "ant", "antler/gh-12", ghRepo, domain.Ref{}, false},
+		{"other provider", "ant", "ant/ado-12-fix", ghRepo, domain.Ref{}, false},
+		{"pull request reference", "ant", "ant/gh-pr-12", ghRepo, domain.Ref{}, false},
+		{"no number", "ant", "ant/gh-fix", ghRepo, domain.Ref{}, false},
+		{"no reference", "ant", "ant/fix-login", ghRepo, domain.Ref{}, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, ok := domain.BranchItem(tt.prefix, tt.branch, tt.repo)
+			if got != tt.want || ok != tt.ok {
+				t.Errorf("BranchItem(%q) = %v, %v, want %v, %v", tt.branch, got, ok, tt.want, tt.ok)
+			}
+		})
+	}
+}
+
+func TestBranchItemReversesBranchName(t *testing.T) {
+	gh12 := domain.Ref{Repo: ghRepo, Kind: domain.KindItem, Number: 12}
+	for _, title := range []string{"Fix login 2", "", "修复", "12 things"} {
+		name, err := domain.BranchName("ant", gh12, title)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got, ok := domain.BranchItem("ant", domain.WithSuffix(name, 3), ghRepo); !ok || got != gh12 {
+			t.Errorf("BranchItem(%q) = %v, %v", name, got, ok)
+		}
+	}
+}

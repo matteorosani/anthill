@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"slices"
 	"strconv"
+	"strings"
 	"sync"
 
 	"github.com/matteorosani/anthill/internal/domain"
@@ -25,6 +26,7 @@ const (
 	GitNewCommits     = "new-commits"
 	GitUnpushed       = "unpushed"
 	GitDeleteBranch   = "delete-branch"
+	GitBranches       = "branches"
 )
 
 // FakeRemote is the remote name of every fake clone.
@@ -511,4 +513,24 @@ func (s *SourceControl) DeleteBranch(_ context.Context, clone ports.Clone, name 
 		delete(c.fetched, name)
 	}
 	return nil
+}
+
+// Branches lists the local and fetched branches under prefix/.
+func (s *SourceControl) Branches(_ context.Context, clone ports.Clone, prefix string) ([]string, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	c, err := s.clone(GitBranches, clone)
+	if err != nil {
+		return nil, err
+	}
+	var names []string
+	for _, m := range []map[string][]fakeCommit{c.local, c.fetched} {
+		for name := range m {
+			if strings.HasPrefix(name, prefix+"/") && !slices.Contains(names, name) {
+				names = append(names, name)
+			}
+		}
+	}
+	slices.Sort(names)
+	return names, nil
 }
