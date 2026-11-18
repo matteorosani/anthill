@@ -23,10 +23,9 @@ const (
 )
 
 // ClaimAdopter takes up a claim this instance holds on the provider into
-// the local store, and parks it; Claiming implements it.
+// the local store; Claiming implements it.
 type ClaimAdopter interface {
 	Adopt(ctx context.Context, ref domain.Ref, kind domain.ClaimKind) (ports.HeldClaim, bool, error)
-	Park(ctx context.Context, item domain.Ref) error
 }
 
 var _ ClaimAdopter = (*Claiming)(nil)
@@ -62,6 +61,10 @@ type SessionRecoveryDeps struct {
 	// Sources lists the enabled repository entries.
 	Sources func(ctx context.Context) ([]RecoverySource, error)
 	Clock   ports.Clock
+	// WrapUp wraps up an ant rebuilt with its run interrupted, as an exit
+	// without finishing, which parks its claim; Notifier tells the queen.
+	WrapUp   ExitWrapUp
+	Notifier ports.Notifier
 }
 
 // SessionRecovery rebuilds the session index records of the items this
@@ -251,10 +254,11 @@ func (r *SessionRecovery) recoverItem(ctx context.Context, src RecoverySource, r
 		return 0, errors.Join(append(errs, fmt.Errorf("storing the rebuilt ant: %w", err))...)
 	}
 	if !held.Parked {
-		// The ant is between runs now, so its claim is parked (spec
-		// work-claiming, "Long-lived task claims").
-		if err := r.deps.Claims.Park(ctx, ref); err != nil {
-			errs = append(errs, fmt.Errorf("parking the claim: %w", err))
+		// A live claim: the record was lost while a run was active. The
+		// ant is handled as an exit without finishing, whose wrap-up
+		// parks the claim (spec work-claiming, "Long-lived task claims").
+		if err := wrapUpInterrupted(ctx, r.deps.WrapUp, rec, 0, r.deps.Notifier); err != nil {
+			errs = append(errs, err)
 		}
 	}
 	return rec.ID, errors.Join(errs...)
@@ -322,11 +326,12 @@ func rebuiltState(held ports.HeldClaim, pr *domain.PullRequest) (domain.AntState
 	return domain.AntFailed, ReasonRebuilt
 }
 
-// rebuiltAnt reports whether session index recovery made the record: its
-// first transition is to a between-runs state other than queued, which
-// only recovery does. Its earlier runs are not in the run log, but its
-// next run is not its first: it reuses the claim, the branch and the
-// worktree, and gets the summary brief.
+// rebuiltAnt reports whether session index recovery made the record
+// (spec ant-execution, "Session index recovery"): its first transition is
+// to a between-runs state other than queued, which only recovery does.
+// Its earlier runs are not in the run log, but its next run is not its
+// first: it renews the claim instead of acquiring it, reuses the branch
+// and the worktree, and gets the summary brief.
 func rebuiltAnt(rec ports.AntRecord) bool {
 	if len(rec.History) == 0 {
 		return false

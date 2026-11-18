@@ -10,6 +10,7 @@ import (
 	"github.com/matteorosani/anthill/internal/app"
 	"github.com/matteorosani/anthill/internal/domain"
 	"github.com/matteorosani/anthill/internal/ports"
+	"github.com/matteorosani/anthill/internal/testkit"
 	"github.com/matteorosani/anthill/internal/testkit/storetest"
 )
 
@@ -20,16 +21,27 @@ type fakeWrapUp struct {
 }
 
 type wrapUpCall struct {
-	ant    ports.AntID
-	state  domain.AntState
-	reason string
+	ant   ports.AntID
+	state domain.AntState
+	run   ports.RunID
+	req   app.WrapUpRequest
 }
 
-func (f *fakeWrapUp) WrapUp(_ context.Context, rec ports.AntRecord, reason string) error {
+func (f *fakeWrapUp) WrapUp(_ context.Context, rec ports.AntRecord, run ports.RunID, w app.WrapUpRequest) (ports.AntRecord, app.WrapUpResult, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	f.calls = append(f.calls, wrapUpCall{rec.ID, rec.State(), reason})
-	return nil
+	f.calls = append(f.calls, wrapUpCall{rec.ID, rec.State(), run, w})
+	return rec, app.WrapUpResult{}, nil
+}
+
+// wantInterruptedWrapUp checks one call: the ant failed, the run, and the
+// restart's reason and summary, with no draft opened.
+func wantInterruptedWrapUp(t *testing.T, c wrapUpCall, ant ports.AntID, run ports.RunID) {
+	t.Helper()
+	if c.ant != ant || c.state != domain.AntFailed || c.run != run || c.req.Reason != app.ReasonInterruptedByRestart ||
+		c.req.OpenDraft || c.req.Summary != app.SummaryInterruptedByRestart {
+		t.Errorf("wrap-up %+v, want ant %d failed, run %d, interrupted by restart", c, ant, run)
+	}
 }
 
 func (f *fakeWrapUp) all() []wrapUpCall {
@@ -104,6 +116,7 @@ func (e *supEnv) reconcile(deps app.RestartDeps) {
 // "interrupted by restart", its run ends with unknown usage, its claim is
 // kept, and no run starts.
 func TestDaemonRestartedMidRun(t *testing.T) {
+	// A finishing ant without a stored finish is interrupted too.
 	for _, state := range []domain.AntState{domain.AntStarting, domain.AntRunning, domain.AntAwaitingExtension, domain.AntFinishing} {
 		t.Run(string(state), func(t *testing.T) {
 			synctest.Test(t, func(t *testing.T) {
@@ -129,8 +142,13 @@ func TestDaemonRestartedMidRun(t *testing.T) {
 					ends[0].resumed != "sess-12" || !ends[0].run.EndedAt.Equal(e.clock.Now()) {
 					t.Errorf("run ends %+v", ends)
 				}
-				if calls := wrap.all(); len(calls) != 1 || calls[0] != (wrapUpCall{id, domain.AntFailed, app.ReasonInterruptedByRestart}) {
+				if calls := wrap.all(); len(calls) != 1 {
 					t.Errorf("wrap-ups %+v", calls)
+				} else {
+					wantInterruptedWrapUp(t, calls[0], id, run)
+				}
+				if n := countKind(e.notifier, domain.NotifyFailed); n != 1 {
+					t.Errorf("%d failure notifications", n)
 				}
 				if !e.claimed(12) {
 					t.Error("the claim was not kept")
@@ -198,6 +216,28 @@ func TestRestartAutoResumeWithoutRetrier(t *testing.T) {
 	})
 }
 
+// Task 14.8: a finishing ant whose finish is stored is not interrupted:
+// the playbook carries out the finish.
+func TestRestartTriggersAFinishingAnt(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		e := newSupEnv(t, 2)
+		id, _ := e.leftRunning(12, "sess-12", domain.AntStarting, domain.AntRunning, domain.AntFinishing)
+		wrap := &fakeWrapUp{}
+		var asked []ports.AntID
+		e.reconcile(app.RestartDeps{WrapUp: wrap, PendingFinish: func(rec ports.AntRecord) bool {
+			asked = append(asked, rec.ID)
+			return true
+		}})
+		e.wantState(id, domain.AntFinishing)
+		if len(asked) != 1 || asked[0] != id {
+			t.Errorf("pending finish asked for %v", asked)
+		}
+		if len(wrap.all()) != 0 || len(e.ends.all()) != 0 {
+			t.Errorf("wrap-ups %+v, run ends %+v", wrap.all(), e.ends.all())
+		}
+	})
+}
+
 // Task 14.8: queued ants are rescheduled at restart, in queue order,
 // within capacity.
 func TestRestartStartsQueuedAnts(t *testing.T) {
@@ -253,4 +293,15 @@ func (e *supEnv) queuedAnt(n int) ports.AntID {
 		e.t.Fatal(err)
 	}
 	return id
+}
+
+// countKind counts the notifications of one kind.
+func countKind(n *testkit.Notifier, kind ports.NotificationKind) int {
+	c := 0
+	for _, k := range n.Kinds() {
+		if k == kind {
+			c++
+		}
+	}
+	return c
 }

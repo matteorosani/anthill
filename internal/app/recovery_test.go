@@ -23,11 +23,12 @@ const (
 type recEnv struct {
 	*supEnv
 	recovery *app.SessionRecovery
+	wrap     *fakeWrapUp
 }
 
 func newRecEnv(t *testing.T) *recEnv {
 	t.Helper()
-	e := &recEnv{supEnv: newSupEnv(t, 2)}
+	e := &recEnv{supEnv: newSupEnv(t, 2), wrap: &fakeWrapUp{}}
 	e.recovery = app.NewSessionRecovery(app.SessionRecoveryDeps{
 		Store:     e.store,
 		Claims:    e.claiming,
@@ -40,7 +41,9 @@ func newRecEnv(t *testing.T) *recEnv {
 				CodeHost: client, Tracker: client, TrackerRepo: shop,
 			}}, nil
 		},
-		Clock: e.clock,
+		Clock:    e.clock,
+		WrapUp:   e.wrap,
+		Notifier: e.notifier,
 	})
 	return e
 }
@@ -145,6 +148,10 @@ func TestLocalDatabaseLost(t *testing.T) {
 		if h, ok := e.heldClaim(12); !ok || !h.Parked || h.Instance != instanceA {
 			t.Errorf("held claim %+v, %v", h, ok)
 		}
+		if calls := e.wrap.all(); len(calls) != 0 {
+			t.Errorf("wrap-ups %+v", calls)
+		}
+		marks := countOps(e.gh, testkit.OpMark, "mrosani")
 		if runs := e.runs(id); len(runs) != 0 {
 			t.Errorf("runs %+v", runs)
 		}
@@ -171,8 +178,13 @@ func TestLocalDatabaseLost(t *testing.T) {
 		if h, _ := e.heldClaim(12); h.Parked {
 			t.Error("the claim stayed parked during the follow-up run")
 		}
+		// The run went through the next-run path: the claim was renewed,
+		// not acquired again.
 		if n := countOps(e.gh, testkit.OpPost, "mrosani"); n != 1 {
 			t.Errorf("%d claim comments posted, want only the original one", n)
+		}
+		if n := countOps(e.gh, testkit.OpMark, "mrosani"); n != marks {
+			t.Errorf("the claim was marked %d more times", n-marks)
 		}
 	})
 }
@@ -256,8 +268,9 @@ func TestRecoveryParkedClaimWithoutPR(t *testing.T) {
 }
 
 // Task 14.8: a live claim means the store was lost while a run was
-// active. The ant is rebuilt failed with "interrupted by restart", and
-// its claim is parked.
+// active. The ant is rebuilt failed with "interrupted by restart" and gets
+// the wrap-up of an exit without finishing, which parks the claim, and
+// the queen is told.
 func TestRecoveryLiveClaimInterrupted(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		e := newRecEnv(t)
@@ -273,8 +286,16 @@ func TestRecoveryLiveClaimInterrupted(t *testing.T) {
 		if lastReason(rec) != app.ReasonInterruptedByRestart || rec.PR == nil {
 			t.Errorf("rebuilt %+v", rec)
 		}
-		if h, ok := e.heldClaim(12); !ok || !h.Parked {
-			t.Errorf("held claim %+v, %v", h, ok)
+		if calls := e.wrap.all(); len(calls) != 1 {
+			t.Errorf("wrap-ups %+v", calls)
+		} else {
+			wantInterruptedWrapUp(t, calls[0], rec.ID, 0)
+		}
+		if n := countKind(e.notifier, domain.NotifyFailed); n != 1 {
+			t.Errorf("%d failure notifications", n)
+		}
+		if _, ok := e.heldClaim(12); !ok {
+			t.Error("the claim was not adopted")
 		}
 	})
 }
