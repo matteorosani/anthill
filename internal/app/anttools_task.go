@@ -186,6 +186,9 @@ func (t *AntTools) requestExtension(ctx context.Context, c *toolCall) (any, erro
 		if _, err := t.store.SaveExtension(ctx, ports.ExtensionRecord{Ant: rec.ID, Request: req, DecidedAt: now}); err != nil {
 			return nil, err
 		}
+		if req.Status == domain.ExtensionApproved {
+			t.budgetChanged(ctx, rec.ID)
+		}
 		return extensionAnswer(req, ant.Budget, now), nil
 	}
 	if !wasOpen {
@@ -208,6 +211,9 @@ func (t *AntTools) requestExtension(ctx context.Context, c *toolCall) (any, erro
 	if err := t.store.SaveAnt(ctx, withAnt(rec, ant)); err != nil {
 		return nil, err
 	}
+	// The budget is paused: the run has no deadline while the call
+	// waits (design D21).
+	t.budgetChanged(ctx, rec.ID)
 
 	decided, reason, waitErr := t.waitForDecision(ctx, c, rec.ID)
 
@@ -229,6 +235,7 @@ func (t *AntTools) requestExtension(ctx context.Context, c *toolCall) (any, erro
 		if err := t.store.SaveAnt(end, withAnt(rec, ant)); err != nil {
 			return nil, err
 		}
+		t.budgetChanged(end, rec.ID)
 	}
 	if waitErr != nil {
 		return nil, waitErr
@@ -320,6 +327,9 @@ func (t *AntTools) DecideExtension(ctx context.Context, id ports.AntID, minutes 
 	}
 	if err := t.closeExtension(ctx, id, req, now); err != nil {
 		return req, "", err
+	}
+	if effect == domain.EffectBudgetGrown {
+		t.budgetChanged(ctx, id)
 	}
 
 	t.mu.Lock()
