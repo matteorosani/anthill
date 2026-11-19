@@ -673,6 +673,30 @@ func TestTimeRunsOut(t *testing.T) {
 	})
 }
 
+// Task 14.12: a timed-out ant's draft PR and comment carry the progress
+// summary, not the agent's last message (spec ant-timebox, "Budget
+// exhaustion").
+func TestTimeRunsOutKeepsTheProgressSummary(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		e := newSupEnv(t, 2)
+		id := e.mustAccept(12)
+		e.commit(id, "WIP")
+		e.mustCallTool(ghRef(12), "report_progress", `{"text":"Safari done, Firefox next."}`)
+		e.execOf(ghRef(12)).EmitLastMessage("Starting on Firefox.")
+		e.end(ghRef(12), ports.ExecEndedAtDeadline)
+
+		e.wantState(id, domain.AntTimedOut)
+		pr := e.onePR(id)
+		if !pr.Draft || !strings.Contains(pr.Body, "Safari done, Firefox next.") || strings.Contains(pr.Body, "Starting on Firefox.") {
+			t.Errorf("PR = %+v, want a draft with the progress summary only", pr)
+		}
+		if got := e.summaries(12); len(got) != 1 || strings.Contains(got[0], "Starting on Firefox.") {
+			t.Errorf("summary comments = %q, want no last message", got)
+		}
+		e.wantNoErrors()
+	})
+}
+
 func TestTimeRunsOutWithNoCommits(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		e := newSupEnv(t, 2)
