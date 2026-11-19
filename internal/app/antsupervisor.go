@@ -151,6 +151,12 @@ type AntSupervisorDeps struct {
 	// without Extensions DecideExtension fails.
 	Messages   RunMessages
 	Extensions ExtensionDecider
+	// Holds tells whether an item is on hold: no run starts and no
+	// follow-up is proposed for it, and changes for its active run are
+	// stored (spec change-reaction, "Hold freezes the ant"). Optional:
+	// without it no item is on hold. Messages also delivers changes to
+	// active runs; without it they are stored.
+	Holds Holds
 }
 
 // AntSupervisorOptions are the settings of the supervisor.
@@ -214,6 +220,9 @@ func NewAntSupervisor(deps AntSupervisorDeps, opts AntSupervisorOptions) *AntSup
 	handle(s, s.openPR)
 	handle(s, s.completeFinish)
 	handle(s, s.finishWithNoChange)
+	handle(s, s.deliverChange)
+	handle(s, s.storeChange)
+	handle(s, s.proposeFollowUp)
 	if s.deps.Due == nil {
 		// The queen actions say which run is due after a retry or a
 		// continue.
@@ -228,6 +237,8 @@ type antTurn struct {
 	rec  ports.AntRecord
 	snap domain.AntSnapshot
 	ws   ToolWorkspace
+	// route holds the changes being routed by RouteChange, or is nil.
+	route *routing
 }
 
 // antHandler carries out one decision and records its effect. It returns
@@ -274,6 +285,12 @@ func (s *AntSupervisor) Trigger(ctx context.Context, id ports.AntID) error {
 
 // decide is Trigger with the ant's lock held.
 func (s *AntSupervisor) decide(ctx context.Context, id ports.AntID) error {
+	return s.run(ctx, id, nil)
+}
+
+// run is the playbook loop. With route, it routes route's changes and
+// returns once they are routed, or dropped for a final ant.
+func (s *AntSupervisor) run(ctx context.Context, id ports.AntID, route *routing) error {
 	var last domain.AntDecision
 	for range MaxAntDecisions {
 		rec, err := s.store.Ant(ctx, id)
@@ -291,6 +308,12 @@ func (s *AntSupervisor) decide(ctx context.Context, id ports.AntID) error {
 		if err != nil {
 			return err
 		}
+		if route != nil {
+			if len(route.changes) == 0 {
+				return nil
+			}
+			snap.Unrouted = route.changes
+		}
 		d, err := s.decision(ctx, rec, snap)
 		if err != nil {
 			return err
@@ -302,7 +325,7 @@ func (s *AntSupervisor) decide(ctx context.Context, id ports.AntID) error {
 		if !ok {
 			return &UnhandledDecisionError{Ant: id, Decision: d}
 		}
-		done, err := h(ctx, &antTurn{rec: rec, snap: snap, ws: ws}, d)
+		done, err := h(ctx, &antTurn{rec: rec, snap: snap, ws: ws, route: route}, d)
 		if err != nil || !done {
 			return err
 		}
@@ -337,6 +360,7 @@ func (s *AntSupervisor) snapshot(ctx context.Context, rec ports.AntRecord, setti
 		State:           rec.State(),
 		LastRun:         domain.RoleTaskRun,
 		Base:            rec.Base,
+		Proposal:        rec.FollowUpProposal,
 		AutoFollowUp:    settings.AutoFollowUp,
 		FollowUpLimit:   settings.FollowUpLimit,
 		FollowUpPercent: settings.FollowUpBudget,
@@ -355,7 +379,9 @@ func (s *AntSupervisor) snapshot(ctx context.Context, rec ports.AntRecord, setti
 		snap.Runs = 1
 	}
 	for _, r := range runs {
-		if r.Kind == ports.RunFollowUp {
+		// Only follow-up runs started for changes count against the
+		// limit: they are the ones with a new budget.
+		if r.Kind == ports.RunFollowUp && r.NewBudget > 0 {
 			snap.FollowUpRuns++
 		}
 	}

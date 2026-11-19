@@ -146,6 +146,7 @@ func testSessionIndex(t *testing.T, s ports.StateStore) {
 	pr := PR(7)
 	first.History = append(first.History, domain.Transition{From: domain.AntFinishing, To: domain.AntSucceeded, At: T0.Add(time.Hour), Reason: "finished"})
 	first.SessionID, first.PR, first.Budget.Open, first.Finish = "session-1", &pr, nil, nil
+	first.FollowUpProposal = domain.ProposalPending
 	check(t, s.SaveAnt(ctx, first))
 	equal(t, "saved Ant", must(s.Ant(ctx, id1)), first)
 
@@ -245,6 +246,11 @@ func testRunLog(t *testing.T, s ports.StateStore) {
 	}
 	*got[2].SessionCostUSD = 9
 	equal(t, "session total after changing a listed copy", must(s.Runs(ctx, ant))[2], resumed)
+
+	// A follow-up run started for changes keeps its new budget.
+	followUp := ports.RunRecord{Ant: ant, Kind: ports.RunFollowUp, StartedAt: T0.Add(26 * time.Hour), NewBudget: 30 * time.Minute}
+	followUp.ID = must(s.StartRun(ctx, followUp))
+	equal(t, "follow-up run with a new budget", must(s.Runs(ctx, ant))[3], followUp)
 
 	round := ports.RoundRecord{PR: PR(7), Head: "abc", Requested: true, StartedAt: T0.Add(time.Hour)}
 	round.ID = must(s.StartRound(ctx, round))
@@ -429,7 +435,8 @@ func testRunStarts(t *testing.T, s ports.StateStore) {
 	change := must(s.StoredChanges(ctx, queued.ID))[0]
 
 	starting := withState(queued, domain.AntStarting)
-	run := ports.RunRecord{Ant: queued.ID, Kind: ports.RunTask, StartedAt: T0.Add(time.Hour)}
+	starting.FollowUpProposal = domain.ProposalAccepted
+	run := ports.RunRecord{Ant: queued.ID, Kind: ports.RunFollowUp, StartedAt: T0.Add(time.Hour), NewBudget: 30 * time.Minute}
 	run.ID = must(s.BeginRun(ctx, ports.RunStart{Ant: starting, Run: run, Consumed: []int64{change.ID}, At: T0.Add(time.Hour)}))
 	equal(t, "ant after BeginRun", must(s.Ant(ctx, queued.ID)), starting)
 	equal(t, "runs after BeginRun", must(s.Runs(ctx, queued.ID)), []ports.RunRecord{run})
