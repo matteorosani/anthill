@@ -192,6 +192,12 @@ func (f *FakeExecution) Emit(ev ports.ExecEvent) {
 	f.pushLocked(ev)
 }
 
+// EmitLastMessage queues an ExecLastMessage event with text, as when the
+// agent gives a new message. It panics after End.
+func (f *FakeExecution) EmitLastMessage(text string) {
+	f.Emit(ports.ExecEvent{Kind: ports.ExecLastMessage, Message: text})
+}
+
 // End queues the last event, of kind ports.ExecExited or
 // ports.ExecEndedAtDeadline, with exit, and closes the events. Ending an
 // ended execution does nothing.

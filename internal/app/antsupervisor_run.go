@@ -25,8 +25,11 @@ type activeRun struct {
 	// resumed is the session the run resumed, or "".
 	resumed string
 	usage   ports.Usage
-	outcome ports.RunOutcome
-	reason  string
+	// lastMessage is the agent's last message, as the executor reported
+	// it, not yet made safe to post.
+	lastMessage string
+	outcome     ports.RunOutcome
+	reason      string
 	// clock is the timekeeper's record of the run, which mu guards.
 	clock runClock
 }

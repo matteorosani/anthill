@@ -241,6 +241,7 @@ type execution struct {
 	stopping bool
 	session  string
 	usage    ports.Usage
+	message  string
 }
 
 // start records the run, queues the first events, starts sending them
@@ -312,10 +313,10 @@ func (x *execution) finish(kind ports.ExecEventKind, exit ports.Exit) {
 }
 
 // Write takes the run's activity: each line of p becomes an activity
-// event, followed by the session id and usage when they changed. The
-// runner writes each output line in one Write; standard error comes in
-// pieces, and a line split between two of them becomes two events, so
-// that it never mixes with an output line.
+// event, followed by the session id, usage and last message when they
+// changed. The runner writes each output line in one Write; standard
+// error comes in pieces, and a line split between two of them becomes
+// two events, so that it never mixes with an output line.
 func (x *execution) Write(p []byte) (int, error) {
 	x.mu.Lock()
 	defer x.mu.Unlock()
@@ -330,7 +331,8 @@ func (x *execution) Write(p []byte) (int, error) {
 	return len(p), nil
 }
 
-// changesLocked queues the session id and usage when they changed.
+// changesLocked queues the session id, usage and last message when they
+// changed.
 func (x *execution) changesLocked() {
 	if s := x.run.SessionID(); s != x.session {
 		x.session = s
@@ -339,6 +341,10 @@ func (x *execution) changesLocked() {
 	if u := x.run.Usage(); !sameUsage(u, x.usage) {
 		x.usage = u
 		x.queue.push(x.event(ports.ExecEvent{Kind: ports.ExecUsage, Usage: u}))
+	}
+	if m := x.run.LastMessage(); m != x.message {
+		x.message = m
+		x.queue.push(x.event(ports.ExecEvent{Kind: ports.ExecLastMessage, Message: m}))
 	}
 }
 
@@ -361,9 +367,9 @@ func equalPtr[T comparable](a, b *T) bool {
 // queue holds events until they are read, so that a slow reader never
 // holds up the process: its output is read while events wait here.
 // What waits is bounded: started and the last event come once, an
-// unread usage or session id event is replaced by the next one, and
-// beyond maxActivity unread activity lines the oldest go, with one
-// activity event in their place saying how many.
+// unread usage, session id or last message event is replaced by the
+// next one, and beyond maxActivity unread activity lines the oldest go,
+// with one activity event in their place saying how many.
 type queue struct {
 	mu          sync.Mutex
 	items       []queued
@@ -389,7 +395,7 @@ func DroppedActivity(n int) string {
 
 func (q *queue) push(ev ports.ExecEvent) {
 	q.mu.Lock()
-	if ev.Kind == ports.ExecUsage || ev.Kind == ports.ExecSessionID {
+	if ev.Kind == ports.ExecUsage || ev.Kind == ports.ExecSessionID || ev.Kind == ports.ExecLastMessage {
 		// A running value: an unread one of the same kind is replaced,
 		// so that a stalled reader keeps at most one of each.
 		q.removeKind(ev.Kind)
@@ -407,9 +413,9 @@ func (q *queue) push(ev ports.ExecEvent) {
 	q.signal()
 }
 
-// removeKind removes the unread event of kind, if any. Usage and
-// session id events are coalesced this way, so at most one of each
-// waits.
+// removeKind removes the unread event of kind, if any. Usage, session
+// id and last message events are coalesced this way, so at most one of
+// each waits.
 func (q *queue) removeKind(kind ports.ExecEventKind) {
 	for i, it := range q.items {
 		if it.ev.Kind == kind {

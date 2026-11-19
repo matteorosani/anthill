@@ -1,9 +1,13 @@
 package app_test
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
+	"path/filepath"
 	"slices"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"testing/synctest"
 	"time"
@@ -470,6 +474,9 @@ func TestCommitsButNoFinish(t *testing.T) {
 		e.commit(id, "First step")
 		e.mustCallTool(ghRef(12), "report_progress", `{"text":"Running the tests."}`)
 		e.commit(id, "Second step")
+		// Task 14.12: the agent's last message, as the executor reports
+		// it, goes in the failure summary in place of the progress report.
+		e.execOf(ghRef(12)).EmitLastMessage("Both steps are committed; the Safari test still fails.")
 		e.end(ghRef(12), ports.ExecExited)
 
 		rec := e.wantState(id, domain.AntFailed)
@@ -484,8 +491,8 @@ func TestCommitsButNoFinish(t *testing.T) {
 		}
 		got := e.summaries(12)
 		if len(got) != 1 || !strings.Contains(got[0], app.ReasonExitedWithoutFinish) || !strings.Contains(got[0], "pushed") ||
-			!strings.Contains(got[0], "Running the tests.") {
-			t.Errorf("summary comments = %q", got)
+			!strings.Contains(got[0], "Both steps are committed; the Safari test still fails.") || strings.Contains(got[0], "Running the tests.") {
+			t.Errorf("summary comments = %q, want the agent's last message", got)
 		}
 		if got := e.git.Worktrees(supClone); !slices.Equal(got, []string{rec.Worktree}) {
 			t.Errorf("worktrees = %v, want it kept", got)
@@ -498,6 +505,96 @@ func TestCommitsButNoFinish(t *testing.T) {
 			t.Errorf("notifications = %v", got)
 		}
 		e.wantNoErrors()
+	})
+}
+
+// Task 14.12: when the agent gave no message, the failure summary has
+// the run's last progress report.
+func TestExitWithoutFinishFallsBackToProgress(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		e := newSupEnv(t, 2)
+		id := e.mustAccept(12)
+		e.commit(id, "First step")
+		e.mustCallTool(ghRef(12), "report_progress", `{"text":"Running the tests."}`)
+		e.end(ghRef(12), ports.ExecExited)
+
+		e.wantState(id, domain.AntFailed)
+		if got := e.summaries(12); len(got) != 1 || !strings.Contains(got[0], "Running the tests.") {
+			t.Errorf("summary comments = %q, want the last progress report", got)
+		}
+		e.wantNoErrors()
+	})
+}
+
+// Task 14.12 (spec agent-conversation, "Comment content safety"): the
+// agent's last message is posted with its secrets redacted, its paths in
+// the worktree made relative, and cut to the summary limit with a note.
+func TestLastMessageIsMadeSafe(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		e := newSupEnv(t, 2)
+		id := e.mustAccept(12)
+		rec, err := e.store.Ant(e.ctx, id)
+		if err != nil {
+			t.Fatal(err)
+		}
+		secret := "ghp_" + strings.Repeat("a", 36)
+		long := "Stuck: " + secret + " fails in " + filepath.Join(rec.Worktree, "auth", "login.go") + ". " +
+			strings.Repeat("x", domain.DefaultSummaryLimit)
+		x := e.execOf(ghRef(12))
+		x.EmitLastMessage("An earlier message.")
+		x.EmitLastMessage(long)
+		e.end(ghRef(12), ports.ExecExited)
+
+		e.wantState(id, domain.AntFailed)
+		got := e.summaries(12)
+		if len(got) != 1 {
+			t.Fatalf("summary comments = %q", got)
+		}
+		body := got[0]
+		if strings.Contains(body, secret) || !strings.Contains(body, domain.Redacted) {
+			t.Errorf("the summary does not redact the secret: %q", body)
+		}
+		if strings.Contains(body, rec.Worktree) {
+			t.Errorf("the summary has the worktree's absolute path: %q", body)
+		}
+		if strings.Contains(body, "An earlier message.") {
+			t.Error("the summary has an earlier message, not the last")
+		}
+		if !strings.Contains(body, "(truncated, ") || strings.Contains(body, strings.Repeat("x", domain.DefaultSummaryLimit)) {
+			t.Errorf("the summary is not cut to the limit with a note")
+		}
+		e.wantNoErrors()
+	})
+}
+
+// The claim of a failed ant is parked even when its wrap-up cannot reach
+// the code host (spec work-claiming, "parked").
+func TestFailedAntParkedWithoutCodeHost(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		var broken atomic.Bool
+		e := newSupEnv(t, 2, func(d *app.AntSupervisorDeps) {
+			route := d.CodeHost
+			d.CodeHost = func(ctx context.Context, repo domain.Repository) (ports.CodeHostPort, error) {
+				if broken.Load() {
+					return nil, errors.New("code host unreachable")
+				}
+				return route(ctx, repo)
+			}
+		})
+		id := e.mustAccept(12)
+		broken.Store(true)
+		e.execOf(ghRef(12)).End(ports.ExecExited, ports.Exit{Code: 1, Crashed: true})
+		e.settle()
+
+		e.wantState(id, domain.AntFailed)
+		e.wantParked(12)
+		e.mu.Lock()
+		errs := e.errs
+		e.errs = nil
+		e.mu.Unlock()
+		if len(errs) == 0 || !strings.Contains(errors.Join(errs...).Error(), "code host unreachable") {
+			t.Errorf("errors = %v, want the code host's", errs)
+		}
 	})
 }
 
@@ -610,6 +707,30 @@ func TestTimeRunsOut(t *testing.T) {
 	})
 }
 
+// Task 14.12: a timed-out ant's draft PR and comment carry the progress
+// summary, not the agent's last message (spec ant-timebox, "Budget
+// exhaustion").
+func TestTimeRunsOutKeepsTheProgressSummary(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		e := newSupEnv(t, 2)
+		id := e.mustAccept(12)
+		e.commit(id, "WIP")
+		e.mustCallTool(ghRef(12), "report_progress", `{"text":"Safari done, Firefox next."}`)
+		e.execOf(ghRef(12)).EmitLastMessage("Starting on Firefox.")
+		e.end(ghRef(12), ports.ExecEndedAtDeadline)
+
+		e.wantState(id, domain.AntTimedOut)
+		pr := e.onePR(id)
+		if !pr.Draft || !strings.Contains(pr.Body, "Safari done, Firefox next.") || strings.Contains(pr.Body, "Starting on Firefox.") {
+			t.Errorf("PR = %+v, want a draft with the progress summary only", pr)
+		}
+		if got := e.summaries(12); len(got) != 1 || strings.Contains(got[0], "Starting on Firefox.") {
+			t.Errorf("summary comments = %q, want no last message", got)
+		}
+		e.wantNoErrors()
+	})
+}
+
 func TestTimeRunsOutWithNoCommits(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		e := newSupEnv(t, 2)
@@ -650,6 +771,8 @@ func TestQuestionEndsTheRun(t *testing.T) {
 		if got := e.summaries(12); len(got) != 0 {
 			t.Errorf("summary comments = %q, want none", got)
 		}
+		// The claim is parked while the ant awaits input.
+		e.wantParked(12)
 		e.wantActive()
 		e.wantNoErrors()
 	})

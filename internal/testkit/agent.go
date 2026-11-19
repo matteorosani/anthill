@@ -128,6 +128,7 @@ type FakeRun struct {
 	live     bool
 	session  string
 	usage    ports.Usage
+	message  string
 	inputs   []string
 	stopped  bool
 	exit     ports.Exit
@@ -192,6 +193,20 @@ func (f *FakeRun) SetUsage(u ports.Usage) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.usage = u
+}
+
+// LastMessage returns what SetLastMessage set, or "".
+func (f *FakeRun) LastMessage() string {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.message
+}
+
+// SetLastMessage changes the agent's last message that the run reports.
+func (f *FakeRun) SetLastMessage(text string) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.message = text
 }
 
 // End ends the run with exit, as when the agent process exits or

@@ -104,3 +104,20 @@ func TestExecutorRefusals(t *testing.T) {
 		t.Errorf("start = %v, want StartErr", err)
 	}
 }
+
+// Task 14.12: EmitLastMessage reports the agent's last message before
+// the last event.
+func TestExecutorLastMessage(t *testing.T) {
+	x := testkit.NewExecutor(map[domain.Runner]ports.Capabilities{domain.RunnerCodex: {}})
+	ex, err := x.Start(context.Background(), ports.ExecSpec{Runner: domain.RunnerCodex})
+	if err != nil {
+		t.Fatal(err)
+	}
+	f := x.Execution(ex.ID)
+	f.EmitLastMessage("The tests pass.")
+	f.End(ports.ExecExited, ports.Exit{})
+	all := collect(t, ex.Events)
+	if len(all) != 3 || all[1].Kind != ports.ExecLastMessage || all[1].Message != "The tests pass." || !all[2].Final() {
+		t.Errorf("events = %+v, want started, the last message and exited", all)
+	}
+}

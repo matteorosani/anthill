@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/matteorosani/anthill/internal/domain"
 	"github.com/matteorosani/anthill/internal/ports"
@@ -53,6 +54,8 @@ type WrappedUp struct {
 //
 // Each step is done even when an earlier one failed, except that no PR
 // is opened for a branch that was not pushed, and the errors are joined.
+// The claim is parked even when the workspace or the code host cannot
+// be found.
 // run is the run that ended. It keys the ticket comment, so that a
 // wrap-up done again edits the comment instead of posting another. It
 // returns the ant's record, with the PR it opened.
@@ -63,7 +66,8 @@ func (s *AntSupervisor) wrapUp(ctx context.Context, rec ports.AntRecord, run por
 	)
 	ws, err := s.deps.Route(ctx, rec.Item)
 	if err != nil {
-		return rec, done, fmt.Errorf("finding the workspace of %s: %w", rec.Item, err)
+		_, park := s.park(ctx, rec)
+		return rec, done, errors.Join(fmt.Errorf("finding the workspace of %s: %w", rec.Item, err), park)
 	}
 	pushed, err := s.pushBranch(ctx, rec, ws)
 	errs = append(errs, err)
@@ -72,7 +76,8 @@ func (s *AntSupervisor) wrapUp(ctx context.Context, rec ports.AntRecord, run por
 	}
 	host, err := s.deps.CodeHost(ctx, ws.Repo)
 	if err != nil {
-		return rec, done, errors.Join(append(errs, err)...)
+		_, park := s.park(ctx, rec)
+		return rec, done, errors.Join(append(errs, err, park)...)
 	}
 	link := ""
 	switch {
@@ -141,15 +146,19 @@ func (s *AntSupervisor) wrapUpComment(ctx context.Context, rec ports.AntRecord, 
 // in state: failed after an exit or a crash (spec ant-execution, "Exit
 // without finishing"), or timed-out at the end of its budget (spec
 // ant-timebox, "Budget exhaustion"), which opens a draft PR when the
-// branch has new commits. The summary is the run's last progress report,
-// if any. The worktree is kept, and the queen is told so that she can
-// retry, continue or abandon.
+// branch has new commits. The summary of a failed ant is the agent's last
+// message, or the run's last progress report when the agent gave no
+// message; that of a timed-out ant is the progress report. The worktree
+// is kept, and the queen is told so that she can retry, continue or
+// abandon.
 func (s *AntSupervisor) endedWithoutFinish(ctx context.Context, rec ports.AntRecord, r *activeRun, state domain.AntState, reason string) error {
 	w := WrapUp{Reason: reason, Summary: s.deps.Tokens.Progress(r.token)}
 	kind, title := domain.NotifyFailed, "Run exited without finish"
 	if state == domain.AntTimedOut {
 		w.OpenDraft = true
 		kind, title = domain.NotifyTimedOut, "Ant timed out"
+	} else if strings.TrimSpace(r.lastMessage) != "" {
+		w.Summary = s.deps.Tokens.Summary(rec.Worktree, r.lastMessage)
 	}
 	_, _, err := s.wrapUp(ctx, rec, r.run.ID, w)
 	s.notifyAnt(ctx, kind, rec.Item, title, reason)

@@ -193,6 +193,8 @@ type run struct {
 	resultTokens  *int64
 	messageTokens map[string]int64
 	cost          *float64
+	// lastMessage is the text of the agent's latest message.
+	lastMessage string
 
 	cleanup sync.Once
 }
@@ -264,6 +266,14 @@ func (r *run) Usage() ports.Usage {
 	return ports.Usage{Tokens: tokens, CostUSD: r.cost, CostIsSessionTotal: true}
 }
 
+// LastMessage is the text of the agent's latest message, from the
+// assistant events of its main loop.
+func (r *run) LastMessage() string {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.lastMessage
+}
+
 // line handles one line of Claude Code's output.
 func (r *run) line(b []byte) {
 	// The activity is written last, so that SessionID and Usage already
@@ -276,6 +286,9 @@ func (r *run) line(b []byte) {
 	r.mu.Lock()
 	if ev.SessionID != "" {
 		r.session = ev.SessionID
+	}
+	if text, ok := ev.text(); ok {
+		r.lastMessage = text
 	}
 	if id, n, ok := ev.messageTokens(); ok {
 		if r.messageTokens == nil {

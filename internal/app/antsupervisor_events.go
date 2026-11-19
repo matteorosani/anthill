@@ -17,6 +17,8 @@ import (
 //   - activity goes to the RunActivity sink;
 //   - usage is kept, and the last reported value goes to RunEnds when the
 //     run ends;
+//   - the agent's last message is kept for the summary of a run that
+//     exits without finishing;
 //   - exited and ended at the deadline end the run: see exited.
 func (s *AntSupervisor) watch(ctx context.Context, r *activeRun, events <-chan ports.ExecEvent) {
 	defer s.wg.Done()
@@ -32,6 +34,8 @@ func (s *AntSupervisor) watch(ctx context.Context, r *activeRun, events <-chan p
 			}
 		case ports.ExecUsage:
 			r.usage = ev.Usage
+		case ports.ExecLastMessage:
+			r.lastMessage = ev.Message
 		case ports.ExecExited, ports.ExecEndedAtDeadline:
 			if ev.Usage != (ports.Usage{}) {
 				r.usage = ev.Usage
@@ -146,6 +150,14 @@ func (s *AntSupervisor) endRun(ctx context.Context, r *activeRun, ev ports.ExecE
 	}
 	if ended != "" {
 		errs = append(errs, s.endedWithoutFinish(ctx, rec, r, ended, reason))
+	}
+	if ended == "" && rec.State() == domain.AntAwaitingInput {
+		// The run ended after ask_question: the claim stays held without
+		// renewal until the answer starts the next run (spec
+		// work-claiming, "parked").
+		if _, err := s.park(ctx, rec); err != nil {
+			errs = append(errs, err)
+		}
 	}
 	return errors.Join(errs...)
 }

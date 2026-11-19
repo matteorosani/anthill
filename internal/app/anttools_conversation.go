@@ -32,6 +32,13 @@ func (t *AntTools) summary(c *toolCall, text string) string {
 	return domain.Truncate(t.safe(c, text), t.opts.SummaryLimit)
 }
 
+// Summary makes text from an agent of worktree safe to post and cuts it
+// to the summary limit, as summary does for the agent's own summaries:
+// the supervisor posts the agent's last message this way.
+func (t *AntTools) Summary(worktree, text string) string {
+	return domain.Truncate(t.redactor().Redact(domain.RewritePaths(text, worktree, t.opts.Home)), t.opts.SummaryLimit)
+}
+
 // worktree is the call's worktree: the ant's, or the review or fix
 // agent's.
 func (c *toolCall) worktree() string {
