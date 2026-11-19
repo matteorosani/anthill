@@ -157,6 +157,10 @@ func assertMarker(t *testing.T, got, want domain.Marker) {
 		t.Errorf("claim fields = %+v, want %+v", *got.ClaimFields, *want.ClaimFields)
 	}
 	got.ClaimFields, want.ClaimFields = nil, nil
+	if (got.RoundFields == nil) != (want.RoundFields == nil) || got.RoundFields != nil && *got.RoundFields != *want.RoundFields {
+		t.Errorf("round fields = %+v, want %+v", got.RoundFields, want.RoundFields)
+	}
+	got.RoundFields, want.RoundFields = nil, nil
 	if got != want {
 		t.Errorf("marker = %+v, want %+v", got, want)
 	}
