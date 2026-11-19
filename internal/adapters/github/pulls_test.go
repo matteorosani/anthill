@@ -66,7 +66,7 @@ func TestPullRequestsPoll(t *testing.T) {
 		if !slices.Equal(p34.Labels, []string{"anthill"}) {
 			t.Errorf("labels = %v", p34.Labels)
 		}
-		if len(p34.Comments) != 2 || p34.Comments[0].ID != "9101" {
+		if len(p34.Comments) != 2 || p34.Comments[0].ID != "9101" || p34.Comments[0].Thread != "" {
 			t.Errorf("comments = %+v", p34.Comments)
 		}
 	})

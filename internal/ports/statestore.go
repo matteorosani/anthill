@@ -298,6 +298,15 @@ type QuestionRecord struct {
 	AnswerID   string
 	// StaleAt is set when the question was reported as stale.
 	StaleAt time.Time
+
+	// Text is the question as the ant wrote it, after redaction, for
+	// answers that quote it, and Thread is the thread the question
+	// comment opened on a threaded provider, or "". Answer is the change
+	// that answered it, which the run resuming the session gets as input
+	// (spec agent-conversation, "Answers resume the session").
+	Text   string
+	Thread string
+	Answer *domain.ChangeEvent
 }
 
 // Questions keeps questions until they are answered.
@@ -307,6 +316,11 @@ type Questions interface {
 	// PendingQuestions lists the questions without an answer, oldest
 	// first.
 	PendingQuestions(ctx context.Context) ([]QuestionRecord, error)
+
+	// AntQuestions lists an ant's questions, answered or not, oldest first,
+	// and QuestionsOn the questions posted on a ticket or PR.
+	AntQuestions(ctx context.Context, ant AntID) ([]QuestionRecord, error)
+	QuestionsOn(ctx context.Context, on domain.Ref) ([]QuestionRecord, error)
 }
 
 // ExtensionID identifies one extension request.

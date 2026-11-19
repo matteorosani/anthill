@@ -288,6 +288,7 @@ func (a *Adapter) prComment(ref domain.Ref, thread int, c prCommentJSON) domain.
 		Body:      c.Content,
 		CreatedAt: c.PublishedDate,
 		UpdatedAt: c.LastUpdatedDate,
+		Thread:    strconv.Itoa(thread),
 	}
 }
 

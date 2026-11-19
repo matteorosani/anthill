@@ -290,6 +290,22 @@ func TestIngestPullRequestEvents(t *testing.T) {
 	}
 }
 
+// A general PR comment that the provider threads, as on Azure DevOps,
+// carries its thread, so a reply in an ant question's thread can be told
+// apart (spec agent-conversation, "Answers resume the session").
+func TestIngestThreadedGeneralComment(t *testing.T) {
+	ref := domain.Ref{Repo: ghRepo, Kind: domain.KindPR, Number: 34}
+	pr := domain.PullRequest{Ref: ref, Body: "Closes #12"}
+	prev := store(domain.StoredContent{}, domain.IngestPullRequest(domain.StoredContent{}, pr))
+	later := ingestT0.Add(time.Hour)
+	pr.Comments = []domain.Comment{{ID: "9.2", Thread: "9", Author: "dev", Body: "60 seconds", CreatedAt: later}}
+	pr.UpdatedAt = later
+	got := domain.IngestPullRequest(prev, pr)
+	if len(got.Events) != 1 || got.Events[0].CommentID != "9.2" || got.Events[0].ThreadID != "9" {
+		t.Errorf("events = %+v, want the comment in thread 9", got.Events)
+	}
+}
+
 // A body Anthill wrote carries a marker, so its edit is Anthill's.
 func TestIngestEditOriginFromMarker(t *testing.T) {
 	ref := domain.Ref{Repo: ghRepo, Kind: domain.KindPR, Number: 34}

@@ -229,19 +229,46 @@ func (s *Store) SaveQuestion(ctx context.Context, q ports.QuestionRecord) error 
 	if err != nil {
 		return err
 	}
-	_, err = s.db.ExecContext(ctx, `INSERT INTO questions (comment_id, ant_id, on_ref, asked_at, answered_at, answer_id, stale_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?)
+	var answer sql.NullString
+	if q.Answer != nil {
+		text, err := toJSON(*q.Answer)
+		if err != nil {
+			return err
+		}
+		answer = sql.NullString{String: text, Valid: true}
+	}
+	_, err = s.db.ExecContext(ctx, `INSERT INTO questions (comment_id, ant_id, on_ref, asked_at, answered_at, answer_id, stale_at, text, thread, answer)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT (comment_id) DO UPDATE SET ant_id = excluded.ant_id, on_ref = excluded.on_ref,
 			asked_at = excluded.asked_at, answered_at = excluded.answered_at, answer_id = excluded.answer_id,
-			stale_at = excluded.stale_at`,
-		q.CommentID, q.Ant, on, unixNano(q.AskedAt), unixNano(q.AnsweredAt), q.AnswerID, unixNano(q.StaleAt))
+			stale_at = excluded.stale_at, text = excluded.text, thread = excluded.thread, answer = excluded.answer`,
+		q.CommentID, q.Ant, on, unixNano(q.AskedAt), unixNano(q.AnsweredAt), q.AnswerID, unixNano(q.StaleAt), q.Text, q.Thread, answer)
 	return err
 }
 
 // PendingQuestions lists the questions without an answer.
 func (s *Store) PendingQuestions(ctx context.Context) ([]ports.QuestionRecord, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT comment_id, ant_id, on_ref, asked_at, answered_at, answer_id, stale_at
-		FROM questions WHERE answered_at IS NULL ORDER BY asked_at, comment_id`)
+	return s.questions(ctx, "answered_at IS NULL")
+}
+
+// AntQuestions lists an ant's questions, oldest first.
+func (s *Store) AntQuestions(ctx context.Context, ant ports.AntID) ([]ports.QuestionRecord, error) {
+	return s.questions(ctx, "ant_id = ?", ant)
+}
+
+// QuestionsOn lists the questions posted on a ticket or PR, oldest first.
+func (s *Store) QuestionsOn(ctx context.Context, on domain.Ref) ([]ports.QuestionRecord, error) {
+	ref, err := toJSON(on)
+	if err != nil {
+		return nil, err
+	}
+	return s.questions(ctx, "on_ref = ?", ref)
+}
+
+// questions lists the questions matching where, oldest first.
+func (s *Store) questions(ctx context.Context, where string, args ...any) ([]ports.QuestionRecord, error) {
+	rows, err := s.db.QueryContext(ctx, `SELECT comment_id, ant_id, on_ref, asked_at, answered_at, answer_id, stale_at, text, thread, answer
+		FROM questions WHERE `+where+` ORDER BY asked_at, comment_id`, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -251,13 +278,20 @@ func (s *Store) PendingQuestions(ctx context.Context) ([]ports.QuestionRecord, e
 		var (
 			q                      ports.QuestionRecord
 			on                     string
+			answer                 sql.NullString
 			asked, answered, stale sql.NullInt64
 		)
-		if err := rows.Scan(&q.CommentID, &q.Ant, &on, &asked, &answered, &q.AnswerID, &stale); err != nil {
+		if err := rows.Scan(&q.CommentID, &q.Ant, &on, &asked, &answered, &q.AnswerID, &stale, &q.Text, &q.Thread, &answer); err != nil {
 			return nil, err
 		}
 		if err := fromJSON(on, &q.On); err != nil {
 			return nil, err
+		}
+		if answer.Valid {
+			q.Answer = &domain.ChangeEvent{}
+			if err := fromJSON(answer.String, q.Answer); err != nil {
+				return nil, err
+			}
 		}
 		q.AskedAt, q.AnsweredAt, q.StaleAt = fromUnixNano(asked), fromUnixNano(answered), fromUnixNano(stale)
 		out = append(out, q)

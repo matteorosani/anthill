@@ -45,13 +45,15 @@ func TestPullRequestsPoll(t *testing.T) {
 	}
 	active, fixed := pr.Threads[0], pr.Threads[1]
 	if active.ID != "7" || active.Path != "src/auth.ts" || active.Line != 42 || active.Resolved || len(active.Comments) != 2 ||
-		active.Comments[0].ID != "7.1" || active.Comments[0].Author != "ada@contoso.com" {
+		active.Comments[0].ID != "7.1" || active.Comments[0].Author != "ada@contoso.com" || active.Comments[0].Thread != "7" {
 		t.Errorf("active thread = %+v", active)
 	}
 	if fixed.ID != "8" || fixed.Line != 5 || !fixed.Resolved {
 		t.Errorf("fixed thread = %+v", fixed)
 	}
-	if c := pr.Comments[0]; c.ID != "9.1" || c.Body != "Looks good overall." ||
+	// A general comment is the first of its own thread, which a reply
+	// to it joins.
+	if c := pr.Comments[0]; c.ID != "9.1" || c.Thread != "9" || c.Body != "Looks good overall." ||
 		c.URL != e.srv.srv.URL+"/contoso/shop/_git/web/pullrequest/34?discussionId=9" {
 		t.Errorf("comment = %+v", c)
 	}
