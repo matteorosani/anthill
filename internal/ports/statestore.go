@@ -56,6 +56,11 @@ type AntRecord struct {
 	// the decision that ends the finish clears it with the ant's next
 	// state (design D22). It is nil otherwise.
 	Finish *domain.AntFinish
+	// FollowUpProposal is where the follow-up proposal for the ant's
+	// stored changes stands (spec change-reaction, "Follow-ups start
+	// automatically by default"). Saving it with the ant lets the start
+	// of a run close it in the same transaction (design D22).
+	FollowUpProposal domain.ProposalState
 }
 
 // State is the ant's state: the target of its last transition.
@@ -137,6 +142,11 @@ type RunRecord struct {
 	// nil otherwise or when it reported none. The next run that resumes
 	// the session takes its cost as the difference from it.
 	SessionCostUSD *float64
+	// NewBudget is the follow-up budget a follow-up run started for
+	// changes got, and 0 for a run that kept the ant's budget. Only runs
+	// with one count against the follow-up limit (spec change-reaction,
+	// "Follow-up limits").
+	NewBudget time.Duration
 }
 
 // Duration is how long the run lasted, or 0 while it is active.

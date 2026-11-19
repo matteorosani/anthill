@@ -136,9 +136,9 @@ Terms follow `openspec/glossary.md`. Every group lands its own tests and docs. U
 - [x] 15.1 Implement questions: posting, pending state, answer detection (thread reply, quote or `@anthill`), a run that resumes the session with the answer, and stale questions, and verify each agent-conversation question scenario
 - [x] 15.2 Implement command execution once across instances through the acknowledgement `reply`, by the responsible instance only, and verify the "two instances see the same command" test
 - [ ] 15.3 Implement relevance classification: rules first, then a short agent call, with `actionable` as the fallback, through the executor (14.10), and verify tests with a fake executor for the thank-you comment and a classifier failure
-- [ ] 15.4 Implement routing decided by the default playbook (14.11): delivery to an active run, stored changes for ants between runs, follow-up runs for `succeeded` ants with batching, follow-up budget and limit, and follow-up proposals when `auto-follow-up` is off, and verify each change-reaction routing scenario
-- [ ] 15.5 Implement hold (finish the active run, start no run, keep the claim, store changes, refuse retries) and withdrawal of opt-in, and verify the "hold added during a run", "retry while held" and "label removed mid-run" tests
-- [ ] 15.6 Ensure only the responsible instance reacts and Anthill-authored changes are ignored, except shepherd findings on ant PRs, and verify the "colleague's machine ignores the change" test with two instances on one fake provider
+- [x] 15.4 Implement routing decided by the default playbook (14.11): delivery to an active run, stored changes for ants between runs, follow-up runs for `succeeded` ants with batching, follow-up budget and limit, and follow-up proposals when `auto-follow-up` is off, and verify each change-reaction routing scenario
+- [x] 15.5 Implement hold (finish the active run, start no run, keep the claim, store changes, refuse retries) and withdrawal of opt-in, and verify the "hold added during a run", "retry while held" and "label removed mid-run" tests
+- [x] 15.6 Ensure only the responsible instance reacts and Anthill-authored changes are ignored, except shepherd findings on ant PRs, and verify the "colleague's machine ignores the change" test with two instances on one fake provider
 
 ## 16. PR Shepherd
 

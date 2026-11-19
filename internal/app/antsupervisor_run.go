@@ -100,6 +100,12 @@ func (s *AntSupervisor) startRun(ctx context.Context, t *antTurn, d domain.Start
 	if !rec.State().BetweenRuns() {
 		return false, fmt.Errorf("ant %d is %s: a run starts only between runs", rec.ID, rec.State())
 	}
+	// No run starts while the item is on hold: the ant stays as it is,
+	// queued included, and its run starts once the label is removed, if
+	// it is still due (spec change-reaction, "Hold freezes the ant").
+	if held, err := s.onHold(ctx, rec.Item); err != nil || held {
+		return false, err
+	}
 	if err := s.reserve(rec.Item, t.ws); err != nil {
 		if errors.Is(err, errCapacityFull) {
 			return false, s.queue(ctx, rec)
@@ -221,6 +227,8 @@ func (s *AntSupervisor) launch(ctx context.Context, rec ports.AntRecord, tw Tool
 		}
 	}
 	rec.History, rec.Budget = ant.History(), ant.Budget
+	// The start closes the follow-up proposal in the same transaction.
+	rec.FollowUpProposal = domain.ProposalNone
 
 	input, err := s.input(ctx, rec, d)
 	if err != nil {
@@ -230,7 +238,7 @@ func (s *AntSupervisor) launch(ctx context.Context, rec ports.AntRecord, tw Tool
 	if d.Brief == domain.BriefNone {
 		session = rec.SessionID
 	}
-	run := ports.RunRecord{Ant: rec.ID, Kind: kindOf(d.Kind), SessionID: session, StartedAt: now}
+	run := ports.RunRecord{Ant: rec.ID, Kind: kindOf(d.Kind), SessionID: session, StartedAt: now, NewBudget: d.NewBudget}
 	ids := make([]int64, len(d.Changes))
 	for i, c := range d.Changes {
 		ids[i] = c.ID
@@ -276,6 +284,9 @@ func (s *AntSupervisor) launch(ctx context.Context, rec ports.AntRecord, tw Tool
 	s.mu.Unlock()
 	s.wg.Add(1)
 	go s.watch(context.WithoutCancel(ctx), r, exec.Events)
+	if d.Kind == domain.RoleFollowUpRun && d.NewBudget > 0 {
+		s.notifyAnt(ctx, domain.NotifyFollowUpStarted, rec.Item, "Follow-up run started", describeChanges(d.Changes))
+	}
 	return nil
 }
 
