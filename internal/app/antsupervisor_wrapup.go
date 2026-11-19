@@ -54,6 +54,8 @@ type WrappedUp struct {
 //
 // Each step is done even when an earlier one failed, except that no PR
 // is opened for a branch that was not pushed, and the errors are joined.
+// The claim is parked even when the workspace or the code host cannot
+// be found.
 // run is the run that ended. It keys the ticket comment, so that a
 // wrap-up done again edits the comment instead of posting another. It
 // returns the ant's record, with the PR it opened.
@@ -64,7 +66,8 @@ func (s *AntSupervisor) wrapUp(ctx context.Context, rec ports.AntRecord, run por
 	)
 	ws, err := s.deps.Route(ctx, rec.Item)
 	if err != nil {
-		return rec, done, fmt.Errorf("finding the workspace of %s: %w", rec.Item, err)
+		_, park := s.park(ctx, rec)
+		return rec, done, errors.Join(fmt.Errorf("finding the workspace of %s: %w", rec.Item, err), park)
 	}
 	pushed, err := s.pushBranch(ctx, rec, ws)
 	errs = append(errs, err)
@@ -73,7 +76,8 @@ func (s *AntSupervisor) wrapUp(ctx context.Context, rec ports.AntRecord, run por
 	}
 	host, err := s.deps.CodeHost(ctx, ws.Repo)
 	if err != nil {
-		return rec, done, errors.Join(append(errs, err)...)
+		_, park := s.park(ctx, rec)
+		return rec, done, errors.Join(append(errs, err, park)...)
 	}
 	link := ""
 	switch {

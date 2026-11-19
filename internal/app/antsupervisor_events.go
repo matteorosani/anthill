@@ -151,6 +151,14 @@ func (s *AntSupervisor) endRun(ctx context.Context, r *activeRun, ev ports.ExecE
 	if ended != "" {
 		errs = append(errs, s.endedWithoutFinish(ctx, rec, r, ended, reason))
 	}
+	if ended == "" && rec.State() == domain.AntAwaitingInput {
+		// The run ended after ask_question: the claim stays held without
+		// renewal until the answer starts the next run (spec
+		// work-claiming, "parked").
+		if _, err := s.park(ctx, rec); err != nil {
+			errs = append(errs, err)
+		}
+	}
 	return errors.Join(errs...)
 }
 

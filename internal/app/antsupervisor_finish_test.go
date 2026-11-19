@@ -1,10 +1,13 @@
 package app_test
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
 	"path/filepath"
 	"slices"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"testing/synctest"
 	"time"
@@ -564,6 +567,37 @@ func TestLastMessageIsMadeSafe(t *testing.T) {
 	})
 }
 
+// The claim of a failed ant is parked even when its wrap-up cannot reach
+// the code host (spec work-claiming, "parked").
+func TestFailedAntParkedWithoutCodeHost(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		var broken atomic.Bool
+		e := newSupEnv(t, 2, func(d *app.AntSupervisorDeps) {
+			route := d.CodeHost
+			d.CodeHost = func(ctx context.Context, repo domain.Repository) (ports.CodeHostPort, error) {
+				if broken.Load() {
+					return nil, errors.New("code host unreachable")
+				}
+				return route(ctx, repo)
+			}
+		})
+		id := e.mustAccept(12)
+		broken.Store(true)
+		e.execOf(ghRef(12)).End(ports.ExecExited, ports.Exit{Code: 1, Crashed: true})
+		e.settle()
+
+		e.wantState(id, domain.AntFailed)
+		e.wantParked(12)
+		e.mu.Lock()
+		errs := e.errs
+		e.errs = nil
+		e.mu.Unlock()
+		if len(errs) == 0 || !strings.Contains(errors.Join(errs...).Error(), "code host unreachable") {
+			t.Errorf("errors = %v, want the code host's", errs)
+		}
+	})
+}
+
 func TestCrashBeforeAnyCommit(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		e := newSupEnv(t, 2)
@@ -737,6 +771,8 @@ func TestQuestionEndsTheRun(t *testing.T) {
 		if got := e.summaries(12); len(got) != 0 {
 			t.Errorf("summary comments = %q, want none", got)
 		}
+		// The claim is parked while the ant awaits input.
+		e.wantParked(12)
 		e.wantActive()
 		e.wantNoErrors()
 	})
