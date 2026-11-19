@@ -5,11 +5,15 @@ Defines the PR Shepherd: the part of Anthill that watches open pull requests, re
 ## ADDED Requirements
 
 ### Requirement: Shepherd scope
-The shepherd SHALL review open, non-draft PRs in configured repositories that match the repository's shepherd scope: `ant-authored` (default, ant PRs only), `labelled` (PRs with the `anthill:review` label), or `all`. PRs outside the scope SHALL only be reviewed when a developer explicitly requests it.
+The shepherd SHALL review open, non-draft PRs in configured repositories that match the repository's shepherd scope: `ant-authored` (default, ant PRs only), `labelled` (ant PRs and PRs with the `anthill:review` label), or `all`. PRs outside the scope SHALL only be reviewed when a developer explicitly requests it.
 
 #### Scenario: Human PR in ant-authored scope
 - **WHEN** a developer opens a PR without the review label in a repository with scope `ant-authored`
 - **THEN** the shepherd does not review it unless someone comments `/anthill review`
+
+#### Scenario: Human PR in labelled scope
+- **WHEN** a repository has scope `labelled`, a developer opens a PR without the review label, and an ant opens a PR without it
+- **THEN** the shepherd reviews the ant PR, and reviews the developer's PR only once it has the `anthill:review` label or someone comments `/anthill review`
 
 #### Scenario: Draft PR
 - **WHEN** an in-scope PR is a draft
