@@ -314,10 +314,9 @@ func (x *execution) finish(kind ports.ExecEventKind, exit ports.Exit) {
 
 // Write takes the run's activity: each line of p becomes an activity
 // event, followed by the session id, usage and last message when they
-// changed. The
-// runner writes each output line in one Write; standard error comes in
-// pieces, and a line split between two of them becomes two events, so
-// that it never mixes with an output line.
+// changed. The runner writes each output line in one Write; standard
+// error comes in pieces, and a line split between two of them becomes
+// two events, so that it never mixes with an output line.
 func (x *execution) Write(p []byte) (int, error) {
 	x.mu.Lock()
 	defer x.mu.Unlock()
@@ -369,9 +368,8 @@ func equalPtr[T comparable](a, b *T) bool {
 // holds up the process: its output is read while events wait here.
 // What waits is bounded: started and the last event come once, an
 // unread usage, session id or last message event is replaced by the
-// next one, and
-// beyond maxActivity unread activity lines the oldest go, with one
-// activity event in their place saying how many.
+// next one, and beyond maxActivity unread activity lines the oldest go,
+// with one activity event in their place saying how many.
 type queue struct {
 	mu          sync.Mutex
 	items       []queued
