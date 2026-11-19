@@ -35,6 +35,8 @@ const (
 	StepCommit = "commit"
 	// StepUsage prints Tokens and CostUSD.
 	StepUsage = "usage"
+	// StepMessage prints Text as a message of the agent.
+	StepMessage = "message"
 	// StepPrint prints Text as it is.
 	StepPrint = "print"
 	// StepReadInput reads one line from standard input and prints it.
@@ -84,8 +86,8 @@ type AgentStep struct {
 
 // AgentEvent is one line the fake agent prints on standard output.
 type AgentEvent struct {
-	// Event is start, tool, commit, usage, input, child, interrupted or
-	// error.
+	// Event is start, tool, commit, usage, message, input, child,
+	// interrupted or error.
 	Event   string  `json:"event"`
 	Pid     int     `json:"pid,omitempty"`
 	Tool    string  `json:"tool,omitempty"`
@@ -179,6 +181,8 @@ func (a *fakeAgent) step(s AgentStep) (code int, done bool, err error) {
 		return 0, false, a.commit(s)
 	case StepUsage:
 		a.emit(AgentEvent{Event: "usage", Tokens: s.Tokens, CostUSD: s.CostUSD})
+	case StepMessage:
+		a.emit(AgentEvent{Event: "message", Text: s.Text})
 	case StepPrint:
 		fmt.Println(s.Text)
 	case StepReadInput:

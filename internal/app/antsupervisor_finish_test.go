@@ -2,6 +2,7 @@ package app_test
 
 import (
 	"encoding/json"
+	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
@@ -470,6 +471,9 @@ func TestCommitsButNoFinish(t *testing.T) {
 		e.commit(id, "First step")
 		e.mustCallTool(ghRef(12), "report_progress", `{"text":"Running the tests."}`)
 		e.commit(id, "Second step")
+		// Task 14.12: the agent's last message, as the executor reports
+		// it, goes in the failure summary in place of the progress report.
+		e.execOf(ghRef(12)).EmitLastMessage("Both steps are committed; the Safari test still fails.")
 		e.end(ghRef(12), ports.ExecExited)
 
 		rec := e.wantState(id, domain.AntFailed)
@@ -484,8 +488,8 @@ func TestCommitsButNoFinish(t *testing.T) {
 		}
 		got := e.summaries(12)
 		if len(got) != 1 || !strings.Contains(got[0], app.ReasonExitedWithoutFinish) || !strings.Contains(got[0], "pushed") ||
-			!strings.Contains(got[0], "Running the tests.") {
-			t.Errorf("summary comments = %q", got)
+			!strings.Contains(got[0], "Both steps are committed; the Safari test still fails.") || strings.Contains(got[0], "Running the tests.") {
+			t.Errorf("summary comments = %q, want the agent's last message", got)
 		}
 		if got := e.git.Worktrees(supClone); !slices.Equal(got, []string{rec.Worktree}) {
 			t.Errorf("worktrees = %v, want it kept", got)
@@ -496,6 +500,65 @@ func TestCommitsButNoFinish(t *testing.T) {
 		}
 		if got := e.notifier.Kinds(); !slices.Equal(got, []ports.NotificationKind{domain.NotifyFailed}) {
 			t.Errorf("notifications = %v", got)
+		}
+		e.wantNoErrors()
+	})
+}
+
+// Task 14.12: when the agent gave no message, the failure summary has
+// the run's last progress report.
+func TestExitWithoutFinishFallsBackToProgress(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		e := newSupEnv(t, 2)
+		id := e.mustAccept(12)
+		e.commit(id, "First step")
+		e.mustCallTool(ghRef(12), "report_progress", `{"text":"Running the tests."}`)
+		e.end(ghRef(12), ports.ExecExited)
+
+		e.wantState(id, domain.AntFailed)
+		if got := e.summaries(12); len(got) != 1 || !strings.Contains(got[0], "Running the tests.") {
+			t.Errorf("summary comments = %q, want the last progress report", got)
+		}
+		e.wantNoErrors()
+	})
+}
+
+// Task 14.12 (spec agent-conversation, "Comment content safety"): the
+// agent's last message is posted with its secrets redacted, its paths in
+// the worktree made relative, and cut to the summary limit with a note.
+func TestLastMessageIsMadeSafe(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		e := newSupEnv(t, 2)
+		id := e.mustAccept(12)
+		rec, err := e.store.Ant(e.ctx, id)
+		if err != nil {
+			t.Fatal(err)
+		}
+		secret := "ghp_" + strings.Repeat("a", 36)
+		long := "Stuck: " + secret + " fails in " + filepath.Join(rec.Worktree, "auth", "login.go") + ". " +
+			strings.Repeat("x", domain.DefaultSummaryLimit)
+		x := e.execOf(ghRef(12))
+		x.EmitLastMessage("An earlier message.")
+		x.EmitLastMessage(long)
+		e.end(ghRef(12), ports.ExecExited)
+
+		e.wantState(id, domain.AntFailed)
+		got := e.summaries(12)
+		if len(got) != 1 {
+			t.Fatalf("summary comments = %q", got)
+		}
+		body := got[0]
+		if strings.Contains(body, secret) || !strings.Contains(body, domain.Redacted) {
+			t.Errorf("the summary does not redact the secret: %q", body)
+		}
+		if strings.Contains(body, rec.Worktree) {
+			t.Errorf("the summary has the worktree's absolute path: %q", body)
+		}
+		if strings.Contains(body, "An earlier message.") {
+			t.Error("the summary has an earlier message, not the last")
+		}
+		if !strings.Contains(body, "(truncated, ") || strings.Contains(body, strings.Repeat("x", domain.DefaultSummaryLimit)) {
+			t.Errorf("the summary is not cut to the limit with a note")
 		}
 		e.wantNoErrors()
 	})

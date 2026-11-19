@@ -63,6 +63,12 @@ type RunTokens interface {
 	// Progress is the last progress report of the token's run, or "",
 	// for the summary of a run that ended without finishing.
 	Progress(token string) string
+
+	// Summary makes text from an agent of worktree safe to post, as a
+	// summary: paths and secrets as for the agent's own summaries, and
+	// cut to the summary limit with a note (spec agent-conversation,
+	// "Comment content safety").
+	Summary(worktree, text string) string
 }
 
 // EligibilityChecker re-evaluates an item's eligibility on fresh provider

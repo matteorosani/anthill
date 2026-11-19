@@ -68,6 +68,7 @@ claude -p --input-format stream-json --output-format stream-json --verbose \
 - **Usage of a stopped run** (spec ant-execution, "Usage of a stopped run"). A run stopped before its last `result`, for example after `ask_question` or at time-out, also keeps the tokens of the agent's messages since the last result. Each `assistant` event carries its API response's `message.id` and `message.usage`. One response can give several events with the same id and the same usage, one per content block, so each id counts once. Once a `result` arrives, its usage covers the messages before it. The cost of a run stopped before any `result` stays unknown. Two limits, from Claude Code's documentation:
   - The output tokens of a message are the count at the start of its response, a placeholder that only the `result` corrects, so the output of a turn cut short is undercounted.
   - Subagent messages (`parent_tool_use_id` set) are not counted, as a `result`'s `usage` leaves out subagents too. A subagent's tokens appear in neither.
+- **Last message** (task 14.12). The agent's last message is the text of the latest `assistant` event of the main loop that has text content blocks, joined by blank lines. Subagent messages (`parent_tool_use_id` set) and tool use are not messages. It goes in the failure summary of an ant that exits without finishing.
 - **Telemetry variables.**
   - Always: `OTEL_LOG_USER_PROMPTS=0` and `OTEL_LOG_TOOL_DETAILS=0`.
   - With export on, also: `CLAUDE_CODE_ENABLE_TELEMETRY=1`, `OTEL_METRICS_EXPORTER=otlp`, `OTEL_LOGS_EXPORTER=otlp`, `OTEL_EXPORTER_OTLP_ENDPOINT`, `OTEL_EXPORTER_OTLP_PROTOCOL`, `OTEL_EXPORTER_OTLP_HEADERS`, `OTEL_RESOURCE_ATTRIBUTES` (`anthill.item`, `anthill.ant_id`, `anthill.instance`) and `TRACEPARENT`.
@@ -129,6 +130,7 @@ codex exec --json --sandbox workspace-write --skip-git-repo-check --add-dir <git
 - **`mcp_servers={}`, then `mcp_servers.anthill`.** The first override drops the developer's own MCP servers. A server holding a token would give the agent provider access, which design D4 rules out. The next two overrides add only the ant tools server. Values are TOML, and Anthill writes them as JSON strings and arrays, which are valid TOML.
 - **Session id.** It is the `thread_id` of the `thread.started` event.
 - **Usage.** Tokens are `input_tokens + output_tokens` of each `turn.completed` event, added up; `input_tokens` already include the cached ones. Codex reports no cost, so the cost is recorded as unknown.
+- **Last message** (task 14.12). It is the `text` of the latest `item.completed` event whose item is an `agent_message`. Reasoning, commands and tool calls are not messages.
 - **Telemetry.**
   - Always: `otel.log_user_prompt=false`.
   - With export on, also an exporter: `otel.exporter={ otlp-http = { endpoint = "…", protocol = "binary" } }` (`otlp-grpc`, or `protocol = "json"`, for those OTLP protocols), plus the standard variables `OTEL_EXPORTER_OTLP_ENDPOINT`, `OTEL_EXPORTER_OTLP_PROTOCOL`, `OTEL_EXPORTER_OTLP_HEADERS`, `OTEL_RESOURCE_ATTRIBUTES` and `TRACEPARENT`.
@@ -142,7 +144,7 @@ The recorded output in the tests is written from Codex's documentation, not capt
 1. The global `exec` options go before `resume <id>`, and `-` reads the prompt from standard input for `resume` too (X1, X4).
 2. `--add-dir` makes the git directory writable, so `git commit` works in a linked worktree (X2).
 3. `-c 'mcp_servers={}'` clears the developer's MCP servers, and the later `mcp_servers.anthill.*` overrides still add the ant tools server (X1, X5).
-4. The JSON event names and fields: `thread.started.thread_id` and `turn.completed.usage` (X1).
+4. The JSON event names and fields: `thread.started.thread_id`, `turn.completed.usage` and the `agent_message` item's `text` (X1).
 5. `-c sandbox_workspace_write.network_access=true` and `-c approval_policy="never"` are accepted with `exec` (X2).
 6. The `[otel]` exporter format, and whether the exporter reads `OTEL_EXPORTER_OTLP_HEADERS` and `OTEL_RESOURCE_ATTRIBUTES`. This needs an OTLP endpoint and is not part of the smoke checks below; check it when the telemetry export of task group 18 can be switched on.
 7. On Windows, whether the `workspace-write` sandbox is enforced at all (X2).
@@ -172,6 +174,7 @@ opencode run --format json [--session <session id>]
 - **Gap: the developer's MCP servers.** The developer's own MCP servers stay enabled: a merged configuration can only switch off servers by name, and Anthill does not know their names. A GitHub MCP server holding a token would give the agent provider access. Developers who use OpenCode with such a server should switch it off in their configuration.
 - **Session id.** It is the `sessionID` that every event carries.
 - **Usage.** Tokens are `input + output + reasoning + cache.read + cache.write` of each `step_finish` event, added up. The cost is the sum of their `cost`.
+- **Last message** (task 14.12). It is the `part.text` of the latest `text` event. Tool use is not a message.
 - **Possible later work.** An OpenCode plugin with a `tool.execute.before` hook could refuse commands with a message naming the ant tool, and add notices as context, which would give OpenCode hooks. It is not built.
 - **The model.** Anthill sets no model. OpenCode uses the developer's own default.
 
@@ -180,7 +183,7 @@ opencode run --format json [--session <session id>]
 The recorded output in the tests is written from OpenCode's documentation, not captured from a real run. The smoke checks confirm:
 
 1. `opencode run` without a message argument reads the prompt from standard input (O1).
-2. `--format json` prints one JSON event per line. Each event carries `sessionID`, and `step_finish` events carry `part.tokens` and `part.cost` (O1).
+2. `--format json` prints one JSON event per line. Each event carries `sessionID`, `step_finish` events carry `part.tokens` and `part.cost`, and `text` events carry `part.text` (O1).
 3. `OPENCODE_CONFIG` is merged with the global configuration, and the `mcp` and `permission` keys work as written (O1, O2).
 4. The bash permission patterns `git push *`, `gh *` and `az *` match as globs, and a denied command is refused without a prompt (O2).
 5. `--session <id>` continues the session (O4).

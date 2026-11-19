@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/matteorosani/anthill/internal/domain"
 	"github.com/matteorosani/anthill/internal/ports"
@@ -141,15 +142,19 @@ func (s *AntSupervisor) wrapUpComment(ctx context.Context, rec ports.AntRecord, 
 // in state: failed after an exit or a crash (spec ant-execution, "Exit
 // without finishing"), or timed-out at the end of its budget (spec
 // ant-timebox, "Budget exhaustion"), which opens a draft PR when the
-// branch has new commits. The summary is the run's last progress report,
-// if any. The worktree is kept, and the queen is told so that she can
-// retry, continue or abandon.
+// branch has new commits. The summary of a failed ant is the agent's last
+// message, or the run's last progress report when the agent gave no
+// message; that of a timed-out ant is the progress report. The worktree
+// is kept, and the queen is told so that she can retry, continue or
+// abandon.
 func (s *AntSupervisor) endedWithoutFinish(ctx context.Context, rec ports.AntRecord, r *activeRun, state domain.AntState, reason string) error {
 	w := WrapUp{Reason: reason, Summary: s.deps.Tokens.Progress(r.token)}
 	kind, title := domain.NotifyFailed, "Run exited without finish"
 	if state == domain.AntTimedOut {
 		w.OpenDraft = true
 		kind, title = domain.NotifyTimedOut, "Ant timed out"
+	} else if strings.TrimSpace(r.lastMessage) != "" {
+		w.Summary = s.deps.Tokens.Summary(rec.Worktree, r.lastMessage)
 	}
 	_, _, err := s.wrapUp(ctx, rec, r.run.ID, w)
 	s.notifyAnt(ctx, kind, rec.Item, title, reason)
