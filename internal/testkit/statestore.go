@@ -29,6 +29,12 @@ type StateStore struct {
 	extensions []ports.ExtensionRecord
 	hidden     map[domain.Ref]ports.HiddenProposal
 	claims     map[claimKey]ports.HeldClaim
+	requests   []roundRequest
+}
+
+type roundRequest struct {
+	ports.RoundRequest
+	dropped bool
 }
 
 type claimKey struct {
@@ -585,6 +591,67 @@ func (s *StateStore) BeginRun(_ context.Context, st ports.RunStart) (ports.RunID
 	s.runs = append(s.runs, r)
 	for _, id := range st.Consumed {
 		s.changes[id-1].consumed = true
+	}
+	return r.ID, nil
+}
+
+// RequestRound stores a pending request, unless the PR has one for the
+// comment.
+func (s *StateStore) RequestRound(_ context.Context, r ports.RoundRequest) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if slices.ContainsFunc(s.requests, func(q roundRequest) bool { return q.PR == r.PR && q.CommentID == r.CommentID }) {
+		return nil
+	}
+	r.Round = 0
+	s.requests = append(s.requests, roundRequest{RoundRequest: r})
+	return nil
+}
+
+// pending reports whether a request is still to be served.
+func (r roundRequest) pending(pr domain.Ref) bool {
+	return r.PR == pr && r.Round == 0 && !r.dropped
+}
+
+// RoundRequests lists a PR's pending requests.
+func (s *StateStore) RoundRequests(_ context.Context, pr domain.Ref) ([]ports.RoundRequest, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	var out []ports.RoundRequest
+	for _, r := range s.requests {
+		if r.pending(pr) {
+			out = append(out, r.RoundRequest)
+		}
+	}
+	return out, nil
+}
+
+// DropRoundRequest marks a pending request as served elsewhere.
+func (s *StateStore) DropRoundRequest(_ context.Context, pr domain.Ref, commentID string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for i := range s.requests {
+		if s.requests[i].pending(pr) && s.requests[i].CommentID == commentID {
+			s.requests[i].dropped = true
+		}
+	}
+	return nil
+}
+
+// BeginRound stores an active round and serves the PR's pending
+// requests with it when it is requested.
+func (s *StateStore) BeginRound(_ context.Context, r ports.RoundRecord) (ports.RoundID, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	r.ID = ports.RoundID(len(s.rounds) + 1)
+	r.Usage = cloneUsage(r.Usage)
+	s.rounds = append(s.rounds, r)
+	if r.Requested {
+		for i := range s.requests {
+			if s.requests[i].pending(r.PR) {
+				s.requests[i].Round = r.ID
+			}
+		}
 	}
 	return r.ID, nil
 }

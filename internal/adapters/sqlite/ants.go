@@ -11,7 +11,7 @@ import (
 	"github.com/matteorosani/anthill/internal/ports"
 )
 
-const antColumns = "id, item, base_ns, budget, runner, session_id, worktree, branch, base_branch, pr, finish"
+const antColumns = "id, item, base_ns, budget, runner, session_id, worktree, branch, base_branch, pr, finish, follow_up_proposal"
 
 // CreateAnt stores a new ant with its transitions.
 func (s *Store) CreateAnt(ctx context.Context, r ports.AntRecord) (ports.AntID, error) {
@@ -22,8 +22,8 @@ func (s *Store) CreateAnt(ctx context.Context, r ports.AntRecord) (ports.AntID, 
 			return err
 		}
 		res, err := tx.ExecContext(ctx, `INSERT INTO ants
-			(item_key, item, state, base_ns, budget, runner, session_id, worktree, branch, base_branch, pr, finish)
-			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, row...)
+			(item_key, item, state, base_ns, budget, runner, session_id, worktree, branch, base_branch, pr, finish, follow_up_proposal)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, row...)
 		if err != nil {
 			return err
 		}
@@ -61,7 +61,8 @@ func saveAnt(ctx context.Context, tx *sql.Tx, r ports.AntRecord) error {
 	}
 	res, err := tx.ExecContext(ctx, `UPDATE ants SET
 		item_key = ?, item = ?, state = ?, base_ns = ?, budget = ?, runner = ?,
-		session_id = ?, worktree = ?, branch = ?, base_branch = ?, pr = ?, finish = ?
+		session_id = ?, worktree = ?, branch = ?, base_branch = ?, pr = ?, finish = ?,
+		follow_up_proposal = ?
 		WHERE id = ?`, append(row, r.ID)...)
 	if err != nil {
 		return err
@@ -96,7 +97,7 @@ func antRow(r ports.AntRecord) ([]any, error) {
 		}
 		finish.Valid = true
 	}
-	return []any{refKey(r.Item), item, string(r.State()), int64(r.Base), budget, r.Runner, r.SessionID, r.Worktree, r.Branch, r.BaseBranch, pr, finish}, nil
+	return []any{refKey(r.Item), item, string(r.State()), int64(r.Base), budget, r.Runner, r.SessionID, r.Worktree, r.Branch, r.BaseBranch, pr, finish, string(r.FollowUpProposal)}, nil
 }
 
 func insertTransitions(ctx context.Context, tx *sql.Tx, ant ports.AntID, history []domain.Transition, first int) error {
@@ -161,12 +162,13 @@ func (s *Store) ants(ctx context.Context, where string, args ...any) ([]ports.An
 			item, budget string
 			base         int64
 			pr, finish   sql.NullString
+			proposal     string
 		)
-		if err := rows.Scan(&r.ID, &item, &base, &budget, &r.Runner, &r.SessionID, &r.Worktree, &r.Branch, &r.BaseBranch, &pr, &finish); err != nil {
+		if err := rows.Scan(&r.ID, &item, &base, &budget, &r.Runner, &r.SessionID, &r.Worktree, &r.Branch, &r.BaseBranch, &pr, &finish, &proposal); err != nil {
 			_ = rows.Close()
 			return nil, err
 		}
-		r.Base = time.Duration(base)
+		r.Base, r.FollowUpProposal = time.Duration(base), domain.ProposalState(proposal)
 		if err := fromJSON(item, &r.Item); err != nil {
 			_ = rows.Close()
 			return nil, err
@@ -245,10 +247,10 @@ type execer interface {
 
 func startRun(ctx context.Context, db execer, r ports.RunRecord) (ports.RunID, error) {
 	res, err := db.ExecContext(ctx, `INSERT INTO runs
-		(ant_id, kind, session_id, started_at, ended_at, outcome, reason, tokens, cost_usd, session_cost_usd)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		(ant_id, kind, session_id, started_at, ended_at, outcome, reason, tokens, cost_usd, session_cost_usd, new_budget_ns)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		r.Ant, string(r.Kind), r.SessionID, r.StartedAt.UnixNano(), unixNano(r.EndedAt),
-		string(r.Outcome), r.Reason, nullInt(r.Usage.Tokens), nullFloat(r.Usage.CostUSD), nullFloat(r.SessionCostUSD))
+		string(r.Outcome), r.Reason, nullInt(r.Usage.Tokens), nullFloat(r.Usage.CostUSD), nullFloat(r.SessionCostUSD), int64(r.NewBudget))
 	if err != nil {
 		return 0, err
 	}
@@ -298,7 +300,7 @@ func (s *Store) Runs(ctx context.Context, ant ports.AntID) ([]ports.RunRecord, e
 
 func (s *Store) runs(ctx context.Context, where string, args ...any) ([]ports.RunRecord, error) {
 	rows, err := s.db.QueryContext(ctx, `SELECT id, ant_id, kind, session_id, started_at, ended_at,
-		outcome, reason, tokens, cost_usd, session_cost_usd FROM runs `+where, args...)
+		outcome, reason, tokens, cost_usd, session_cost_usd, new_budget_ns FROM runs `+where, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -308,16 +310,16 @@ func (s *Store) runs(ctx context.Context, where string, args ...any) ([]ports.Ru
 		var (
 			r             ports.RunRecord
 			kind, outcome string
-			started       int64
+			started, nb   int64
 			ended, tokens sql.NullInt64
 			cost, total   sql.NullFloat64
 		)
-		if err := rows.Scan(&r.ID, &r.Ant, &kind, &r.SessionID, &started, &ended, &outcome, &r.Reason, &tokens, &cost, &total); err != nil {
+		if err := rows.Scan(&r.ID, &r.Ant, &kind, &r.SessionID, &started, &ended, &outcome, &r.Reason, &tokens, &cost, &total, &nb); err != nil {
 			return nil, err
 		}
 		r.Kind, r.Outcome = ports.RunKind(kind), ports.RunOutcome(outcome)
 		r.StartedAt, r.EndedAt = time.Unix(0, started).UTC(), fromUnixNano(ended)
-		r.Usage = usage(tokens, cost)
+		r.Usage, r.NewBudget = usage(tokens, cost), time.Duration(nb)
 		if total.Valid {
 			r.SessionCostUSD = &total.Float64
 		}
@@ -328,11 +330,15 @@ func (s *Store) runs(ctx context.Context, where string, args ...any) ([]ports.Ru
 
 // StartRound stores an active round.
 func (s *Store) StartRound(ctx context.Context, r ports.RoundRecord) (ports.RoundID, error) {
+	return startRound(ctx, s.db, r)
+}
+
+func startRound(ctx context.Context, db execer, r ports.RoundRecord) (ports.RoundID, error) {
 	pr, err := toJSON(r.PR)
 	if err != nil {
 		return 0, err
 	}
-	res, err := s.db.ExecContext(ctx, `INSERT INTO rounds
+	res, err := db.ExecContext(ctx, `INSERT INTO rounds
 		(pr_key, pr, head, requested, started_at, ended_at, tokens, cost_usd)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
 		refKey(r.PR), pr, r.Head, r.Requested, r.StartedAt.UnixNano(), unixNano(r.EndedAt),

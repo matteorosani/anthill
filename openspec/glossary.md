@@ -105,7 +105,7 @@ Every spec, design and task uses these terms with exactly one meaning. When a ne
 ## Pull requests and the shepherd
 
 - **Ant PR**: a PR opened by an ant. **Human PR**: any other PR.
-- **Shepherd**: the part of Anthill that reviews PRs (pr-shepherd). **Shepherd scope** decides which PRs it reviews on its own: `ant-authored` (ant PRs), `labelled` or `all`.
+- **Shepherd**: the part of Anthill that reviews PRs (pr-shepherd). **Shepherd scope** decides which PRs it reviews on its own: `ant-authored` (ant PRs), `labelled` (ant PRs and PRs with the `anthill:review` label) or `all`.
 - **Round**: one review of one head commit by a review agent. An **automatic round** starts on its own; a **requested round** starts on `/anthill review`. The **round limit** caps automatic rounds per PR.
 - **Review agent**: the agent of a round. It reports only through `submit_review`.
 - **Finding**: one problem a round reports, with a **severity** (`blocking`, `suggestion`, `nit`) and a **classification** (`auto-fixable`, `needs-developer`).

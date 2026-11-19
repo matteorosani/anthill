@@ -2,6 +2,7 @@ package claudecode
 
 import (
 	"encoding/json"
+	"strings"
 )
 
 // The event types of the streaming JSON output that the runner reads.
@@ -37,6 +38,11 @@ type event struct {
 	Message *struct {
 		ID    string `json:"id"`
 		Usage *usage `json:"usage"`
+		// Content is the message's blocks: text, tool use and others.
+		Content []struct {
+			Type string `json:"type"`
+			Text string `json:"text"`
+		} `json:"content"`
 	} `json:"message"`
 	// ParentToolUseID, on an assistant event, is set for a subagent's
 	// message.
@@ -85,4 +91,23 @@ func (e event) messageTokens() (id string, tokens int64, ok bool) {
 		return "", 0, false
 	}
 	return e.Message.ID, e.Message.Usage.total(), true
+}
+
+// text is the text of an assistant event of the main loop, its text
+// blocks joined by blank lines, when it has any. A subagent's message is
+// not the agent's own, and tool use is not a message.
+func (e event) text() (string, bool) {
+	if e.Type != eventAssistant || e.ParentToolUseID != nil || e.Message == nil {
+		return "", false
+	}
+	var parts []string
+	for _, c := range e.Message.Content {
+		if c.Type == "text" && strings.TrimSpace(c.Text) != "" {
+			parts = append(parts, c.Text)
+		}
+	}
+	if len(parts) == 0 {
+		return "", false
+	}
+	return strings.Join(parts, "\n\n"), true
 }

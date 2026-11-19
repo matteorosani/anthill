@@ -218,6 +218,8 @@ type run struct {
 	mu      sync.Mutex
 	session string
 	tokens  *int64
+	// lastMessage is the text of the agent's latest message.
+	lastMessage string
 }
 
 // SessionID is the thread Codex reported, or the resumed one until it
@@ -250,6 +252,13 @@ func (r *run) Usage() ports.Usage {
 	return ports.Usage{Tokens: r.tokens}
 }
 
+// LastMessage is the text of the agent's latest agent_message item.
+func (r *run) LastMessage() string {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.lastMessage
+}
+
 func (r *run) line(b []byte) {
 	// The activity is written last, so that SessionID and Usage already
 	// take the line into account when the activity reader sees it.
@@ -264,6 +273,10 @@ func (r *run) line(b []byte) {
 	case eventThreadStarted:
 		if ev.ThreadID != "" {
 			r.session = ev.ThreadID
+		}
+	case eventItemCompleted:
+		if text, ok := ev.message(); ok {
+			r.lastMessage = text
 		}
 	case eventTurnCompleted:
 		if n, ok := ev.tokens(); ok {

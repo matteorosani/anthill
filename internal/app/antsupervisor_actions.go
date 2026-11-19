@@ -42,9 +42,15 @@ type ActionRefusedError struct {
 	Ant    ports.AntID
 	Action string
 	State  domain.AntState
+	// Reason is why, when the state alone does not say, such as
+	// ReasonOnHold.
+	Reason string
 }
 
 func (e *ActionRefusedError) Error() string {
+	if e.Reason != "" {
+		return fmt.Sprintf("cannot %s ant %d: %s", e.Action, e.Ant, e.Reason)
+	}
 	return fmt.Sprintf("cannot %s ant %d: it is %s", e.Action, e.Ant, e.State)
 }
 
@@ -147,6 +153,9 @@ func (s *AntSupervisor) Retry(ctx context.Context, id ports.AntID) error {
 	default:
 		return &ActionRefusedError{Ant: id, Action: "retry", State: rec.State()}
 	}
+	if err := s.refuseHeld(ctx, rec, "retry"); err != nil {
+		return err
+	}
 	if _, err := s.transition(ctx, rec, domain.AntQueued, ReasonRetry); err != nil {
 		return err
 	}
@@ -167,6 +176,9 @@ func (s *AntSupervisor) Continue(ctx context.Context, id ports.AntID, budget tim
 	}
 	if rec.State() != domain.AntTimedOut {
 		return &ActionRefusedError{Ant: id, Action: "continue", State: rec.State()}
+	}
+	if err := s.refuseHeld(ctx, rec, "continue"); err != nil {
+		return err
 	}
 	if budget <= 0 {
 		budget = rec.Base

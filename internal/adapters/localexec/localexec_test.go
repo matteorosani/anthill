@@ -24,8 +24,9 @@ func TestMain(m *testing.M) {
 }
 
 // fakeRunner is an AgentRunner that starts the fake agent. The brief is
-// the agent's script, as JSON. Its session id is fake-<pid>, and its
-// usage is the last usage the agent printed.
+// the agent's script, as JSON. Its session id is fake-<pid>, its usage
+// is the last usage the agent printed, and its last message the last
+// message it printed.
 type fakeRunner struct {
 	caps        ports.Capabilities
 	unavailable error
@@ -86,6 +87,7 @@ type fakeRun struct {
 	mu      sync.Mutex
 	session string
 	usage   ports.Usage
+	message string
 }
 
 func (r *fakeRun) line(b []byte) {
@@ -100,6 +102,8 @@ func (r *fakeRun) line(b []byte) {
 		case "usage":
 			tokens, cost := ev.Tokens, ev.CostUSD
 			r.usage = ports.Usage{Tokens: &tokens, CostUSD: &cost}
+		case "message":
+			r.message = ev.Text
 		}
 		r.mu.Unlock()
 	}
@@ -123,6 +127,11 @@ func (r *fakeRun) Usage() ports.Usage {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	return r.usage
+}
+func (r *fakeRun) LastMessage() string {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.message
 }
 
 const fakeRunnerName domain.Runner = "fake"
@@ -608,5 +617,58 @@ func TestUsageCoalescedForAStalledReader(t *testing.T) {
 	}
 	if len(usages) != 1 || *usages[0].Usage.Tokens != lines {
 		t.Errorf("usage events = %+v, want one with the latest %d tokens", usages, lines)
+	}
+}
+
+// Task 14.12: the agent's last message is reported each time it changes,
+// before the last event, and a message the agent gives just before it
+// crashes is not lost.
+func TestLastMessage(t *testing.T) {
+	e := newEnv(ports.Capabilities{})
+	_, rec := e.start(t, time.Time{},
+		testkit.AgentStep{Op: testkit.StepMessage, Text: "Reading the task."},
+		testkit.AgentStep{Op: testkit.StepMessage, Text: "The tests pass."},
+		testkit.AgentStep{Op: testkit.StepCrash},
+	)
+	last := rec.waitEnd(t)
+	if last.Kind != ports.ExecExited || !last.Exit.Crashed {
+		t.Errorf("last event = %+v, want exited after a crash", last)
+	}
+	var messages []string
+	for _, ev := range rec.all() {
+		if ev.Kind == ports.ExecLastMessage {
+			messages = append(messages, ev.Message)
+		}
+	}
+	if len(messages) == 0 || messages[len(messages)-1] != "The tests pass." {
+		t.Errorf("last message events = %q, want the latest to be %q", messages, "The tests pass.")
+	}
+}
+
+// Task 14.12: with a stalled reader, unread last message events are
+// merged into the latest, which is never lost.
+func TestLastMessageCoalescedForAStalledReader(t *testing.T) {
+	const messages = 100
+	e := newEnvWith(ports.Capabilities{}, localexec.Options{MaxQueuedActivity: 3})
+	var steps []testkit.AgentStep
+	for i := 1; i <= messages; i++ {
+		steps = append(steps, testkit.AgentStep{Op: testkit.StepMessage, Text: fmt.Sprintf("message %d", i)})
+	}
+	brief, _ := json.Marshal(testkit.AgentScript{Steps: steps})
+	x, err := e.exec.Start(context.Background(), ports.ExecSpec{Runner: fakeRunnerName, Run: ports.RunSpec{Brief: string(brief)}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	e.runner.runsSoFar()[0].proc.Wait()
+	rec := record(x.Events)
+	rec.waitEnd(t)
+	var got []string
+	for _, ev := range rec.all() {
+		if ev.Kind == ports.ExecLastMessage {
+			got = append(got, ev.Message)
+		}
+	}
+	if want := fmt.Sprintf("message %d", messages); len(got) != 1 || got[0] != want {
+		t.Errorf("last message events = %q, want one with %q", got, want)
 	}
 }

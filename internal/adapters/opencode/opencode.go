@@ -177,6 +177,8 @@ type run struct {
 	session string
 	tokens  *int64
 	cost    *float64
+	// lastMessage is the text of the agent's latest text part.
+	lastMessage string
 
 	cleanup sync.Once
 }
@@ -213,6 +215,13 @@ func (r *run) Usage() ports.Usage {
 	return ports.Usage{Tokens: r.tokens, CostUSD: r.cost}
 }
 
+// LastMessage is the text of the agent's latest text part.
+func (r *run) LastMessage() string {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.lastMessage
+}
+
 func (r *run) line(b []byte) {
 	// The activity is written last, so that SessionID and Usage already
 	// take the line into account when the activity reader sees it.
@@ -225,6 +234,9 @@ func (r *run) line(b []byte) {
 	defer r.mu.Unlock()
 	if ev.SessionID != "" {
 		r.session = ev.SessionID
+	}
+	if text, ok := ev.message(); ok {
+		r.lastMessage = text
 	}
 	if ev.Type != eventStepFinish {
 		return

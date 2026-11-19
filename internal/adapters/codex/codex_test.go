@@ -166,6 +166,11 @@ func TestStart(t *testing.T) {
 	if u := run.Usage(); u.Tokens == nil || *u.Tokens != 24763+122 || u.CostUSD != nil {
 		t.Errorf("usage = %v tokens, %v USD; want input (cached included) plus output, cost unknown", u.Tokens, u.CostUSD)
 	}
+	// Task 14.12: the last message is the agent_message item; the
+	// reasoning item and the command are not messages.
+	if got, want := run.LastMessage(), "The tests pass."; got != want {
+		t.Errorf("last message = %q, want %q", got, want)
+	}
 	b, err := os.ReadFile(filepath.Join(f.dir, "input.txt"))
 	if err != nil || string(b) != spec.Brief {
 		t.Errorf("input = %q, %v; want the brief", b, err)
@@ -230,6 +235,9 @@ func TestResume(t *testing.T) {
 	if u := run.Usage(); u.Tokens == nil || *u.Tokens != 31002+64 {
 		t.Errorf("tokens = %v", u.Tokens)
 	}
+	if got, want := run.LastMessage(), "Using a 60 second timeout as answered."; got != want {
+		t.Errorf("last message = %q, want %q", got, want)
+	}
 	if _, err := f.runner.Resume(context.Background(), "", f.spec(wt), ports.RunIO{}); err == nil {
 		t.Error("Resume without a session id succeeded")
 	}
@@ -252,6 +260,11 @@ func TestFailedTurn(t *testing.T) {
 	}
 	if u := run.Usage(); u.Tokens != nil {
 		t.Errorf("tokens = %d, want unknown", *u.Tokens)
+	}
+	// Task 14.12: the recorded failed turn has no agent message; its
+	// error event is not one.
+	if got := run.LastMessage(); got != "" {
+		t.Errorf("last message = %q, want none", got)
 	}
 }
 

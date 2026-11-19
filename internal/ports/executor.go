@@ -40,8 +40,8 @@ type Execution struct {
 	// channel is closed. The executor never holds up the process for a
 	// slow reader: events wait in a queue until they are read, and what
 	// waits is bounded. Started and the last event are never dropped.
-	// The latest usage and session id are never lost, but unread
-	// intermediate values may be merged into the latest one. Activity
+	// The latest usage, session id and last message are never lost, but
+	// unread intermediate values may be merged into the latest one. Activity
 	// lines are dropped when too many wait unread: the oldest go, and
 	// one activity event in their place says how many.
 	Events <-chan ExecEvent
@@ -61,6 +61,10 @@ const (
 	ExecActivity ExecEventKind = "activity"
 	// ExecUsage: what the runner reported so far changed, in Usage.
 	ExecUsage ExecEventKind = "usage"
+	// ExecLastMessage: the agent's last message changed, in Message
+	// (Run.LastMessage). It comes again each time the agent gives a new
+	// one, so a run that ends mid-turn still has its latest.
+	ExecLastMessage ExecEventKind = "last_message"
 	// ExecExited: the process ended on its own or was stopped, with Exit
 	// and the final Usage.
 	ExecExited ExecEventKind = "exited"
@@ -77,8 +81,10 @@ type ExecEvent struct {
 	At        time.Time
 	SessionID string
 	Line      string
-	Usage     Usage
-	Exit      Exit
+	// Message is the agent's last message, on ExecLastMessage.
+	Message string
+	Usage   Usage
+	Exit    Exit
 }
 
 // Final reports whether the event is the last of its execution.

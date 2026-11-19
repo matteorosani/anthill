@@ -1,17 +1,27 @@
 package opencode
 
-import "encoding/json"
+import (
+	"encoding/json"
+	"strings"
+)
 
-// eventStepFinish ends one step of the agent with its tokens and cost.
-// Other events, such as text and tool use, only go to the log.
-const eventStepFinish = "step_finish"
+// eventStepFinish ends one step of the agent with its tokens and cost,
+// and eventText is a text part of the agent's message. Other events,
+// such as tool use, only go to the log.
+const (
+	eventStepFinish = "step_finish"
+	eventText       = "text"
+)
 
 // event is one line of opencode run --format json. Every event carries
-// the session id; step_finish carries the step's tokens and cost.
+// the session id; step_finish carries the step's tokens and cost, and
+// text a text part of the agent's message.
 type event struct {
 	Type      string `json:"type"`
 	SessionID string `json:"sessionID"`
 	Part      struct {
+		// Text is the text of a text part.
+		Text   string `json:"text"`
 		Tokens *struct {
 			Input     int64 `json:"input"`
 			Output    int64 `json:"output"`
@@ -42,4 +52,12 @@ func (e event) tokens() (int64, bool) {
 		return 0, false
 	}
 	return t.Input + t.Output + t.Reasoning + t.Cache.Read + t.Cache.Write, true
+}
+
+// message is the text of a text part of the agent's message.
+func (e event) message() (string, bool) {
+	if e.Type != eventText || strings.TrimSpace(e.Part.Text) == "" {
+		return "", false
+	}
+	return e.Part.Text, true
 }

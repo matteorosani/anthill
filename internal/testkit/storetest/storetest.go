@@ -51,6 +51,7 @@ func Run(t *testing.T, open Open) {
 		{"Proposals", testProposals},
 		{"HeldClaims", testHeldClaims},
 		{"RunStarts", testRunStarts},
+		{"RoundRequests", testRoundRequests},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -146,6 +147,7 @@ func testSessionIndex(t *testing.T, s ports.StateStore) {
 	pr := PR(7)
 	first.History = append(first.History, domain.Transition{From: domain.AntFinishing, To: domain.AntSucceeded, At: T0.Add(time.Hour), Reason: "finished"})
 	first.SessionID, first.PR, first.Budget.Open, first.Finish = "session-1", &pr, nil, nil
+	first.FollowUpProposal = domain.ProposalPending
 	check(t, s.SaveAnt(ctx, first))
 	equal(t, "saved Ant", must(s.Ant(ctx, id1)), first)
 
@@ -245,6 +247,11 @@ func testRunLog(t *testing.T, s ports.StateStore) {
 	}
 	*got[2].SessionCostUSD = 9
 	equal(t, "session total after changing a listed copy", must(s.Runs(ctx, ant))[2], resumed)
+
+	// A follow-up run started for changes keeps its new budget.
+	followUp := ports.RunRecord{Ant: ant, Kind: ports.RunFollowUp, StartedAt: T0.Add(26 * time.Hour), NewBudget: 30 * time.Minute}
+	followUp.ID = must(s.StartRun(ctx, followUp))
+	equal(t, "follow-up run with a new budget", must(s.Runs(ctx, ant))[3], followUp)
 
 	round := ports.RoundRecord{PR: PR(7), Head: "abc", Requested: true, StartedAt: T0.Add(time.Hour)}
 	round.ID = must(s.StartRound(ctx, round))
@@ -440,7 +447,8 @@ func testRunStarts(t *testing.T, s ports.StateStore) {
 	change := must(s.StoredChanges(ctx, queued.ID))[0]
 
 	starting := withState(queued, domain.AntStarting)
-	run := ports.RunRecord{Ant: queued.ID, Kind: ports.RunTask, StartedAt: T0.Add(time.Hour)}
+	starting.FollowUpProposal = domain.ProposalAccepted
+	run := ports.RunRecord{Ant: queued.ID, Kind: ports.RunFollowUp, StartedAt: T0.Add(time.Hour), NewBudget: 30 * time.Minute}
 	run.ID = must(s.BeginRun(ctx, ports.RunStart{Ant: starting, Run: run, Consumed: []int64{change.ID}, At: T0.Add(time.Hour)}))
 	equal(t, "ant after BeginRun", must(s.Ant(ctx, queued.ID)), starting)
 	equal(t, "runs after BeginRun", must(s.Runs(ctx, queued.ID)), []ports.RunRecord{run})
@@ -456,4 +464,45 @@ func testRunStarts(t *testing.T, s ports.StateStore) {
 	equal(t, "ant after a failed BeginRun", must(s.Ant(ctx, queued.ID)), starting)
 	equal(t, "runs after a failed BeginRun", len(must(s.Runs(ctx, queued.ID))), 1)
 	equal(t, "changes after a failed BeginRun", len(must(s.StoredChanges(ctx, queued.ID))), 1)
+}
+
+func testRoundRequests(t *testing.T, s ports.StateStore) {
+	ctx := context.Background()
+	first := ports.RoundRequest{PR: PR(34), CommentID: "c1", At: T0}
+	second := ports.RoundRequest{PR: PR(34), CommentID: "c2", At: T0.Add(time.Minute)}
+	other := ports.RoundRequest{PR: PR(35), CommentID: "c1", At: T0}
+	for _, r := range []ports.RoundRequest{first, second, other, first} {
+		check(t, s.RequestRound(ctx, r))
+	}
+	equal(t, "pending requests", must(s.RoundRequests(ctx, PR(34))), []ports.RoundRequest{first, second})
+
+	// An automatic round serves no request.
+	auto := ports.RoundRecord{PR: PR(34), Head: "c1", StartedAt: T0}
+	auto.ID = must(s.BeginRound(ctx, auto))
+	equal(t, "requests after an automatic round", len(must(s.RoundRequests(ctx, PR(34)))), 2)
+
+	// A requested round serves every pending request of its PR only.
+	requested := ports.RoundRecord{PR: PR(34), Head: "c1", Requested: true, StartedAt: T0.Add(time.Hour)}
+	requested.ID = must(s.BeginRound(ctx, requested))
+	equal(t, "rounds after BeginRound", must(s.Rounds(ctx, PR(34))), []ports.RoundRecord{auto, requested})
+	equal(t, "requests after a requested round", must(s.RoundRequests(ctx, PR(34))), []ports.RoundRequest(nil))
+	equal(t, "other PR's requests", must(s.RoundRequests(ctx, PR(35))), []ports.RoundRequest{other})
+
+	// A served request is not stored again.
+	check(t, s.RequestRound(ctx, first))
+	equal(t, "requests after a repeated request", must(s.RoundRequests(ctx, PR(34))), []ports.RoundRequest(nil))
+
+	// A request served by another instance is dropped, and neither
+	// counts as pending nor is served by a later round of this one.
+	third := ports.RoundRequest{PR: PR(34), CommentID: "c3", At: T0.Add(2 * time.Hour)}
+	fourth := ports.RoundRequest{PR: PR(34), CommentID: "c4", At: T0.Add(2 * time.Hour)}
+	check(t, s.RequestRound(ctx, third))
+	check(t, s.RequestRound(ctx, fourth))
+	check(t, s.DropRoundRequest(ctx, PR(34), "c3"))
+	check(t, s.DropRoundRequest(ctx, PR(34), "c1"))
+	equal(t, "requests after a drop", must(s.RoundRequests(ctx, PR(34))), []ports.RoundRequest{fourth})
+	must(s.BeginRound(ctx, ports.RoundRecord{PR: PR(34), Head: "c2", Requested: true, StartedAt: T0.Add(3 * time.Hour)}))
+	equal(t, "requests after the next round", must(s.RoundRequests(ctx, PR(34))), []ports.RoundRequest(nil))
+	check(t, s.RequestRound(ctx, third))
+	equal(t, "a dropped request requested again", must(s.RoundRequests(ctx, PR(34))), []ports.RoundRequest(nil))
 }

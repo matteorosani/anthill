@@ -129,4 +129,8 @@ type Run interface {
 	Wait() Exit
 	// Usage is what the runner reported so far.
 	Usage() Usage
+	// LastMessage is the text of the agent's latest message of its own,
+	// not a subagent's, as the runner's output gives it. It is empty
+	// until the agent gives one.
+	LastMessage() string
 }

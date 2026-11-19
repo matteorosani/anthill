@@ -143,6 +143,11 @@ func TestStart(t *testing.T) {
 	if u.CostUSD == nil || math.Abs(*u.CostUSD-0.0168) > 1e-9 {
 		t.Errorf("cost = %v, want the sum of both steps", u.CostUSD)
 	}
+	// Task 14.12: the last message is the text part; the tool use is not
+	// a message.
+	if got, want := run.LastMessage(), "The tests pass."; got != want {
+		t.Errorf("last message = %q, want %q", got, want)
+	}
 	b, err := os.ReadFile(filepath.Join(f.dir, "input.txt"))
 	if err != nil || string(b) != spec.Brief {
 		t.Errorf("input = %q, %v; want the brief", b, err)
@@ -224,6 +229,9 @@ func TestResume(t *testing.T) {
 	if u := run.Usage(); u.Tokens == nil || *u.Tokens != 90+30+11000 || u.CostUSD == nil || *u.CostUSD != 0.002 {
 		t.Errorf("usage = %v tokens, %v USD", u.Tokens, u.CostUSD)
 	}
+	if got, want := run.LastMessage(), "Using a 60 second timeout as answered."; got != want {
+		t.Errorf("last message = %q, want %q", got, want)
+	}
 	if _, err := f.runner.Resume(context.Background(), "", f.spec(t), ports.RunIO{}); err == nil {
 		t.Error("Resume without a session id succeeded")
 	}
@@ -245,6 +253,11 @@ func TestFailedRun(t *testing.T) {
 	}
 	if u := run.Usage(); u.Tokens != nil || u.CostUSD != nil {
 		t.Errorf("usage = %+v, want unknown", u)
+	}
+	// Task 14.12: the recorded failure has no text part; its error event
+	// is not a message.
+	if got := run.LastMessage(); got != "" {
+		t.Errorf("last message = %q, want none", got)
 	}
 }
 

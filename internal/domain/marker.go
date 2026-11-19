@@ -60,6 +60,19 @@ type FindingFields struct {
 	EndLine     int    `json:"end_line,omitempty"`
 }
 
+// RoundFields are the marker fields only the summary comment of a
+// shepherd round carries (spec pr-shepherd, "Round triggers", "Round
+// limit"). They let every instance count the rounds on a PR and tell
+// which head commits were reviewed, and tell a round's summary apart from
+// an ant's run summary: a summary marker is a round's exactly when it
+// has these fields.
+type RoundFields struct {
+	// Head is the head commit the round reviewed. It is never empty.
+	Head string `json:"round_head"`
+	// Requested is set for a round started by /anthill review.
+	Requested bool `json:"round_requested,omitempty"`
+}
+
 // Marker is the hidden machine-readable part of every Anthill comment. It
 // is written as an HTML comment holding JSON:
 //
@@ -82,6 +95,9 @@ type Marker struct {
 	// FindingFields is set for finding markers that carry a fingerprint,
 	// and nil for all others. Its fields are also written at the top level.
 	*FindingFields
+	// RoundFields is set for the summary comment of a shepherd round, and
+	// nil for all others. Its fields are also written at the top level.
+	*RoundFields
 }
 
 // Validate checks that the marker has every field its kind needs.
@@ -121,7 +137,7 @@ func (m Marker) Validate() error {
 			return fmt.Errorf("finding marker has an invalid line range %d-%d", m.StartLine, m.EndLine)
 		}
 	}
-	return nil
+	return m.validateRound()
 }
 
 // String renders the marker as a hidden HTML comment. encoding/json escapes
@@ -224,4 +240,18 @@ func ParseAnthillComment(text string) (AnthillComment, bool) {
 		Body:   strings.TrimSpace(body),
 		Marker: m,
 	}, true
+}
+
+// validateRound checks the round fields.
+func (m Marker) validateRound() error {
+	if m.RoundFields == nil {
+		return nil
+	}
+	if m.Kind != CommentSummary {
+		return fmt.Errorf("only summary markers have round fields")
+	}
+	if m.Head == "" {
+		return fmt.Errorf("round marker has no head commit")
+	}
+	return nil
 }

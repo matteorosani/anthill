@@ -23,6 +23,7 @@ type StateStore interface {
 	Proposals
 	HeldClaims
 	RunStarts
+	RoundRequests
 }
 
 // AntID identifies one ant. An item can have several ants over time, such
@@ -56,6 +57,11 @@ type AntRecord struct {
 	// the decision that ends the finish clears it with the ant's next
 	// state (design D22). It is nil otherwise.
 	Finish *domain.AntFinish
+	// FollowUpProposal is where the follow-up proposal for the ant's
+	// stored changes stands (spec change-reaction, "Follow-ups start
+	// automatically by default"). Saving it with the ant lets the start
+	// of a run close it in the same transaction (design D22).
+	FollowUpProposal domain.ProposalState
 }
 
 // State is the ant's state: the target of its last transition.
@@ -137,6 +143,11 @@ type RunRecord struct {
 	// nil otherwise or when it reported none. The next run that resumes
 	// the session takes its cost as the difference from it.
 	SessionCostUSD *float64
+	// NewBudget is the follow-up budget a follow-up run started for
+	// changes got, and 0 for a run that kept the ant's budget. Only runs
+	// with one count against the follow-up limit (spec change-reaction,
+	// "Follow-up limits").
+	NewBudget time.Duration
 }
 
 // Duration is how long the run lasted, or 0 while it is active.
@@ -389,4 +400,37 @@ type RunStarts interface {
 	// BeginRun saves s.Ant, stores s.Run as active and marks s.Consumed
 	// as given to a run, and returns the run's ID.
 	BeginRun(ctx context.Context, s RunStart) (RunID, error)
+}
+
+// RoundRequest is one /anthill review on a PR (spec pr-shepherd,
+// "Developer-requested rounds"), recorded by the instance that carries
+// out the command.
+type RoundRequest struct {
+	PR domain.Ref
+	// CommentID is the comment holding the command. A PR has at most one
+	// request per comment.
+	CommentID string
+	At        time.Time
+	// Round is the round of this instance that served the request, or 0
+	// while it is pending or when another instance's round served it.
+	Round RoundID
+}
+
+// RoundRequests records the requested rounds of the shepherd, and starts
+// a round with its effect on them in one transaction (design D22).
+type RoundRequests interface {
+	// RequestRound stores a pending request. A request for a PR and
+	// comment already stored, pending or served, is ignored.
+	RequestRound(ctx context.Context, r RoundRequest) error
+	// RoundRequests lists a PR's pending requests, oldest first.
+	RoundRequests(ctx context.Context, pr domain.Ref) ([]RoundRequest, error)
+	// DropRoundRequest marks a pending request as served by another
+	// instance, whose acknowledgement of the command is on the PR (spec
+	// agent-conversation, "Commands run once"). A request that is not
+	// pending is left as it is.
+	DropRoundRequest(ctx context.Context, pr domain.Ref, commentID string) error
+	// BeginRound stores r as an active round, as StartRound does, and for
+	// a requested round marks every pending request of r.PR as served by
+	// it, and returns the round's ID.
+	BeginRound(ctx context.Context, r RoundRecord) (RoundID, error)
 }

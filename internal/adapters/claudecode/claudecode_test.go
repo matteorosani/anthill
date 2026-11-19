@@ -194,6 +194,11 @@ func TestStartRunsHeadlessWithLiveInput(t *testing.T) {
 	if got, want := f.inputs(t), []string{"Fix the login timeout (gh-12).", "Anthill notice: 12 minutes left."}; !slices.Equal(got, want) {
 		t.Errorf("inputs = %q, want %q", got, want)
 	}
+	// Task 14.12: the last message is the text of the last assistant
+	// message, the answer to the live input.
+	if got, want := run.LastMessage(), "Noted: 12 minutes left. I'll finish now."; got != want {
+		t.Errorf("last message = %q, want %q", got, want)
+	}
 	u := run.Usage()
 	if u.Tokens == nil || *u.Tokens != 17510+17424 {
 		t.Errorf("tokens = %v, want the sum of both results, cached ones included", u.Tokens)
@@ -411,6 +416,9 @@ func TestResumeContinuesTheSession(t *testing.T) {
 	if u := run.Usage(); u.Tokens == nil || *u.Tokens != 21986 || u.CostUSD == nil || *u.CostUSD != 0.0215 || !u.CostIsSessionTotal {
 		t.Errorf("usage = %v tokens, %v USD, session total %v", u.Tokens, u.CostUSD, u.CostIsSessionTotal)
 	}
+	if got, want := run.LastMessage(), "Using a 60 second timeout as answered."; got != want {
+		t.Errorf("last message = %q, want %q", got, want)
+	}
 	var env []string
 	f.read(t, "env.json", &env)
 	if !slices.Contains(env, "CLAUDE_CODE_DISABLE_AUTO_MEMORY=1") {
@@ -440,6 +448,10 @@ func TestFailedRun(t *testing.T) {
 	}
 	if u := run.Usage(); u.Tokens == nil || *u.Tokens != 0 {
 		t.Errorf("tokens = %v, want a reported 0", u.Tokens)
+	}
+	// Task 14.12: the recorded failure has no assistant message.
+	if got := run.LastMessage(); got != "" {
+		t.Errorf("last message = %q, want none", got)
 	}
 }
 
@@ -504,6 +516,11 @@ func TestStoppedBeforeTheResultKeepsItsTokens(t *testing.T) {
 	if u.CostUSD != nil {
 		t.Errorf("cost = %v, want unknown", *u.CostUSD)
 	}
+	// Task 14.12: a run stopped mid-turn keeps the last text the agent
+	// gave; the tool use after it is not a message.
+	if got, want := run.LastMessage(), "I'll look at the login handler first."; got != want {
+		t.Errorf("last message = %q, want %q", got, want)
+	}
 }
 
 // Task 13.10: a run stopped during a later turn keeps the tokens of its
@@ -536,6 +553,43 @@ func TestStoppedAfterAResultKeepsBoth(t *testing.T) {
 	}
 	if !u.CostIsSessionTotal {
 		t.Error("the cost is not marked as a total for the session")
+	}
+	// Task 14.12: the last message is the one after the result, not the
+	// result's.
+	if got, want := run.LastMessage(), "Adding a test for the timeout."; got != want {
+		t.Errorf("last message = %q, want %q", got, want)
+	}
+}
+
+// Task 14.12: a subagent's text is not the agent's own message. The
+// recorded stopped run is replayed with its subagent message turned into
+// text.
+func TestLastMessageLeavesOutSubagents(t *testing.T) {
+	f := newFake(t, "stopped")
+	path := filepath.Join(f.dir, "turn-1.jsonl")
+	b, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	const toolUse = `[{"type":"tool_use","id":"toolu_sub","name":"Grep","input":{"pattern":"timeout"}}]`
+	if !strings.Contains(string(b), toolUse) {
+		t.Fatal("the recording has no subagent tool use")
+	}
+	b = []byte(strings.Replace(string(b), toolUse, `[{"type":"text","text":"Subagent: searching."}]`, 1))
+	if err := os.WriteFile(path, b, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	run, err := f.runner.Start(context.Background(), f.spec(t), ports.RunIO{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	waitSession(t, run)
+	if err := run.Stop(100 * time.Millisecond); err != nil {
+		t.Fatal(err)
+	}
+	run.Wait()
+	if got, want := run.LastMessage(), "I'll look at the login handler first."; got != want {
+		t.Errorf("last message = %q, want %q", got, want)
 	}
 }
 
