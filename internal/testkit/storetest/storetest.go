@@ -365,6 +365,17 @@ func testQuestions(t *testing.T, s ports.StateStore) {
 	q1.AnsweredAt, q1.AnswerID = T0.Add(2*time.Hour), "12"
 	check(t, s.SaveQuestion(ctx, q1))
 	equal(t, "pending after answer", must(s.PendingQuestions(ctx)), []ports.QuestionRecord{q2})
+
+	// The text, thread and answer are kept, and every question of an ant
+	// or on a ref is listed, answered or not.
+	other := must(s.CreateAnt(ctx, Ant(3, domain.AntAwaitingInput)))
+	q3 := ports.QuestionRecord{CommentID: "13", Ant: other, On: Item(1), AskedAt: T0.Add(3 * time.Hour), Text: "30 or 60 seconds?", Thread: "7"}
+	check(t, s.SaveQuestion(ctx, q3))
+	q1.Text, q1.Answer = "Which timeout?", &domain.ChangeEvent{Ref: Item(1), Kind: domain.ChangeCommentAdded, Actor: "dev", At: T0.Add(2 * time.Hour).UTC(), Origin: domain.OriginHuman, CommentID: "12", Body: "60 seconds"}
+	check(t, s.SaveQuestion(ctx, q1))
+	equal(t, "ant questions", must(s.AntQuestions(ctx, ant)), []ports.QuestionRecord{q2, q1})
+	equal(t, "questions on the item", must(s.QuestionsOn(ctx, Item(1))), []ports.QuestionRecord{q1, q3})
+	equal(t, "questions on another item", must(s.QuestionsOn(ctx, Item(9))), []ports.QuestionRecord(nil))
 }
 
 func testExtensions(t *testing.T, s ports.StateStore) {

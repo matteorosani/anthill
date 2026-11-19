@@ -123,7 +123,7 @@ func (t *AntTools) askQuestion(ctx context.Context, c *toolCall) (any, error) {
 		return nil, fmt.Errorf("posting the question: %w", err)
 	}
 	now := t.clock.Now()
-	if err := t.store.SaveQuestion(ctx, ports.QuestionRecord{CommentID: posted.ID, Ant: c.ant.ID, On: ref, AskedAt: now}); err != nil {
+	if err := t.store.SaveQuestion(ctx, ports.QuestionRecord{CommentID: posted.ID, Ant: c.ant.ID, On: ref, AskedAt: now, Text: text, Thread: posted.Thread}); err != nil {
 		return nil, err
 	}
 	rec := c.ant

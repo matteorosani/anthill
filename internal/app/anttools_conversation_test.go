@@ -138,7 +138,8 @@ func TestAskQuestion(t *testing.T) {
 		t.Errorf("question = %+v", ac)
 	}
 	questions, _ := e.store.PendingQuestions(context.Background())
-	if len(questions) != 1 || questions[0].CommentID != c.ID || questions[0].On != ghRef(12) || questions[0].Ant != e.ant {
+	if len(questions) != 1 || questions[0].CommentID != c.ID || questions[0].On != ghRef(12) || questions[0].Ant != e.ant ||
+		questions[0].Text != "Does timeout mean 30 or 60 seconds?" {
 		t.Errorf("stored questions = %+v", questions)
 	}
 	rec := e.antRecord()

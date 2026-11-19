@@ -414,6 +414,10 @@ func (s *StateStore) ConsumeChanges(_ context.Context, ids []int64, _ time.Time)
 func (s *StateStore) SaveQuestion(_ context.Context, q ports.QuestionRecord) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if q.Answer != nil {
+		answer := *q.Answer
+		q.Answer = &answer
+	}
 	s.questions[q.CommentID] = q
 	return nil
 }
@@ -432,6 +436,31 @@ func (s *StateStore) PendingQuestions(_ context.Context) ([]ports.QuestionRecord
 		return cmp.Or(a.AskedAt.Compare(b.AskedAt), cmp.Compare(a.CommentID, b.CommentID))
 	})
 	return out, nil
+}
+
+// AntQuestions lists an ant's questions, oldest first.
+func (s *StateStore) AntQuestions(_ context.Context, ant ports.AntID) ([]ports.QuestionRecord, error) {
+	return s.questionsWhere(func(q ports.QuestionRecord) bool { return q.Ant == ant }), nil
+}
+
+// QuestionsOn lists the questions posted on a ticket or PR, oldest first.
+func (s *StateStore) QuestionsOn(_ context.Context, on domain.Ref) ([]ports.QuestionRecord, error) {
+	return s.questionsWhere(func(q ports.QuestionRecord) bool { return q.On == on }), nil
+}
+
+func (s *StateStore) questionsWhere(keep func(ports.QuestionRecord) bool) []ports.QuestionRecord {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	var out []ports.QuestionRecord
+	for _, q := range s.questions {
+		if keep(q) {
+			out = append(out, q)
+		}
+	}
+	slices.SortFunc(out, func(a, b ports.QuestionRecord) int {
+		return cmp.Or(a.AskedAt.Compare(b.AskedAt), cmp.Compare(a.CommentID, b.CommentID))
+	})
+	return out
 }
 
 // SaveExtension stores or updates an extension request.

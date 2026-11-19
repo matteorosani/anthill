@@ -371,6 +371,11 @@ func commentEvent(base ChangeEvent, prev StoredContent, group string, c Comment,
 	if _, ok := prev.Hashes[group]; ok {
 		e.Kind, e.At = ChangeCommentEdited, c.UpdatedAt
 	}
+	if thread == "" {
+		// A general comment that the provider threads, such as on an
+		// Azure DevOps PR.
+		thread = c.Thread
+	}
 	e.Actor, e.CommentID, e.ThreadID, e.Body = c.Author, c.ID, thread, c.Body
 	e.Origin = c.Origin()
 	return e

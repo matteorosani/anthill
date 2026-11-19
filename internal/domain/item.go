@@ -34,6 +34,11 @@ type Comment struct {
 	Body      string
 	CreatedAt time.Time
 	UpdatedAt time.Time
+	// Thread is the thread the comment is in where the provider threads
+	// every PR comment, as Azure DevOps does, and "" elsewhere. A reply in
+	// the thread of an ant's question answers it (spec
+	// agent-conversation, "Answers resume the session").
+	Thread string
 }
 
 // WorkItem is the normalized form of a GitHub issue or an Azure DevOps work
