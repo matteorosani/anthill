@@ -330,11 +330,15 @@ func (s *Store) runs(ctx context.Context, where string, args ...any) ([]ports.Ru
 
 // StartRound stores an active round.
 func (s *Store) StartRound(ctx context.Context, r ports.RoundRecord) (ports.RoundID, error) {
+	return startRound(ctx, s.db, r)
+}
+
+func startRound(ctx context.Context, db execer, r ports.RoundRecord) (ports.RoundID, error) {
 	pr, err := toJSON(r.PR)
 	if err != nil {
 		return 0, err
 	}
-	res, err := s.db.ExecContext(ctx, `INSERT INTO rounds
+	res, err := db.ExecContext(ctx, `INSERT INTO rounds
 		(pr_key, pr, head, requested, started_at, ended_at, tokens, cost_usd)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
 		refKey(r.PR), pr, r.Head, r.Requested, r.StartedAt.UnixNano(), unixNano(r.EndedAt),
