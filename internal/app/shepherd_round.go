@@ -55,12 +55,6 @@ type RoundResult struct {
 	Usage ports.Usage
 }
 
-// ackMarkerID is the marker ID of the acknowledgement of the command in
-// commentID, which the command service posts.
-func ackMarkerID(commentID string) string {
-	return "cmd-" + commentID
-}
-
 // startRound carries out a StartRound decision. A requested round first
 // acknowledges each /anthill review it serves, so the command runs once
 // across instances. The round is then stored, with the requests it
@@ -243,7 +237,7 @@ func (s *Shepherd) pendingRequests(ctx context.Context, pr domain.PullRequest, w
 // ackedElsewhere reports whether another instance acknowledged the
 // command in commentID on the PR.
 func ackedElsewhere(pr domain.PullRequest, commentID, self string, writers func(string) (bool, error)) (bool, error) {
-	id := ackMarkerID(commentID)
+	id := domain.CommandAckID(commentID)
 	for _, c := range prComments(pr) {
 		m, ok := domain.FindMarker(c.Body)
 		if !ok || m.Kind != domain.CommentReply || m.ID != id || m.Instance == self {

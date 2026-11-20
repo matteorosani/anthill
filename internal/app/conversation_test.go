@@ -636,3 +636,39 @@ func TestReleaseCommandAcknowledgedByTheHolder(t *testing.T) {
 		}
 	})
 }
+
+// notReviewing is a shepherd that cannot review, or fails to tell.
+type notReviewing struct{ err error }
+
+func (n notReviewing) CanReview(context.Context, domain.Ref) error { return n.err }
+func (n notReviewing) RequestRound(context.Context, domain.Ref, string) error {
+	return errors.New("RequestRound called")
+}
+
+// An instance that does not review leaves /anthill review to one that
+// does; any other failure to tell is an error, so the event is retried.
+func TestReviewOnAnInstanceThatDoesNotReview(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		e := newConvEnv(t, 2)
+		pr := ghPR(40)
+		e.gh.PutPullRequest(domain.PullRequest{Ref: pr, SourceBranch: "feature/login", TargetBranch: "main", Author: "gverdi"})
+		ev := e.comment(pr, "lbianchi", "/anthill review")
+		conv := func(err error) *app.Conversation {
+			return app.NewConversation(app.ConversationDeps{
+				Store: e.store, Tracker: e.trackerRoute("mrosani"), CodeHost: e.codeHostRoute("mrosani"),
+				Claims: e.claiming, Ants: e.sup, Reviews: notReviewing{err}, Clock: e.clock,
+			})
+		}
+		in := e.input(e.store, ev)
+		res, err := conv(&app.NotReviewingError{Repo: shop}).HandleCommands(e.ctx, in)
+		if err != nil || !res.Handled {
+			t.Errorf("not reviewing: %+v, %v; want handled with no error", res, err)
+		}
+		if _, err := conv(errors.New("route failed")).HandleCommands(e.ctx, in); err == nil || !strings.Contains(err.Error(), "route failed") {
+			t.Errorf("failure to tell = %v, want it returned", err)
+		}
+		if acks := e.acks(pr, ev.CommentID); len(acks) != 0 {
+			t.Errorf("acknowledgements = %+v, want none", acks)
+		}
+	})
+}

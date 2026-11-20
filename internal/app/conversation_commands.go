@@ -222,8 +222,13 @@ func (c *Conversation) requestRound(ctx context.Context, e domain.ChangeEvent) (
 	if c.deps.Reviews == nil || e.Ref.Kind != domain.KindPR {
 		return commandOutcome{}, nil
 	}
-	if err := c.deps.Reviews.CanReview(ctx, e.Ref); err != nil {
-		return commandOutcome{}, nil //nolint:nilerr // not this instance's to review
+	err := c.deps.Reviews.CanReview(ctx, e.Ref)
+	var notReviewing *NotReviewingError
+	switch {
+	case errors.As(err, &notReviewing):
+		return commandOutcome{}, nil // left to an instance that reviews
+	case err != nil:
+		return commandOutcome{}, err
 	}
 	if err := c.deps.Reviews.RequestRound(ctx, e.Ref, e.CommentID); err != nil {
 		return commandOutcome{}, err
