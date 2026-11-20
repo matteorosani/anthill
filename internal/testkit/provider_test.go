@@ -419,3 +419,22 @@ func TestProviderRepositories(t *testing.T) {
 		t.Errorf("Repositories(project) = %v, %v", repos, err)
 	}
 }
+
+func TestPostAsQueen(t *testing.T) {
+	clock := testkit.NewClock(time.Date(2026, 11, 1, 9, 0, 0, 0, time.UTC))
+	p := testkit.NewProvider(clock)
+	repo := domain.Repository{Provider: domain.GitHub, Org: "o", Name: "r"}
+	item := domain.Ref{Repo: repo, Kind: domain.KindItem, Number: 1}
+	p.PutItem(domain.WorkItem{Ref: item, Title: "t"})
+	c, err := p.Client("queen").PostAsQueen(context.Background(), item, "", "plain words")
+	if err != nil || c.Author != "queen" || c.Body != "plain words" {
+		t.Fatalf("PostAsQueen = %+v, %v", c, err)
+	}
+	got, _ := p.Item(item)
+	if len(got.Comments) != 1 || got.Comments[0].ID != c.ID {
+		t.Errorf("comments = %+v", got.Comments)
+	}
+	if _, err := p.Client("queen").PostAsQueen(context.Background(), domain.Ref{Repo: repo, Kind: domain.KindPR, Number: 2}, "t1", "x"); err == nil {
+		t.Error("a reply on a missing PR was accepted")
+	}
+}

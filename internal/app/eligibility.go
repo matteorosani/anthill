@@ -2,7 +2,6 @@ package app
 
 import (
 	"context"
-	"errors"
 	"fmt"
 
 	"github.com/matteorosani/anthill/internal/domain"
@@ -67,44 +66,8 @@ func (e *Eligibility) Recheck(ctx context.Context, ref domain.Ref, own ports.Ant
 	if err != nil {
 		return domain.WorkItem{}, domain.EligibilityResult{}, fmt.Errorf("reading %s: %w", ref, err)
 	}
-	target, err := e.target(ctx, item)
-	if err != nil {
-		return item, domain.EligibilityResult{}, fmt.Errorf("mapping %s to its repository: %w", ref, err)
-	}
-	ec := domain.EligibilityContext{
-		OptInLabel:                target.Settings.OptInLabel,
-		HoldLabel:                 target.Settings.HoldLabel,
-		RequireAcceptanceCriteria: target.Settings.RequireAcceptanceCriteria,
-		RepositoryAvailable:       target.Available,
-		States:                    map[domain.Ref]domain.ItemState{},
-	}
-	if target.Repository != (domain.Repository{}) {
-		ec.TargetRepository = target.Repository.String()
-	}
-	for _, link := range append(append([]domain.Ref(nil), item.Dependencies...), item.Children...) {
-		linked, _, err := tracker.Item(ctx, link)
-		switch {
-		case err == nil:
-			ec.States[link] = linked.State
-		case !errors.Is(err, ports.ErrNotFound):
-			return item, domain.EligibilityResult{}, fmt.Errorf("reading %s, linked from %s: %w", link, ref, err)
-		}
-	}
-	if ec.ClaimHolder, ec.Instance, err = e.claims.Holder(ctx, ref, domain.ClaimTask); err != nil {
-		return item, domain.EligibilityResult{}, err
-	}
-	rec, err := e.ants.CurrentAnt(ctx, ref)
-	switch {
-	case err == nil:
-		if rec.ID != own && !rec.State().Final() {
-			ec.LocalAnt = rec.State()
-			ec.OpenAntPR = rec.PR != nil
-		}
-	case !errors.Is(err, ports.ErrNotFound):
-		return item, domain.EligibilityResult{}, fmt.Errorf("reading the ant of %s: %w", ref, err)
-	}
-	ec.PendingQuestion = pendingQuestion(item.Comments)
-	return item, domain.Evaluate(item, ec), nil
+	_, result, err := e.Evaluate(ctx, tracker, item, own)
+	return item, result, err
 }
 
 // pendingQuestion is the latest question comment of an ant on the item

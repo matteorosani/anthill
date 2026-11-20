@@ -123,11 +123,18 @@ func (p *Provider) Client(login string) *ProviderClient {
 }
 
 // PutItem stores an item, replacing any item with the same ref, as a
-// change seen by the next poll. Its Revision is set by the provider.
+// change seen by the next poll. Its Revision is set by the provider, and
+// so is its creation time when it has none: the time it was first put.
 func (p *Provider) PutItem(item domain.WorkItem) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	item = cloneItem(item)
+	if item.CreatedAt.IsZero() {
+		item.CreatedAt = p.clock.Now()
+		if old, ok := p.items[item.Ref]; ok {
+			item.CreatedAt = old.item.CreatedAt
+		}
+	}
 	item.Revision, item.UpdatedAt = p.bump(), p.clock.Now()
 	p.items[item.Ref] = &itemEntry{item: item, seq: p.seq}
 }

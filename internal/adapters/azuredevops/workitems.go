@@ -58,6 +58,7 @@ type wiFields struct {
 	Tags               string       `json:"System.Tags"`
 	AssignedTo         *identityRef `json:"System.AssignedTo"`
 	CreatedBy          *identityRef `json:"System.CreatedBy"`
+	CreatedDate        time.Time    `json:"System.CreatedDate"`
 	ChangedDate        time.Time    `json:"System.ChangedDate"`
 	CommentCount       int          `json:"System.CommentCount"`
 }
@@ -263,6 +264,7 @@ func (a *Adapter) mapWorkItem(w workItemJSON, projects map[int]string) domain.Wo
 		Type:               itemType(f.Type),
 		Labels:             splitTags(f.Tags),
 		Revision:           strconv.Itoa(w.Rev),
+		CreatedAt:          f.CreatedDate,
 		UpdatedAt:          f.ChangedDate,
 	}
 	if login := f.AssignedTo.login(); login != "" {

@@ -172,6 +172,7 @@ func mapIssue(repo domain.Repository, issue *gh.Issue) domain.WorkItem {
 		Type:      issueType(issue),
 		State:     issueState(issue),
 		Revision:  issue.GetUpdatedAt().UTC().Format(time.RFC3339),
+		CreatedAt: issue.GetCreatedAt().Time,
 		UpdatedAt: issue.GetUpdatedAt().Time,
 	}
 	for _, l := range issue.Labels {

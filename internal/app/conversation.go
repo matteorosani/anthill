@@ -82,8 +82,12 @@ type ConversationDeps struct {
 	// Reviews and Fixes are optional until the shepherd carries them
 	// out: without them, /anthill review and /anthill fix on a human PR
 	// are left to the instances that have them.
-	Reviews  ReviewRequests
-	Fixes    FixRequests
+	Reviews ReviewRequests
+	Fixes   FixRequests
+	// Queen posts the queen's answers given in the console, on the
+	// ticket or PR of the question. Optional: without it, answering from
+	// the console fails.
+	Queen    QueenCommentRoute
 	Clock    ports.Clock
 	Notifier ports.Notifier
 	// Staleness returns the question-staleness setting of the global
@@ -170,14 +174,20 @@ func (c *Conversation) HandleAnswer(ctx context.Context, in ChangeInput) (bool, 
 		if !domain.IsAnswer(pending, e, *writers) {
 			continue
 		}
-		answer := e
-		q.AnsweredAt, q.AnswerID, q.Answer = c.deps.Clock.Now(), e.CommentID, &answer
-		if err := c.deps.Store.SaveQuestion(ctx, q); err != nil {
-			return false, fmt.Errorf("storing the answer to question %s: %w", q.CommentID, err)
-		}
-		return true, c.trigger(ctx, ant)
+		return true, c.recordAnswer(ctx, q, e)
 	}
 	return false, nil
+}
+
+// recordAnswer stores e as the answer to q and triggers the question's
+// ant, so that the playbook starts the run that resumes its session.
+func (c *Conversation) recordAnswer(ctx context.Context, q ports.QuestionRecord, e domain.ChangeEvent) error {
+	answer := e
+	q.AnsweredAt, q.AnswerID, q.Answer = c.deps.Clock.Now(), e.CommentID, &answer
+	if err := c.deps.Store.SaveQuestion(ctx, q); err != nil {
+		return fmt.Errorf("storing the answer to question %s: %w", q.CommentID, err)
+	}
+	return c.trigger(ctx, q.Ant)
 }
 
 // trigger asks the playbook what comes next for the ant.
