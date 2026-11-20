@@ -144,8 +144,8 @@ Terms follow `openspec/glossary.md`. Every group lands its own tests and docs. U
 
 - [x] 16.1 Implement shepherd scope, participation settings and review runner selection, and verify the scope, "machine opted out" and "review runner missing" tests
 - [x] 16.2 Implement round triggers decided by the default playbook (16.8), the round limit with its comment, and requested rounds counted separately, and verify each round scenario
-- [ ] 16.3 Implement a round: review claim, temporary detached worktree, new session, `submit_review`, de-duplication against open threads, inline and summary comments, and verify the "blocking finding", "clean round" and "unchanged problem in round 2" tests
-- [ ] 16.4 Hand findings on ant PRs to the owning ant's follow-up run as decided by the default playbook (16.8) and as defined by change-reaction, and verify the "findings handed to the owning ant" and "auto-fixable nit included in the run" tests
+- [x] 16.3 Implement a round: review claim, temporary detached worktree, new session, `submit_review`, de-duplication against open threads, inline and summary comments, and verify the "blocking finding", "clean round" and "unchanged problem in round 2" tests
+- [x] 16.4 Hand findings on ant PRs to the owning ant's follow-up run as decided by the default playbook (16.8) and as defined by change-reaction, and verify the "findings handed to the owning ant" and "auto-fixable nit included in the run" tests
 - [ ] 16.5 Implement auto-fix on opted-in human PRs: opt-in by label or `/anthill fix`, fix pass in a temporary worktree, `finish_fixes`, verification command, push, replies and resolution, and verify the "auto-fix on an opted-in human PR" and "verified fixes" tests
 - [ ] 16.6 Implement the auto-fix fallbacks (no verification command, fork not pushable, failed verification, PR branch moved) as all or nothing, and verify each fallback scenario
 - [ ] 16.7 Handle PR merge or close: stop shepherd activity, release claims, make the ant `done`, clean up the worktree, and verify the "PR merged by developer" test

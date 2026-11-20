@@ -252,17 +252,33 @@ func ackedElsewhere(pr domain.PullRequest, commentID, self string, writers func(
 
 // rounds lists the PR's rounds, oldest first: those whose summary
 // comment, by an author with write access, is on the PR, whichever
-// instance ran them, then this instance's rounds in progress.
+// instance ran them, then this instance's rounds in progress. Each done
+// round has its findings, placed in their review threads, and is handed
+// when a comment by an author with write access says so
+// (domain.HandedOf).
 func (s *Shepherd) rounds(ctx context.Context, pr domain.PullRequest, writers func(string) (bool, error)) ([]domain.PRRound, error) {
 	var out []domain.PRRound
+	handed := map[string]bool{}
 	for _, c := range pr.Comments {
-		r, ok := domain.RoundOf(c)
+		head, ok := domain.HandedOf(c)
 		if !ok {
 			continue
 		}
 		if ok, err := writers(c.Author); err != nil {
 			return nil, err
 		} else if ok {
+			handed[head] = true
+		}
+	}
+	for _, c := range pr.Comments {
+		r, ok := domain.RoundOf(c, pr.Threads)
+		if !ok {
+			continue
+		}
+		if ok, err := writers(c.Author); err != nil {
+			return nil, err
+		} else if ok {
+			r.Handed = handed[r.Head] || s.handed.has(pr.Ref, r.Head)
 			out = append(out, r)
 		}
 	}

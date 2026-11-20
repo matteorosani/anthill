@@ -61,7 +61,87 @@ func lfsFailed(stderr string) bool {
 		strings.Contains(stderr, "git-lfs filter-process")
 }
 
+// AddDetachedWorktree checks out commit, detached, in a new worktree at
+// path, for a shepherd round (design D9). A commit the clone lacks, such
+// as the head of a PR from a fork, is fetched by its hash first through a
+// transfer repository (design D4). The worktree gets Anthill's hooks, with
+// the pre-push hook that refuses, and no commit trailers.
+func (g *Git) AddDetachedWorktree(ctx context.Context, c ports.Clone, path, commit string) error {
+	if !isHash(commit) {
+		return fmt.Errorf("commit %q is not a full commit hash", commit)
+	}
+	sha, err := g.resolve(ctx, c.Path, commit)
+	if err != nil {
+		return err
+	}
+	if sha == "" {
+		if err := g.fetchCommit(ctx, c, commit); err != nil {
+			return fmt.Errorf("fetching commit %s: %w", commit, err)
+		}
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return err
+	}
+	if r, err := g.run(ctx, c.Path, "worktree", "add", "--quiet", "--detach", path, commit); err != nil {
+		if ok, _ := g.worktreeRegistered(context.WithoutCancel(ctx), c, path); ok {
+			_, _ = g.run(context.WithoutCancel(ctx), c.Path, "worktree", "remove", "--force", path)
+		}
+		if lfsFailed(r.stderr) {
+			return fmt.Errorf("%w: %s: %w", ports.ErrUnsupported, MessageLFSUnsupported, err)
+		}
+		return err
+	}
+	if err := g.setUpHooks(ctx, c, path, nil); err != nil {
+		_, _ = g.run(context.WithoutCancel(ctx), c.Path, "worktree", "remove", "--force", path)
+		return fmt.Errorf("setting up worktree %s: %w", path, err)
+	}
+	return nil
+}
+
+// fetchCommit fetches one commit by its hash from the remote into the
+// clone. The clone keeps no ref to it: the worktree checked out at it
+// keeps it from garbage collection.
+func (g *Git) fetchCommit(ctx context.Context, c ports.Clone, commit string) error {
+	t, err := g.openTransfer(ctx, c)
+	if err != nil {
+		return err
+	}
+	defer t.close()
+	ref := "refs/anthill/commit/" + commit
+	if err := t.fetch(ctx, "+"+commit+":"+ref); err != nil {
+		return err
+	}
+	if err := t.toClone(ctx, false, "+"+ref+":"+ref); err != nil {
+		return err
+	}
+	_, err = g.run(ctx, c.Path, "update-ref", "-d", ref)
+	return err
+}
+
+// isHash reports whether s is a full SHA-1 or SHA-256 commit hash.
+func isHash(s string) bool {
+	if len(s) != 40 && len(s) != 64 {
+		return false
+	}
+	for _, r := range s {
+		if (r < '0' || r > '9') && (r < 'a' || r > 'f') {
+			return false
+		}
+	}
+	return true
+}
+
 func (g *Git) setUpWorktree(ctx context.Context, c ports.Clone, path string, trailers domain.Trailers) error {
+	return g.setUpHooks(ctx, c, path, [][2]string{
+		{configItem, trailers.Item},
+		{configAgent, trailers.Agent},
+		{configInstance, trailers.Instance},
+	})
+}
+
+// setUpHooks installs Anthill's hooks in a worktree and writes its
+// worktree settings: the hooks path, the agent's git settings and extra.
+func (g *Git) setUpHooks(ctx context.Context, c ports.Clone, path string, extra [][2]string) error {
 	// The one setting Anthill writes to the clone's .git/config: it lets
 	// git config --worktree write to this worktree's own file.
 	enabled, err := g.output(ctx, c.Path, "config", "--local", "--type=bool", "--get", "extensions.worktreeConfig")
@@ -81,12 +161,7 @@ func (g *Git) setUpWorktree(ctx context.Context, c ports.Clone, path string, tra
 	if err := writeHooks(hooks); err != nil {
 		return err
 	}
-	settings := [][2]string{
-		{"core.hooksPath", filepath.ToSlash(hooks)},
-		{configItem, trailers.Item},
-		{configAgent, trailers.Agent},
-		{configInstance, trailers.Instance},
-	}
+	settings := append([][2]string{{"core.hooksPath", filepath.ToSlash(hooks)}}, extra...)
 	for _, kv := range append(settings, domain.AgentGitConfig...) {
 		if _, err := g.run(ctx, path, "config", "--worktree", kv[0], kv[1]); err != nil {
 			return err

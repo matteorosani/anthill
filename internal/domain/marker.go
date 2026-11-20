@@ -71,6 +71,11 @@ type RoundFields struct {
 	Head string `json:"round_head"`
 	// Requested is set for a round started by /anthill review.
 	Requested bool `json:"round_requested,omitempty"`
+	// Findings are all the round's findings, those it posted inline,
+	// those only in its summary and those that repeat an open thread, so
+	// that any instance can rebuild the round for the playbook (design
+	// D22).
+	Findings []RoundFinding `json:"round_findings,omitempty"`
 }
 
 // Marker is the hidden machine-readable part of every Anthill comment. It
@@ -252,6 +257,11 @@ func (m Marker) validateRound() error {
 	}
 	if m.Head == "" {
 		return fmt.Errorf("round marker has no head commit")
+	}
+	for i, f := range m.Findings {
+		if err := f.Finding().Validate(); err != nil {
+			return fmt.Errorf("round marker finding %d: %w", i, err)
+		}
 	}
 	return nil
 }

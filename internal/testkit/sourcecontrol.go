@@ -20,6 +20,7 @@ const (
 	GitBranch         = "branch"
 	GitCreateBranch   = "create-branch"
 	GitAddWorktree    = "add-worktree"
+	GitAddDetached    = "add-detached-worktree"
 	GitWorktreeStatus = "worktree-status"
 	GitRemoveWorktree = "remove-worktree"
 	GitPush           = "push"
@@ -51,7 +52,9 @@ type fakeCommit struct {
 }
 
 type fakeWorktree struct {
-	branch   string
+	branch string
+	// commit is the commit a detached worktree was checked out at.
+	commit   string
 	trailers domain.Trailers
 	dirty    bool
 }
@@ -383,6 +386,36 @@ func (s *SourceControl) AddWorktree(_ context.Context, clone ports.Clone, path, 
 	}
 	c.worktrees[path] = &fakeWorktree{branch: branch, trailers: trailers}
 	return nil
+}
+
+// AddDetachedWorktree checks out commit, detached, in a new worktree at
+// path. Any non-empty commit is taken as present on the remote.
+func (s *SourceControl) AddDetachedWorktree(_ context.Context, clone ports.Clone, path, commit string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	c, err := s.clone(GitAddDetached, clone)
+	if err != nil {
+		return err
+	}
+	if commit == "" {
+		return fmt.Errorf("no commit to check out: %w", ports.ErrNotFound)
+	}
+	for _, other := range s.clones {
+		if _, ok := other.worktrees[path]; ok {
+			return fmt.Errorf("worktree %s already exists", path)
+		}
+	}
+	c.worktrees[path] = &fakeWorktree{commit: commit}
+	return nil
+}
+
+// WorktreeCommit returns the commit a detached worktree was checked out
+// at, or "" for a worktree on a branch.
+func (s *SourceControl) WorktreeCommit(worktree string) string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	_, w := s.mustWorktree(worktree)
+	return w.commit
 }
 
 // WorktreeStatus returns the branch and dirtiness of a worktree.

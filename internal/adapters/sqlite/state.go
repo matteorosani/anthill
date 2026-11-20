@@ -164,21 +164,26 @@ func (s *Store) Done(ctx context.Context, id ports.OutboxID, at time.Time) error
 	return mustAffect(res, fmt.Sprintf("outbox event %d", id))
 }
 
-// StoreChange stores a change unless its Source is already stored.
+// StoreChange stores a change unless its Source or Key is already stored.
 func (s *Store) StoreChange(ctx context.Context, c ports.StoredChange) error {
 	event, err := toJSON(c.Event)
 	if err != nil {
 		return err
 	}
+	findings, err := toJSON(c.Findings)
+	if err != nil {
+		return err
+	}
 	source := sql.NullInt64{Int64: int64(c.Source), Valid: c.Source != 0}
-	_, err = s.db.ExecContext(ctx, `INSERT INTO stored_changes (ant_id, source, event, stored_at) VALUES (?, ?, ?, ?)
-		ON CONFLICT (source) DO NOTHING`, c.Ant, source, event, unixNano(c.StoredAt))
+	key := sql.NullString{String: c.Key, Valid: c.Key != ""}
+	_, err = s.db.ExecContext(ctx, `INSERT INTO stored_changes (ant_id, source, key, event, findings, stored_at) VALUES (?, ?, ?, ?, ?, ?)
+		ON CONFLICT DO NOTHING`, c.Ant, source, key, event, findings, unixNano(c.StoredAt))
 	return err
 }
 
 // StoredChanges lists an ant's changes not yet consumed.
 func (s *Store) StoredChanges(ctx context.Context, ant ports.AntID) ([]ports.StoredChange, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT id, ant_id, source, event, stored_at FROM stored_changes
+	rows, err := s.db.QueryContext(ctx, `SELECT id, ant_id, source, key, event, findings, stored_at FROM stored_changes
 		WHERE ant_id = ? AND consumed_at IS NULL ORDER BY id`, ant)
 	if err != nil {
 		return nil, err
@@ -187,16 +192,21 @@ func (s *Store) StoredChanges(ctx context.Context, ant ports.AntID) ([]ports.Sto
 	var out []ports.StoredChange
 	for rows.Next() {
 		var (
-			c              ports.StoredChange
-			source, stored sql.NullInt64
-			event          string
+			c               ports.StoredChange
+			source, stored  sql.NullInt64
+			key             sql.NullString
+			event, findings string
 		)
-		if err := rows.Scan(&c.ID, &c.Ant, &source, &event, &stored); err != nil {
+		if err := rows.Scan(&c.ID, &c.Ant, &source, &key, &event, &findings, &stored); err != nil {
 			return nil, err
 		}
 		if err := fromJSON(event, &c.Event); err != nil {
 			return nil, err
 		}
+		if err := fromJSON(findings, &c.Findings); err != nil {
+			return nil, err
+		}
+		c.Key = key.String
 		c.Source, c.StoredAt = ports.OutboxID(source.Int64), fromUnixNano(stored)
 		out = append(out, c)
 	}
