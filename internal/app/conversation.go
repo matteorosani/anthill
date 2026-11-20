@@ -17,6 +17,9 @@ var (
 	_ Answers            = conversationAnswers{}
 	_ CommandClaims      = (*Claiming)(nil)
 	_ AntCommands        = (*AntSupervisor)(nil)
+	// The shepherd serves /anthill review, and acknowledges it through
+	// the conversation.
+	_ ReviewRequests = (*Shepherd)(nil)
 )
 
 // ConversationStore is the part of the local store the conversation
@@ -67,15 +70,6 @@ type ReviewRequests interface {
 // ID.
 type FixRequests interface {
 	OptInFix(ctx context.Context, pr domain.Ref, thread, commandComment string) (bool, error)
-}
-
-// CommandAcks posts the reply that acknowledges a command comment, with
-// the marker ID every instance checks before acting on the comment. It
-// is idempotent: a second call for the same comment posts nothing. The
-// shepherd acknowledges /anthill review through it once its round
-// starts.
-type CommandAcks interface {
-	Acknowledge(ctx context.Context, on domain.Ref, commentID, text string) error
 }
 
 // ConversationDeps are the ports and services the conversation uses.
