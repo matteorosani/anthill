@@ -607,9 +607,15 @@ func TestAnthillAuthoredChangesAreIgnored(t *testing.T) {
 		pr := *e.ant(id).PR
 		status := domain.AnthillComment{Role: domain.RoleAnt, Body: "working", Marker: domain.Marker{Version: domain.MarkerVersion, Instance: instanceB, Kind: domain.CommentStatus, Ref: "gh-12"}}
 		finding := domain.AnthillComment{Role: domain.RoleShepherd, Body: "blocking: nil map", Marker: domain.Marker{Version: domain.MarkerVersion, Instance: instanceB, Kind: domain.CommentFinding, Ref: pr.String()}}
+		// A round's summary carries the round's fields; an ant's run
+		// summary on the same PR does not, and is ignored.
+		round := domain.AnthillComment{Role: domain.RoleShepherd, Body: "Round 1: 2 findings", Marker: domain.Marker{Version: domain.MarkerVersion, Instance: instanceB, Kind: domain.CommentSummary, Ref: pr.String(), RoundFields: &domain.RoundFields{Head: "abc123"}}}
+		runSummary := domain.AnthillComment{Role: domain.RoleAnt, Body: "Done.", Marker: domain.Marker{Version: domain.MarkerVersion, Instance: instanceA, Kind: domain.CommentSummary, Ref: pr.String()}}
 		e.poll(
 			domain.ChangeEvent{Ref: ghRef(12), Kind: domain.ChangeCommentAdded, Actor: "lbianchi", Body: status.String(), Origin: domain.OriginAnthill},
 			domain.ChangeEvent{Ref: pr, Kind: domain.ChangeCommentAdded, Actor: "lbianchi", Body: finding.String(), Origin: domain.OriginAnthill, ThreadID: "t1"},
+			domain.ChangeEvent{Ref: pr, Kind: domain.ChangeCommentAdded, Actor: "lbianchi", Body: round.String(), Origin: domain.OriginAnthill, CommentID: "round-1"},
+			domain.ChangeEvent{Ref: pr, Kind: domain.ChangeCommentAdded, Actor: "mrosani", Body: runSummary.String(), Origin: domain.OriginAnthill, CommentID: "run-summary"},
 		)
 
 		e.wantRuns(id, 1)
@@ -617,8 +623,11 @@ func TestAnthillAuthoredChangesAreIgnored(t *testing.T) {
 			t.Errorf("classifier asked about %q", got)
 		}
 		got := e.findings.inputs()
-		if len(got) != 1 || got[0].Event.ThreadID != "t1" || got[0].Ant == nil || got[0].Ant.ID != id || got[0].Item != ghRef(12) {
+		if len(got) != 2 || got[0].Event.ThreadID != "t1" || got[0].Ant == nil || got[0].Ant.ID != id || got[0].Item != ghRef(12) || got[1].Event.CommentID != "round-1" {
 			t.Errorf("findings handler got %+v", got)
+		}
+		if stored := e.stored(id); len(stored) != 0 {
+			t.Errorf("findings were stored as changes: %+v", stored)
 		}
 		e.wantNoErrors()
 	})
@@ -779,4 +788,78 @@ func (r *recordingRouter) calls() []string {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	return append([]string(nil), r.log...)
+}
+
+// classifyCall handles one event with the reactor while the real
+// classifier runs its call on the fake executor, which end drives.
+func (e *reactEnv) classifyCall(ev domain.ChangeEvent, end func(x *testkit.FakeExecution)) {
+	e.t.Helper()
+	done := make(chan error, 1)
+	go func() {
+		e.next++
+		err := e.reactor.Handle(e.ctx, ports.OutboxEvent{ID: e.next, Event: ev})
+		if err == nil {
+			err = e.reactor.Flush(e.ctx)
+		}
+		done <- err
+	}()
+	e.settle()
+	var call *testkit.FakeExecution
+	for _, x := range e.exec.Executions() {
+		// The classifier call is the one without a worktree.
+		if x.Spec.Run.Worktree == "" && !x.Ended() {
+			call = x
+		}
+	}
+	if call == nil {
+		e.t.Fatal("no classifier call started")
+	}
+	end(call)
+	e.settle()
+	if err := <-done; err != nil {
+		e.t.Fatal(err)
+	}
+	e.settle()
+}
+
+func newClassifyingEnv(t *testing.T) *reactEnv {
+	e := newReactEnv(t)
+	e.reactor = e.newReactor(e.store, e.claiming, e.sup, app.NewClassifier(e.exec, e.clock, nil))
+	return e
+}
+
+// Spec change-reaction, "Thank-you comment", with the classifier call
+// through the fake executor (design D8).
+func TestThankYouCommentThroughTheExecutor(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		e := newClassifyingEnv(t)
+		id := e.succeed(12)
+		e.classifyCall(e.prComment(id, "lbianchi", "thanks, looks good"), func(x *testkit.FakeExecution) {
+			if !strings.Contains(x.Spec.Run.Brief, "thanks, looks good") {
+				t.Errorf("prompt = %q", x.Spec.Run.Brief)
+			}
+			x.Emit(ports.ExecEvent{Kind: ports.ExecLastMessage, Message: "informational"})
+			x.End(ports.ExecExited, ports.Exit{})
+		})
+		e.wantState(id, domain.AntSucceeded)
+		e.wantRuns(id, 1)
+		e.wantNoErrors()
+	})
+}
+
+// A classifier call that crashes makes the comment actionable (design
+// D8), so the follow-up run starts.
+func TestClassifierCrashThroughTheExecutor(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		e := newClassifyingEnv(t)
+		id := e.succeed(12)
+		e.classifyCall(e.prComment(id, "lbianchi", "please also handle the empty-password case"), func(x *testkit.FakeExecution) {
+			x.End(ports.ExecExited, ports.Exit{Code: 1, Crashed: true})
+		})
+		runs := e.wantRuns(id, 2)
+		if runs[1].Kind != ports.RunFollowUp {
+			t.Errorf("run = %+v", runs[1])
+		}
+		e.wantNoErrors()
+	})
 }

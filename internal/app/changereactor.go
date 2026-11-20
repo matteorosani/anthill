@@ -33,8 +33,9 @@ type ChangeRouter interface {
 }
 
 var (
-	_ ChangeRouter = (*AntSupervisor)(nil)
-	_ Holds        = (*ItemHolds)(nil)
+	_ ChangeRouter        = (*AntSupervisor)(nil)
+	_ RelevanceClassifier = (*Classifier)(nil)
+	_ Holds               = (*ItemHolds)(nil)
 )
 
 // HeldClaims lists the claims this instance holds; Claiming implements
@@ -264,14 +265,19 @@ func (r *ChangeReactor) antOf(ctx context.Context, ref domain.Ref) (*ports.AntRe
 // shepherd finding on a PR. The findings handler (16.4) triggers the
 // shepherd, which alone hands findings to the ant: they are never routed
 // as ordinary changes. The round's summary comment, which holds the
-// findings without a location, passes too once its marker carries the
-// round's fields (16.3).
+// findings without a location, passes too: its marker carries the
+// round's fields.
 func shepherdFinding(e domain.ChangeEvent) bool {
 	if e.Ref.Kind != domain.KindPR || !hasText(e) {
 		return false
 	}
 	m, ok := domain.FindMarker(e.Body)
-	return ok && m.Kind == domain.CommentFinding
+	if !ok {
+		return false
+	}
+	// A round's summary holds the findings without a location; it is
+	// told apart from an ant's run summary by its round fields.
+	return m.Kind == domain.CommentFinding || (m.Kind == domain.CommentSummary && m.RoundFields != nil)
 }
 
 // hasText reports whether the change is a comment or a review, which
