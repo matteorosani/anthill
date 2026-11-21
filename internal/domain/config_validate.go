@@ -141,6 +141,17 @@ var settingChecks = []settingCheck{
 		}
 		return ""
 	}},
+	{KeyPriorityLabels, func(s *SettingValues) string {
+		for i, l := range s.PriorityLabels {
+			if strings.TrimSpace(l) == "" {
+				return "priority labels must not be empty"
+			}
+			if HasLabel(s.PriorityLabels[:i], l) {
+				return fmt.Sprintf("priority label %q is listed twice", l)
+			}
+		}
+		return ""
+	}},
 	{KeyShepherdScope, func(s *SettingValues) string {
 		if v := s.ShepherdScope; v != nil && !v.Valid() {
 			return fmt.Sprintf("shepherd scope must be %q, %q or %q", ScopeAntAuthored, ScopeLabelled, ScopeAll)

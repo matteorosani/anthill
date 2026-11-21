@@ -93,6 +93,9 @@ const (
 	KeyVerificationCommand       = "verification-command"
 	KeyRequireAcceptanceCriteria = "require-acceptance-criteria"
 	KeyAgentInstructions         = "agent-instructions"
+	// KeyPriorityLabels orders the proposal list after provider priority
+	// (spec task-eligibility, "Proposal list").
+	KeyPriorityLabels = "priority-labels"
 
 	KeyRunner            = "runner"
 	KeyCapacity          = "capacity"
@@ -177,6 +180,7 @@ var settingInfos = []SettingInfo{
 	{KeyVerificationCommand, sharedLayers},
 	{KeyRequireAcceptanceCriteria, sharedLayers},
 	{KeyAgentInstructions, sharedLayers},
+	{KeyPriorityLabels, sharedLayers},
 	{KeyRunner, []Layer{LayerLabel, LayerLocalEntry, LayerGlobal}},
 	{KeyCapacity, machineLayers},
 	{KeyReviewing, machineLayers},
@@ -410,6 +414,8 @@ type SettingValues struct {
 	VerificationCommand       *string                    `yaml:"verification-command"`
 	RequireAcceptanceCriteria *bool                      `yaml:"require-acceptance-criteria"`
 	AgentInstructions         *string                    `yaml:"agent-instructions"`
+	// PriorityLabels runs from the highest priority to the lowest.
+	PriorityLabels []string `yaml:"priority-labels"`
 
 	Runner            *Runner        `yaml:"runner"`
 	Capacity          *int           `yaml:"capacity"`

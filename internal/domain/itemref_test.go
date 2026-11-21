@@ -121,7 +121,7 @@ func TestSortProposals(t *testing.T) {
 		return domain.WorkItem{Ref: domain.Ref{Repo: ghRepo, Kind: domain.KindItem, Number: n}, CreatedAt: created}
 	}
 	items := []domain.WorkItem{item(3, t0.Add(time.Hour)), item(9, t0), item(1, t0.Add(time.Hour))}
-	domain.SortProposals(items)
+	domain.SortProposals(items, nil)
 	var got []int
 	for _, i := range items {
 		got = append(got, i.Ref.Number)

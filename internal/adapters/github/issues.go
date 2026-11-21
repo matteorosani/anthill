@@ -161,7 +161,12 @@ func (a *Adapter) issueComments(ctx context.Context, ref domain.Ref) ([]domain.C
 	return comments, resp, nil
 }
 
-// mapIssue maps the fields of the issue object itself.
+// mapIssue maps the fields of the issue object itself. It leaves
+// Priority at 0: GitHub offers no stable priority field. Organization
+// issue fields, which include a priority, are in preview, exist only for
+// organizations, and their values in the issue object carry the field's
+// id but not its name (task 9.4). Priority labels order GitHub issues
+// instead.
 func mapIssue(repo domain.Repository, issue *gh.Issue) domain.WorkItem {
 	item := domain.WorkItem{
 		Ref:       issueRef(repo, issue),
