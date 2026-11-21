@@ -96,7 +96,23 @@ type PullRequest struct {
 	Comments     []Comment
 	// Item is the work item the PR was opened for, or nil when none was
 	// detected.
-	Item      *Ref
-	Revision  string
-	UpdatedAt time.Time
+	Item *Ref
+	// State is PROpen, PRMerged or PRClosed. The PRs of a poll are open;
+	// reading one PR tells whether it was merged or closed since (spec
+	// pr-shepherd, "PR closure is human").
+	State PRState
+	// Fork is set when the source branch is in another repository than
+	// the PR's. ForkRepo is that repository and ForkURL its clone URL,
+	// where an auto-fix of the branch is pushed; both are empty when the
+	// fork was deleted. MaintainerCanModify is set when
+	// the fork lets the repository's maintainers push to the branch
+	// (GitHub's "Allow edits by maintainers"). Azure DevOps has no such
+	// setting, so it is never set there and a fork PR there is not
+	// pushable (spec pr-shepherd, "Fork branch not pushable").
+	Fork                bool
+	ForkRepo            Repository
+	ForkURL             string
+	MaintainerCanModify bool
+	Revision            string
+	UpdatedAt           time.Time
 }

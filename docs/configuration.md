@@ -171,6 +171,10 @@ Credential values never appear in logs, errors, comments, task briefs or telemet
 ## Behaviour that is not configurable
 
 - Shepherd auto-fix runs only on human PRs that opt in, one PR at a time, with the `anthill:autofix` label or `/anthill fix`.
+- `/anthill fix` opts in only the finding thread it is posted in; the `anthill:autofix` label opts in every auto-fixable finding of the PR.
+- A fix agent has 30 minutes, and the verification command 15 minutes. The verification command runs in the fix pass's worktree through `sh -c` (on Windows, a batch file run by `cmd`), without your provider credentials, and only its exit code is posted.
+- A fix pass pushes only to a branch of the repository itself, or of a GitHub fork that allows edits by maintainers. Azure DevOps has no such setting, so its fork PRs get suggested changes only.
+- If the agent does not report, the verification command fails or the PR branch moved, a fix pass pushes nothing and every one of its findings becomes `needs-developer`.
 - Telemetry export stays off until you set `otlp-endpoint`.
 - The `repo:<name>` label picks an item's target repository. It is not a setting.
 - Anthill never changes your clone's working copy, checked-out branch or uncommitted changes. The only thing it writes to the clone's `.git/config` is `extensions.worktreeConfig = true`, so that each ant worktree can have its own hooks and its own git settings.

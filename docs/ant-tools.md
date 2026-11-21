@@ -207,7 +207,7 @@ Roles: fix agent.
 
 Ends a fix pass with one result for each finding the agent was given. It is the fix agent's only tool, and it can be called once. Anthill then runs the verification command, pushes the fixes and replies on the threads, and reclassifies skipped findings as `needs-developer` (spec pr-shepherd).
 
-- Arguments: `results`, each with `finding` (the finding's id) and `status` (`fixed` or `skipped`), plus `commit` for a fixed finding (its hash, or at least its first 7 characters) or `reason` for a skipped one.
+- Arguments: `results`, each with `finding` (the finding's id, which is its review thread's id as the brief lists it) and `status` (`fixed` or `skipped`), plus `commit` for a fixed finding (its hash, or at least its first 7 characters) or `reason` for a skipped one.
 - Result: `status` `submitted` and `message`.
 - Refusals: the checks on every call;
   - `no result for finding <id>: report each finding as fixed or skipped`;

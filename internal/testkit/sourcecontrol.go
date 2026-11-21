@@ -24,6 +24,8 @@ const (
 	GitWorktreeStatus = "worktree-status"
 	GitRemoveWorktree = "remove-worktree"
 	GitPush           = "push"
+	GitPushTo         = "push-to"
+	GitSetTrailers    = "set-trailers"
 	GitNewCommits     = "new-commits"
 	GitUnpushed       = "unpushed"
 	GitDeleteBranch   = "delete-branch"
@@ -44,6 +46,8 @@ type SourceControl struct {
 	clones map[string]*fakeClone
 	fail   map[string]error
 	hashes int
+	// forks holds the branches of forks by URL, for PushTo.
+	forks map[string]map[string][]fakeCommit
 }
 
 type fakeCommit struct {
@@ -53,8 +57,10 @@ type fakeCommit struct {
 
 type fakeWorktree struct {
 	branch string
-	// commit is the commit a detached worktree was checked out at.
+	// commit is the commit a detached worktree was checked out at, and
+	// history its HEAD: the commits up to it, then those made in it.
 	commit   string
+	history  []fakeCommit
 	trailers domain.Trailers
 	dirty    bool
 }
@@ -123,6 +129,10 @@ func (s *SourceControl) Commit(worktree, subject string) ports.Commit {
 	defer s.mu.Unlock()
 	c, w := s.mustWorktree(worktree)
 	commit := s.newCommit(subject, w.trailers.Owner())
+	if w.branch == "" && w.commit != "" {
+		w.history = append(slices.Clone(w.history), commit)
+		return commit.commit
+	}
 	c.local[w.branch] = append(slices.Clone(c.local[w.branch]), commit)
 	return commit.commit
 }
@@ -405,7 +415,7 @@ func (s *SourceControl) AddDetachedWorktree(_ context.Context, clone ports.Clone
 			return fmt.Errorf("worktree %s already exists", path)
 		}
 	}
-	c.worktrees[path] = &fakeWorktree{commit: commit}
+	c.worktrees[path] = &fakeWorktree{commit: commit, history: s.historyOf(c, commit)}
 	return nil
 }
 
@@ -496,11 +506,18 @@ func (s *SourceControl) NewCommits(_ context.Context, clone ports.Clone, worktre
 	if !ok {
 		return nil, fmt.Errorf("worktree %s: %w", worktree, ports.ErrNotFound)
 	}
+	head := s.head(c, w)
 	b, ok := c.fetched[base]
 	if !ok {
-		return nil, fmt.Errorf("remote branch %s: %w", base, ports.ErrNotFound)
+		// base may be a commit of the worktree's history, such as the
+		// head a fix pass started from.
+		i := slices.IndexFunc(head, func(fc fakeCommit) bool { return fc.commit.Hash == base })
+		if i < 0 {
+			return nil, fmt.Errorf("remote branch %s: %w", base, ports.ErrNotFound)
+		}
+		b = head[:i+1]
 	}
-	return commits(after(c.local[w.branch], b)), nil
+	return commits(after(head, b)), nil
 }
 
 // Unpushed lists the commits of a local branch on no fetched branch,
