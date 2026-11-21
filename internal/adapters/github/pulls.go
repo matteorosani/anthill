@@ -125,6 +125,24 @@ func (a *Adapter) mapPullRequest(repo domain.Repository, pr *gh.PullRequest) dom
 		mapped.Labels = append(mapped.Labels, l.GetName())
 	}
 	mapped.Item = a.linkedItem(repo, pr)
+	switch {
+	case pr.GetMerged() || pr.MergedAt != nil:
+		mapped.State = domain.PRMerged
+	case pr.GetState() == "closed":
+		mapped.State = domain.PRClosed
+	default:
+		mapped.State = domain.PROpen
+	}
+	// A deleted fork leaves head.repo empty: the branch is then nowhere
+	// to push to, so it counts as a fork that takes no push.
+	if head := pr.GetHead().GetRepo(); head == nil || !strings.EqualFold(head.GetFullName(), repo.Org+"/"+repo.Name) {
+		mapped.Fork = true
+		if org, name, ok := strings.Cut(head.GetFullName(), "/"); ok {
+			mapped.ForkRepo = Normalize(domain.Repository{Provider: domain.GitHub, Org: org, Name: name})
+			mapped.ForkURL = head.GetCloneURL()
+			mapped.MaintainerCanModify = pr.GetMaintainerCanModify()
+		}
+	}
 	return mapped
 }
 

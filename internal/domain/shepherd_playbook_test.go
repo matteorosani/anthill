@@ -31,6 +31,8 @@ func applyPREffect(t *testing.T, s domain.PRSnapshot, d domain.PRDecision, revie
 		}
 	case domain.PostRoundLimit:
 		s.LimitPosted = true
+	case domain.PostAutofixUnavailable:
+		s.UnavailablePosted = append(slices.Clone(s.UnavailablePosted), d.Reason)
 	case domain.HandFindings:
 		i := slices.IndexFunc(s.Rounds, func(r domain.PRRound) bool { return r.Head == d.Head && !r.Handed })
 		if i < 0 {
@@ -97,11 +99,11 @@ var (
 	unusedImport = domain.PRFinding{Finding: domain.Finding{
 		Location: domain.Location{File: "src/auth.ts", StartLine: 3}, Severity: domain.SeverityNit,
 		Classification: domain.AutoFixable, Message: "unused import",
-	}}
+	}, Thread: "t-import"}
 	unusedVariable = domain.PRFinding{Finding: domain.Finding{
 		Location: domain.Location{File: "src/auth.ts", StartLine: 9}, Severity: domain.SeverityNit,
 		Classification: domain.AutoFixable, Message: "unused variable",
-	}}
+	}, Thread: "t-variable"}
 	naming = domain.PRFinding{Finding: domain.Finding{
 		Location: domain.Location{File: "src/auth.ts", StartLine: 7}, Severity: domain.SeverityNit,
 		Classification: domain.NeedsDeveloper, Message: "unclear name",
@@ -139,6 +141,15 @@ func findings(fs ...domain.PRFinding) []domain.Finding {
 		out = append(out, f.Finding)
 	}
 	return out
+}
+
+// fixPass is the fix pass of the findings on head c1.
+func fixPass(fs ...domain.PRFinding) domain.StartFixPass {
+	d := domain.StartFixPass{Head: "c1", Findings: findings(fs...)}
+	for _, f := range fs {
+		d.Threads = append(d.Threads, f.Thread)
+	}
+	return d
 }
 
 func TestDecidePR(t *testing.T) {
@@ -218,17 +229,44 @@ func TestDecidePR(t *testing.T) {
 		{"auto-fix on an opted-in human PR", prWith(func(s *domain.PRSnapshot) {
 			s.Autofix = true
 			s.Rounds = []domain.PRRound{{Head: "c1", Findings: []domain.PRFinding{naming, unusedImport}}}
-		}), domain.StartFixPass{Head: "c1", Findings: findings(unusedImport)}},
+		}), fixPass(unusedImport)},
+		// agent-conversation, "Fix on a human PR": /anthill fix opts in
+		// its own thread only.
+		{"auto-fix requested on one thread", prWith(func(s *domain.PRSnapshot) {
+			s.FixThreads = []string{"t-variable"}
+			s.Rounds = []domain.PRRound{{Head: "c1", Findings: []domain.PRFinding{unusedImport, unusedVariable}}}
+		}), fixPass(unusedVariable)},
+		{"auto-fix requested on a thread that is not auto-fixable", prWith(func(s *domain.PRSnapshot) {
+			s.FixThreads = []string{"t-naming"}
+			n := naming
+			n.Thread = "t-naming"
+			s.Rounds = []domain.PRRound{{Head: "c1", Findings: []domain.PRFinding{n, unusedImport}}}
+		}), domain.Nothing{}},
+		{"auto-fixable finding without a thread", prWith(func(s *domain.PRSnapshot) {
+			s.Autofix = true
+			summaryOnly := unusedImport
+			summaryOnly.Thread = ""
+			s.Rounds = []domain.PRRound{{Head: "c1", Findings: []domain.PRFinding{summaryOnly}}}
+		}), domain.Nothing{}},
 		{"human PR not opted in", prWith(func(s *domain.PRSnapshot) {
 			s.Rounds = []domain.PRRound{{Head: "c1", Findings: []domain.PRFinding{unusedImport}}}
 		}), domain.Nothing{}},
 		{"fork branch not pushable", prWith(func(s *domain.PRSnapshot) {
 			s.Autofix, s.Pushable = true, false
 			s.Rounds = []domain.PRRound{{Head: "c1", Findings: []domain.PRFinding{unusedImport}}}
+		}), domain.PostAutofixUnavailable{Reason: domain.AutofixNotPushable}},
+		{"fork branch not pushable, comment posted", prWith(func(s *domain.PRSnapshot) {
+			s.Autofix, s.Pushable = true, false
+			s.UnavailablePosted = []domain.AutofixUnavailableReason{domain.AutofixNotPushable}
+			s.Rounds = []domain.PRRound{{Head: "c1", Findings: []domain.PRFinding{unusedImport}}}
 		}), domain.Nothing{}},
 		{"no verification command", prWith(func(s *domain.PRSnapshot) {
 			s.Autofix, s.VerificationCommand = true, false
 			s.Rounds = []domain.PRRound{{Head: "c1", Findings: []domain.PRFinding{unusedImport}}}
+		}), domain.PostAutofixUnavailable{Reason: domain.AutofixNoVerification}},
+		{"no verification command, nothing to fix", prWith(func(s *domain.PRSnapshot) {
+			s.Autofix, s.VerificationCommand = true, false
+			s.Rounds = []domain.PRRound{{Head: "c1", Findings: []domain.PRFinding{naming}}}
 		}), domain.Nothing{}},
 		{"fix pushed starts no round", prWith(func(s *domain.PRSnapshot) {
 			s.Autofix, s.Head, s.FixHeads = true, fixPush, []string{fixPush}
@@ -294,7 +332,13 @@ func TestDecidePRChains(t *testing.T) {
 			s.Autofix = true
 		}), func(string) []domain.PRFinding { return []domain.PRFinding{unusedImport, unusedVariable} }, []domain.PRDecision{
 			domain.StartRound{Head: "c1"},
-			domain.StartFixPass{Head: "c1", Findings: findings(unusedImport, unusedVariable)},
+			fixPass(unusedImport, unusedVariable),
+		}},
+		{"no verification command on an opted-in human PR", prWith(func(s *domain.PRSnapshot) {
+			s.Autofix, s.VerificationCommand = true, false
+		}), func(string) []domain.PRFinding { return []domain.PRFinding{unusedImport} }, []domain.PRDecision{
+			domain.StartRound{Head: "c1"},
+			domain.PostAutofixUnavailable{Reason: domain.AutofixNoVerification},
 		}},
 	}
 	for _, tt := range tests {
@@ -321,6 +365,14 @@ func TestDecidePRNeverRepeats(t *testing.T) {
 		prWith(func(s *domain.PRSnapshot) {
 			s.Autofix = true
 			s.Rounds = []domain.PRRound{{Head: "c1", Findings: []domain.PRFinding{unusedImport, unusedVariable}}}
+		}),
+		prWith(func(s *domain.PRSnapshot) {
+			s.FixThreads, s.VerificationCommand, s.Pushable = []string{"t-import"}, false, false
+			s.Rounds = []domain.PRRound{{Head: "c1", Findings: []domain.PRFinding{unusedImport}}}
+		}),
+		prWith(func(s *domain.PRSnapshot) {
+			s.Autofix, s.Pushable = true, false
+			s.Rounds = []domain.PRRound{{Head: "c1", Findings: []domain.PRFinding{unusedImport}}}
 		}),
 	}
 	for _, s := range snaps {

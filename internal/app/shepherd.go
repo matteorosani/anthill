@@ -75,6 +75,8 @@ type ShepherdDeps struct {
 	// Rounds runs each round, and RoundEnds records its end.
 	Rounds    RoundRunner
 	RoundEnds RoundEnds
+	// Fixes runs each fix pass (spec pr-shepherd, "Fix agent pass").
+	Fixes FixPassRunner
 	// Acks acknowledges the /anthill review that a requested round
 	// serves.
 	Acks CommandAcks
@@ -116,6 +118,9 @@ type Shepherd struct {
 	active map[domain.Ref]bool
 	// handed holds the rounds this instance handed to its ants.
 	handed handedRounds
+	// cancels ends the work in progress on a PR when it is merged or
+	// closed (StopPR).
+	cancels map[domain.Ref]context.CancelFunc
 
 	wg sync.WaitGroup
 }
@@ -129,10 +134,13 @@ func NewShepherd(deps ShepherdDeps) *Shepherd {
 		handlers: map[reflect.Type]prHandler{},
 		locks:    map[domain.Ref]*sync.Mutex{},
 		active:   map[domain.Ref]bool{},
+		cancels:  map[domain.Ref]context.CancelFunc{},
 	}
 	handlePR(s, true, s.startRound)
 	handlePR(s, true, s.postRoundLimit)
 	handlePR(s, false, s.handFindings)
+	handlePR(s, true, s.postAutofixUnavailable)
+	handlePR(s, true, s.startFixPass)
 	return s
 }
 
@@ -294,6 +302,11 @@ func (s *Shepherd) decide(ctx context.Context, pr domain.Ref, held *ports.HeldCl
 		if err != nil {
 			return fmt.Errorf("reading %s: %w", pr, err)
 		}
+		if p.State.Ended() {
+			// Nothing more on a merged or closed PR (spec pr-shepherd, "PR
+			// closure is human").
+			return nil
+		}
 		snap, err := s.snapshot(ctx, p, ws)
 		if err != nil {
 			return err
@@ -362,6 +375,10 @@ func (s *Shepherd) setActive(pr domain.Ref, active bool) {
 		s.active[pr] = true
 	} else {
 		delete(s.active, pr)
+		if cancel, ok := s.cancels[pr]; ok {
+			cancel()
+			delete(s.cancels, pr)
+		}
 	}
 }
 

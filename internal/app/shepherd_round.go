@@ -92,11 +92,11 @@ func (s *Shepherd) startRound(ctx context.Context, t *prTurn, d domain.StartRoun
 	}
 	held := t.held
 	t.handedOff = true
-	s.setActive(t.pr.Ref, true)
+	rctx := s.activate(ctx, t.pr.Ref)
 	s.wg.Add(1)
 	go func() {
 		defer s.wg.Done()
-		s.report(s.runRound(context.WithoutCancel(ctx), start, held))
+		s.report(s.runRound(rctx, start, held))
 	}()
 	return false, nil
 }
@@ -106,6 +106,13 @@ func (s *Shepherd) startRound(ctx context.Context, t *prTurn, d domain.StartRoun
 func (s *Shepherd) runRound(ctx context.Context, start RoundStart, held ports.HeldClaim) error {
 	pr := start.Round.PR
 	res, runErr := s.deps.Rounds.Run(ctx, start)
+	// StopPR ends a round when its PR was merged or closed (spec
+	// pr-shepherd, "PR closure is human"). That is not a fault, and what
+	// follows must outlive the round's context.
+	if ctx.Err() != nil {
+		runErr = nil
+	}
+	ctx = context.WithoutCancel(ctx)
 	if runErr != nil {
 		runErr = fmt.Errorf("round %d on %s: %w", start.Round.ID, pr, runErr)
 	}
@@ -161,10 +168,10 @@ func (s *Shepherd) snapshot(ctx context.Context, pr domain.PullRequest, ws ToolW
 		InScope:    domain.InScope(settings.ShepherdScope, pr, antPR),
 		Autofix:    !antPR && domain.HasLabel(pr.Labels, domain.LabelAutofix),
 		RoundLimit: settings.RoundLimit,
-		// Whether a fork's branch takes Anthill's push is not known yet,
-		// so no fix pass is decided (spec pr-shepherd, "Fork branch not
+		// A fork's branch takes Anthill's push only when it allows
+		// edits by maintainers (spec pr-shepherd, "Fork branch not
 		// pushable").
-		Pushable:            false,
+		Pushable:            domain.FixPushable(pr),
 		VerificationCommand: settings.VerificationCommand != "",
 		LimitPosted:         limitPosted(pr),
 	}
@@ -184,6 +191,11 @@ func (s *Shepherd) snapshot(ctx context.Context, pr domain.PullRequest, ws ToolW
 	}
 	if snap.Rounds, err = s.rounds(ctx, pr, writers); err != nil {
 		return domain.PRSnapshot{}, err
+	}
+	if !antPR {
+		if err := s.autofixSnapshot(pr, writers, &snap); err != nil {
+			return domain.PRSnapshot{}, err
+		}
 	}
 	return snap, nil
 }

@@ -10,7 +10,9 @@ type PRFinding struct {
 	// is only in the round's summary, is never resolved.
 	Resolved bool
 	// Thread is the ID of the finding's review thread, or "" for a
-	// finding only in the round's summary.
+	// finding only in the round's summary. A fix pass fixes only findings
+	// with a thread, which it answers and resolves, and gives the fix
+	// agent each finding's thread as its id.
 	Thread string
 }
 
@@ -45,9 +47,11 @@ type PRSnapshot struct {
 	// InScope reports that the PR is in the repository's shepherd scope
 	// (InScope).
 	InScope bool
-	// Autofix reports that a human PR opted in to auto-fix, by the
-	// autofix label or by /anthill fix.
-	Autofix bool
+	// Autofix reports that a human PR opted in to auto-fix by the
+	// autofix label, and FixThreads lists the threads opted in one by one
+	// by /anthill fix (spec agent-conversation, "Fix on a human PR").
+	Autofix    bool
+	FixThreads []string
 	// Rounds are the PR's rounds, oldest first.
 	Rounds []PRRound
 	// RoundRequested reports that /anthill review requested a round that
@@ -65,11 +69,14 @@ type PRSnapshot struct {
 	// that does not allow maintainer edits.
 	VerificationCommand bool
 	Pushable            bool
+	// UnavailablePosted lists the reasons whose auto-fix unavailable
+	// comment is on the PR (PostAutofixUnavailable).
+	UnavailablePosted []AutofixUnavailableReason
 }
 
 // PRDecision is the one next action the default playbook returns for a
-// PR. It is one of StartRound, PostRoundLimit, HandFindings, StartFixPass
-// and Nothing. The unexported method seals the interface.
+// PR. It is one of StartRound, PostRoundLimit, HandFindings, StartFixPass,
+// PostAutofixUnavailable and Nothing. The unexported method seals the interface.
 type PRDecision interface {
 	prDecision()
 }
@@ -106,13 +113,16 @@ type HandFindings struct {
 type StartFixPass struct {
 	Head     string
 	Findings []Finding
+	// Threads are the findings' threads, in the same order.
+	Threads []string
 }
 
-func (StartRound) prDecision()     {}
-func (PostRoundLimit) prDecision() {}
-func (HandFindings) prDecision()   {}
-func (StartFixPass) prDecision()   {}
-func (Nothing) prDecision()        {}
+func (StartRound) prDecision()             {}
+func (PostRoundLimit) prDecision()         {}
+func (HandFindings) prDecision()           {}
+func (StartFixPass) prDecision()           {}
+func (PostAutofixUnavailable) prDecision() {}
+func (Nothing) prDecision()                {}
 
 // DecidePR is the default playbook for PRs (design D22): it returns the
 // one next action for the PR in s. Like DecideAnt, it decides from the
@@ -126,8 +136,12 @@ func (Nothing) prDecision()        {}
 //     to developers.
 //  2. On a human PR that opted in to auto-fix, in a repository with a
 //     verification command and a branch Anthill can push to, the open
-//     auto-fixable findings of the round on the head commit get a fix
-//     pass.
+//     auto-fixable findings with a thread of the round on the head
+//     commit get a fix pass: all of them with the autofix label, or
+//     those of the threads opted in by /anthill fix. Without a
+//     verification command, or with a branch Anthill cannot push to,
+//     the comment that says why auto-fix is not possible is posted
+//     instead, once per PR and reason.
 //  3. A pending /anthill review starts a requested round on the head
 //     commit, even out of scope, on a draft, after the round limit or on a
 //     head commit already reviewed.
@@ -141,6 +155,9 @@ func DecidePR(s PRSnapshot) PRDecision {
 		return d
 	}
 	if d, ok := s.fixPass(); ok {
+		return d
+	}
+	if d, ok := s.autofixUnavailable(); ok {
 		return d
 	}
 	if s.RoundRequested {
@@ -188,23 +205,41 @@ func (s PRSnapshot) handFindings() (HandFindings, bool) {
 
 // fixPass decides the fix pass of a human PR that opted in.
 func (s PRSnapshot) fixPass() (StartFixPass, bool) {
-	if s.AntPR || !s.Autofix || !s.VerificationCommand || !s.Pushable {
+	if !s.VerificationCommand || !s.Pushable {
 		return StartFixPass{}, false
 	}
-	r, ok := s.round(s.Head)
-	if !ok {
-		return StartFixPass{}, false
-	}
-	var fixes []Finding
-	for _, f := range r.Findings {
-		if !f.Resolved && f.Classification == AutoFixable {
-			fixes = append(fixes, f.Finding)
-		}
-	}
+	fixes := s.fixable()
 	if len(fixes) == 0 {
 		return StartFixPass{}, false
 	}
-	return StartFixPass{Head: s.Head, Findings: fixes}, true
+	d := StartFixPass{Head: s.Head}
+	for _, f := range fixes {
+		d.Findings = append(d.Findings, f.Finding)
+		d.Threads = append(d.Threads, f.Thread)
+	}
+	return d, true
+}
+
+// fixable returns the findings a fix pass would fix on a human PR that
+// opted in: the open auto-fixable findings with a thread of the round on
+// the head commit, all of them with the autofix label, or only those of
+// the threads opted in by /anthill fix.
+func (s PRSnapshot) fixable() []PRFinding {
+	if s.AntPR || !s.Autofix && len(s.FixThreads) == 0 {
+		return nil
+	}
+	r, ok := s.round(s.Head)
+	if !ok {
+		return nil
+	}
+	var fixes []PRFinding
+	for _, f := range r.Findings {
+		if !f.Resolved && f.Classification == AutoFixable && f.Thread != "" &&
+			(s.Autofix || slices.Contains(s.FixThreads, f.Thread)) {
+			fixes = append(fixes, f)
+		}
+	}
+	return fixes
 }
 
 // round returns the last round on head.

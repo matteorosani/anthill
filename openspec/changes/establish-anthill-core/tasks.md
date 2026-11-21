@@ -148,9 +148,9 @@ Terms follow `openspec/glossary.md`. Every group lands its own tests and docs. U
 - [x] 16.2 Implement round triggers decided by the default playbook (16.8), the round limit with its comment, and requested rounds counted separately, and verify each round scenario
 - [x] 16.3 Implement a round: review claim, temporary detached worktree, new session, `submit_review`, de-duplication against open threads, inline and summary comments, and verify the "blocking finding", "clean round" and "unchanged problem in round 2" tests
 - [x] 16.4 Hand findings on ant PRs to the owning ant's follow-up run as decided by the default playbook (16.8) and as defined by change-reaction, and verify the "findings handed to the owning ant" and "auto-fixable nit included in the run" tests
-- [ ] 16.5 Implement auto-fix on opted-in human PRs: opt-in by label or `/anthill fix`, fix pass in a temporary worktree, `finish_fixes`, verification command, push, replies and resolution, and verify the "auto-fix on an opted-in human PR" and "verified fixes" tests
-- [ ] 16.6 Implement the auto-fix fallbacks (no verification command, fork not pushable, failed verification, PR branch moved) as all or nothing, and verify each fallback scenario
-- [ ] 16.7 Handle PR merge or close: stop shepherd activity, release claims, make the ant `done`, clean up the worktree, and verify the "PR merged by developer" test
+- [x] 16.5 Implement auto-fix on opted-in human PRs: opt-in by label or `/anthill fix`, fix pass in a temporary worktree, `finish_fixes`, verification command, push, replies and resolution, and verify the "auto-fix on an opted-in human PR" and "verified fixes" tests
+- [x] 16.6 Implement the auto-fix fallbacks (no verification command, fork not pushable, failed verification, PR branch moved) as all or nothing, and verify each fallback scenario
+- [x] 16.7 Handle PR merge or close: stop shepherd activity, release claims, make the ant `done`, clean up the worktree, and verify the "PR merged by developer" test
 - [x] 16.8 Add the shepherd decisions to the default playbook: a pure function from a PR snapshot (head commit, rounds done, requested rounds, scope, opt-in labels, open findings) to one decision (start an automatic or requested round, post the round limit comment, hand findings to the owning ant, start a fix pass, nothing) that follows pr-shepherd, and verify with table tests one case per round and auto-fix scenario, and that after each decision's effect the playbook never returns the same decision again
 
 ## 17. Queen console
