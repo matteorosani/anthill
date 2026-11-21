@@ -29,9 +29,8 @@ func consoleCall(cmd *cobra.Command, env *environment, method string, params, re
 	return consoleError(cmd, control.NewClient(env.address).Call(ctx, method, params, result))
 }
 
-// consoleError explains a console call's error: no daemon, a daemon that
-// runs no ants yet, cleanup that needs confirmation, or the daemon's own
-// message.
+// consoleError explains a console call's error: no daemon, cleanup that
+// needs confirmation, or the daemon's own message.
 func consoleError(cmd *cobra.Command, err error) error {
 	var rpc *control.Error
 	switch {
@@ -39,8 +38,6 @@ func consoleError(cmd *cobra.Command, err error) error {
 		return nil
 	case errors.Is(err, control.ErrNotRunning):
 		return errors.New("daemon not running")
-	case errors.As(err, &rpc) && rpc.Code == codeConsoleUnavailable:
-		return fmt.Errorf("%s is not available: %s", commandName(cmd), rpc.Message)
 	case errors.As(err, &rpc) && rpc.Code == codeNeedsConfirmation:
 		return errors.New(rpc.Message + "; run again with --confirm")
 	case errors.As(err, &rpc):

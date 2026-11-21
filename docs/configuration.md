@@ -85,6 +85,17 @@ It must never hold credentials or machine paths. Anthill rejects the whole file 
 
 Your own configuration file never accepts credential keys either. OTLP headers are rejected in every file with `OTLP headers belong in the OS credential store, not in a configuration file`.
 
+### Anthill's own files
+
+Anthill keeps its own files in `~/.anthill` (`%USERPROFILE%\.anthill` on Windows), which you do not edit:
+
+| File | What it holds |
+|------|---------------|
+| `anthill.db` | the local store: the session index, the outbox, the held claims, questions, extension requests, hidden proposals, and the usage of runs and rounds |
+| `daemon.lock` | the lock that keeps a second daemon from starting |
+| `worktrees/` | the ant worktrees, unless `worktree-root` names another directory |
+| `transfer/` | the short-lived transfer repositories that fetches and pushes go through |
+
 ### Value formats
 
 - Budgets are whole minutes, like the `budget:` label: `budget: 45`.

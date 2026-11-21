@@ -11,31 +11,11 @@ import (
 	"github.com/matteorosani/anthill/internal/testkit"
 )
 
-// A daemon that runs no ants yet has no console: each console command
-// says so, and status still works.
-func TestConsoleCommandsWithoutConsole(t *testing.T) {
+// Without a daemon, each console command says so.
+func TestConsoleCommandsWithoutDaemon(t *testing.T) {
 	te := newTestEnv(t)
 	if code, _, stderr := te.command("proposals"); code != 1 || stderr != "anthill: daemon not running\n" {
 		t.Errorf("without daemon = %d, %q", code, stderr)
-	}
-	te.startDaemon(t)
-	for _, tt := range []struct {
-		args    []string
-		command string
-	}{
-		{[]string{"proposals"}, "proposals"},
-		{[]string{"accept", "#12"}, "accept"},
-		{[]string{"extension", "approve", "#12"}, "extension approve"},
-		{[]string{"follow", "#12"}, "follow"},
-	} {
-		code, stdout, stderr := te.command(tt.args...)
-		want := "anthill: " + tt.command + " is not available: the daemon does not run ants yet\n"
-		if code != 1 || stdout != "" || stderr != want {
-			t.Errorf("%v = %d, %q, %q\nwant 1, %q", tt.args, code, stdout, stderr, want)
-		}
-	}
-	if code, _, _ := te.command("status"); code != 0 {
-		t.Error("status failed without a console")
 	}
 }
 

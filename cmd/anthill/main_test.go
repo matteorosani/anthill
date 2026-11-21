@@ -140,16 +140,16 @@ func (te *testEnv) startDaemon(t *testing.T) func() int {
 }
 
 // End to end: `anthill status` asks a running daemon for its status and
-// prints its uptime, measured by the daemon's clock.
+// prints its uptime, measured by the daemon's clock, then its health.
 func TestStatusReportsUptimeFromRunningDaemon(t *testing.T) {
 	te := newTestEnv(t)
 	stop := te.startDaemon(t)
 	te.clock.Advance(90 * time.Minute)
 
 	code, stdout, stderr := te.command("status")
-	want := fmt.Sprintf("daemon: running (pid %d, anthill dev)\nuptime: 1h30m0s\n", os.Getpid())
-	if code != 0 || stdout != want || stderr != "" {
-		t.Errorf("status = %d, %q, %q\nwant 0, %q", code, stdout, stderr, want)
+	want := fmt.Sprintf("daemon: running (pid %d, anthill dev)\nuptime: 1h30m0s\n\nproviders:\n", os.Getpid())
+	if code != 0 || !strings.HasPrefix(stdout, want) || stderr != "" {
+		t.Errorf("status = %d, %q, %q\nwant 0 and output starting with %q", code, stdout, stderr, want)
 	}
 
 	if code := stop(); code != 0 {

@@ -41,9 +41,6 @@ const (
 // The JSON-RPC error codes of the console methods, in the range JSON-RPC
 // leaves to servers.
 const (
-	// codeConsoleUnavailable: the daemon runs no ants yet, so it has no
-	// console to serve.
-	codeConsoleUnavailable = -32002
 	// codeNeedsConfirmation: a cleanup would delete unpushed work.
 	codeNeedsConfirmation = -32003
 )
@@ -278,15 +275,10 @@ type followUpsResult struct {
 // to be there.
 type consoleHandler func(ctx context.Context, c *app.Console, raw json.RawMessage, stream control.Stream) (any, error)
 
-// registerConsoleAPI registers the console methods. A nil console, in a
-// daemon that runs no ants yet, answers each of them with
-// codeConsoleUnavailable.
+// registerConsoleAPI registers the console methods.
 func registerConsoleAPI(srv *control.Server, c *app.Console) {
 	handle := func(method string, h consoleHandler) {
 		srv.Handle(method, func(ctx context.Context, raw json.RawMessage, stream control.Stream) (any, error) {
-			if c == nil {
-				return nil, &control.Error{Code: codeConsoleUnavailable, Message: "the daemon does not run ants yet"}
-			}
 			out, err := h(ctx, c, raw, stream)
 			return out, codedError(err)
 		})
