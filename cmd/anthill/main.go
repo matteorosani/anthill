@@ -18,6 +18,7 @@ import (
 	"github.com/matteorosani/anthill/internal/adapters/control"
 	"github.com/matteorosani/anthill/internal/adapters/desktop"
 	"github.com/matteorosani/anthill/internal/adapters/systemclock"
+	"github.com/matteorosani/anthill/internal/app"
 	"github.com/matteorosani/anthill/internal/domain"
 	"github.com/matteorosani/anthill/internal/ports"
 )
@@ -45,6 +46,10 @@ type environment struct {
 	clock   ports.Clock
 	// desktop builds the notifier that shows notifications.
 	desktop func(*slog.Logger) ports.Notifier
+	// console is the queen console the daemon serves, or nil while the
+	// daemon runs no ants: the console commands then report that they
+	// are not available. Tests set one over fakes.
+	console *app.Console
 	// err is set when the paths could not be found. Only the commands
 	// that need them fail.
 	err error
@@ -157,6 +162,18 @@ func newRootCommand(env *environment) *cobra.Command {
 		return &usageError{err}
 	})
 	root.AddCommand(newVersionCommand(), newDaemonCommand(env), newStatusCommand(env), newMCPCommand(env), newHookCommand(env), newRunnerSmokeCommand(env))
+	root.AddCommand(
+		newProposalsCommand(env), newExplainCommand(env), newAcceptCommand(env),
+		newDeclineCommand(env), newSnoozeCommand(env), newUnhideCommand(env),
+		newAntsCommand(env), newAntCommand(env), newFollowCommand(env),
+		newAntActionCommand(env, "stop", "End an ant's active run and keep its claim", methodStop, "stopped"),
+		newAntActionCommand(env, "abandon", "End any active run, release the claim and make the ant abandoned", methodAbandon, "abandoned"),
+		newAntActionCommand(env, "retry", "Start a new run for a failed or stopped ant", methodRetry, "retried"),
+		newContinueCommand(env), newCleanupCommand(env),
+		newQuestionsCommand(env), newAnswerCommand(env),
+		newExtensionsCommand(env), newExtensionCommand(env),
+		newFollowUpsCommand(env), newFollowUpCommand(env),
+	)
 	return root
 }
 

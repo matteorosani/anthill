@@ -60,10 +60,13 @@ type WorkItem struct {
 	Assignees          []string
 	Dependencies       []Ref
 	// Parent is nil when the item has no parent.
-	Parent    *Ref
-	Children  []Ref
-	Comments  []Comment
-	Revision  string
+	Parent   *Ref
+	Children []Ref
+	Comments []Comment
+	Revision string
+	// CreatedAt is when the item was created, for its age in the
+	// proposal list (spec queen-console, "Viewing proposals").
+	CreatedAt time.Time
 	UpdatedAt time.Time
 }
 

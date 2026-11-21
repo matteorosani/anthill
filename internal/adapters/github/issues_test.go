@@ -71,6 +71,9 @@ func TestItemsFirstPoll(t *testing.T) {
 		if !i12.UpdatedAt.Equal(want) || i12.Revision != "2026-10-29T09:30:00Z" {
 			t.Errorf("updated, revision = %v, %q", i12.UpdatedAt, i12.Revision)
 		}
+		if want := time.Date(2026, 10, 20, 8, 0, 0, 0, time.UTC); !i12.CreatedAt.Equal(want) {
+			t.Errorf("created = %v, want %v", i12.CreatedAt, want)
+		}
 	})
 
 	// Spec work-item-sources, "GitHub issue with dependencies and

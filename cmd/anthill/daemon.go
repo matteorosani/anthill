@@ -100,6 +100,7 @@ func runDaemon(ctx context.Context, env *environment) error {
 		Home:          filepath.Dir(env.home),
 	})
 	registerAPI(d.control, d.health, d.tools)
+	registerConsoleAPI(d.control, env.console)
 
 	ln, err := control.Listen(env.address)
 	if err != nil {

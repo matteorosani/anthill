@@ -71,6 +71,7 @@ func TestAzureDevOpsBugMapped(t *testing.T) {
 			CreatedAt: time.Date(2026, 10, 29, 9, 30, 0, 123e6, time.UTC), UpdatedAt: time.Date(2026, 10, 29, 9, 30, 0, 123e6, time.UTC),
 		}},
 		Revision:  "7",
+		CreatedAt: time.Date(2026, 10, 20, 8, 0, 0, 0, time.UTC),
 		UpdatedAt: time.Date(2026, 10, 29, 9, 30, 0, 123e6, time.UTC),
 	}
 	if got, _ := json.Marshal(bug); string(got) != string(must(json.Marshal(want))) {

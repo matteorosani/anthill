@@ -21,6 +21,7 @@
           "displayName": "Ada",
           "uniqueName": "Ada@contoso.com"
         },
+        "System.CreatedDate": "2026-10-20T08:00:00Z",
         "System.ChangedDate": "2026-10-29T09:30:00.123Z",
         "System.CommentCount": 1
       },
