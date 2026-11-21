@@ -78,7 +78,6 @@ type antNoticesResult struct {
 }
 
 // registerAPI registers the handler of every control method on srv.
-// console is the queen console, or nil while the daemon runs no ants.
 func registerAPI(srv *control.Server, health *app.Health, tools *app.AntTools, console *app.Console) {
 	srv.Handle(methodStatus, func(ctx context.Context, _ json.RawMessage, _ control.Stream) (any, error) {
 		s := health.Status()
@@ -88,13 +87,11 @@ func registerAPI(srv *control.Server, health *app.Health, tools *app.AntTools, c
 			StartedAt: s.StartedAt,
 			Uptime:    int64(s.Uptime / time.Second),
 		}
-		if console != nil {
-			report, err := console.Status(ctx)
-			if err != nil {
-				return nil, err
-			}
-			out.Console = consoleStatusOf(report)
+		report, err := console.Status(ctx)
+		if err != nil {
+			return nil, err
 		}
+		out.Console = consoleStatusOf(report)
 		return out, nil
 	})
 	srv.Handle(methodAntTools, func(_ context.Context, raw json.RawMessage, _ control.Stream) (any, error) {

@@ -46,9 +46,12 @@ type environment struct {
 	clock   ports.Clock
 	// desktop builds the notifier that shows notifications.
 	desktop func(*slog.Logger) ports.Notifier
-	// console is the queen console the daemon serves, or nil while the
-	// daemon runs no ants: the console commands then report that they
-	// are not available. Tests set one over fakes.
+	// ports builds the daemon's adapters; nil means realPorts. Tests
+	// build them over fakes.
+	ports portsFactory
+	// console, when set, replaces the queen console the daemon builds,
+	// and the daemon then runs none of its own services: tests of the
+	// console commands set one over their own fakes and services.
 	console *app.Console
 	// err is set when the paths could not be found. Only the commands
 	// that need them fail.
