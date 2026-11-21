@@ -18,7 +18,9 @@ type Scheduler struct {
 	clock       ports.Clock
 	notifier    ports.Notifier
 	connections []Connection
-	telemetry   *Telemetry
+	// afterPoll is called after each poll; see SetAfterPoll.
+	afterPoll func(ctx context.Context, conn Connection, report PollReport)
+	telemetry *Telemetry
 }
 
 // NewScheduler returns a scheduler for the given connections. The daemon
@@ -55,6 +57,9 @@ func (s *Scheduler) loop(ctx context.Context, conn Connection) {
 		end(report, err)
 		if ctx.Err() != nil {
 			return
+		}
+		if s.afterPoll != nil && err == nil {
+			s.afterPoll(ctx, conn, report)
 		}
 		failed := err != nil || len(report.Failed) > 0
 		if failed && !failing {

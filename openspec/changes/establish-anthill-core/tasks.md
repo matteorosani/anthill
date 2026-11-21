@@ -91,7 +91,7 @@ Terms follow `openspec/glossary.md`. Every group lands its own tests and docs. U
 - [x] 11.2 Implement the JSON-RPC control interface over a Unix socket and a Windows named pipe (`go-winio`), local-only, with streaming responses, and verify a client round-trip test on each OS in CI
 - [x] 11.3 Implement the CLI skeleton with `cobra` as a thin client, with `anthill daemon` and `anthill status`, and verify an end-to-end test that `status` reports uptime from a running daemon
 - [x] 11.4 Implement the `Notifier` port with desktop notifications (`beeep`) and a per-kind switch, and verify with a fake notifier that each notification kind of queen-console is raised and can be turned off
-- [ ] 11.5 Wire the composition root and run loop of `anthill daemon`: the SQLite store, the configured provider adapters, git, the executor and runners, the poll scheduler with ingestion, eligibility re-evaluation after every poll with the "new proposal" notification, claim renewals, the ant supervisor, the conversation, the change reactor, shepherd triggers after each PR poll, and the console, and verify an end-to-end test on fake adapters that an opted-in item is proposed and, once accepted, gets an ant and a run
+- [x] 11.5 Wire the composition root and run loop of `anthill daemon`: the SQLite store, the configured provider adapters, git, the executor and runners, the poll scheduler with ingestion, eligibility re-evaluation after every poll with the "new proposal" notification, claim renewals, the ant supervisor, the conversation, the change reactor, shepherd triggers after each PR poll, and the console, and verify an end-to-end test on fake adapters that an opted-in item is proposed and, once accepted, gets an ant and a run
 
 ## 12. Ant tools
 

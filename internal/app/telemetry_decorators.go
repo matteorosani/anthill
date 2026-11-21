@@ -302,3 +302,34 @@ func (w *telemetryCodeHost) CanWrite(ctx context.Context, repo domain.Repository
 	end(err)
 	return ok, err
 }
+
+// TrackerRoute wraps a tracker route so that every tracker it finds is
+// wrapped as Tracker does, named by its connection. With a nil
+// *Telemetry it returns route.
+func (t *Telemetry) TrackerRoute(route TrackerRoute) TrackerRoute {
+	if t == nil || route == nil {
+		return route
+	}
+	return func(ctx context.Context, item domain.Ref) (ports.TrackerPort, error) {
+		p, err := route(ctx, item)
+		if err != nil {
+			return p, err
+		}
+		return t.Tracker(domain.ConnectionName(item.Repo), p), nil
+	}
+}
+
+// CodeHostRoute wraps a code host route as TrackerRoute wraps a tracker
+// route.
+func (t *Telemetry) CodeHostRoute(route CodeHostRoute) CodeHostRoute {
+	if t == nil || route == nil {
+		return route
+	}
+	return func(ctx context.Context, repo domain.Repository) (ports.CodeHostPort, error) {
+		p, err := route(ctx, repo)
+		if err != nil {
+			return p, err
+		}
+		return t.CodeHost(domain.ConnectionName(repo), p), nil
+	}
+}

@@ -11,7 +11,6 @@ import (
 	"path/filepath"
 	"sync"
 	"syscall"
-	"time"
 
 	"github.com/spf13/cobra"
 
@@ -20,7 +19,6 @@ import (
 	"github.com/matteorosani/anthill/internal/adapters/lockfile"
 	"github.com/matteorosani/anthill/internal/app"
 	"github.com/matteorosani/anthill/internal/domain"
-	"github.com/matteorosani/anthill/internal/ports"
 )
 
 // lockFileName is the daemon lock's file name in <anthill-home>.
@@ -46,23 +44,9 @@ func newDaemonCommand(env *environment) *cobra.Command {
 	}
 }
 
-// daemon holds what the daemon's services share. It is the composition
-// root: adapters are built here and handed to the application services
-// as ports.
-type daemon struct {
-	logger *slog.Logger
-	config *app.Configuration
-	// notifier is the notifier the services that raise notifications
-	// get: the desktop one behind the notifications setting.
-	notifier ports.Notifier
-	health   *app.Health
-	// tools executes the ant tools that anthill mcp relays.
-	tools   *app.AntTools
-	control *control.Server
-}
-
-// runDaemon takes the daemon lock, loads the configuration, and serves
-// the control interface until ctx is cancelled. It returns a
+// runDaemon takes the daemon lock, loads the configuration, builds the
+// adapters and the services (buildDaemon), and serves the control
+// interface and runs the services until ctx is cancelled. It returns a
 // *lockfile.HeldError when another daemon is running, and the
 // configuration error when the global configuration is invalid.
 func runDaemon(ctx context.Context, env *environment) error {
@@ -81,26 +65,48 @@ func runDaemon(ctx context.Context, env *environment) error {
 		}
 	}()
 
-	if _, err := config.Load(ctx); err != nil {
+	snap, err := config.Load(ctx)
+	if err != nil {
 		return err
 	}
-	d := &daemon{
-		logger:   logger,
-		config:   config,
-		notifier: app.NewNotifications(config, env.desktop(logger)),
-		health:   app.NewHealth(env.clock, version, os.Getpid()),
-		control:  control.NewServer(logger),
+	build := env.ports
+	if build == nil {
+		build = realPorts
 	}
-	// No run starts yet, so no tool token is issued and the ant tools
-	// need no store, claims, providers or git: every call is refused as
-	// an unknown token. Ant supervision wires them when it starts runs.
-	d.tools = app.NewAntTools(app.AntToolsDeps{Clock: env.clock, Notifier: d.notifier}, app.AntToolsOptions{
-		ExtensionWait: func() time.Duration { return config.Current().Global.ExtensionWait },
-		Redactor:      func() *domain.Redactor { return config.Current().Redactor },
-		Home:          filepath.Dir(env.home),
+	p, err := build(ctx, env, snap, logger)
+	if err != nil {
+		return err
+	}
+	if p.Close != nil {
+		defer func() {
+			if closeErr := p.Close(); closeErr != nil {
+				logger.Warn("adapters not closed", "error", closeErr)
+			}
+		}()
+	}
+	tel, err := startTelemetry(ctx, env.stderr, config, keyringCredentials, p.Store)
+	if err != nil {
+		return err
+	}
+	defer tel.shutdown()
+	logger = tel.logger
+	exe, err := os.Executable()
+	if err != nil {
+		return fmt.Errorf("finding the anthill program: %w", err)
+	}
+	notifier := app.NewNotifications(config, env.desktop(logger))
+	s := buildDaemon(p, buildOptions{
+		config: config, clock: env.clock, notifier: notifier, logger: logger, telemetry: tel.tel,
+		userHome: userHomeOf(env.home), environ: os.Environ(),
+		mcpCommand: func(token string) []string { return []string{exe, "mcp", "--ant", token} },
 	})
-	registerAPI(d.control, d.health, d.tools, env.console)
-	registerConsoleAPI(d.control, env.console)
+	console := s.console
+	if env.console != nil {
+		console = env.console
+	}
+	srv := control.NewServer(logger)
+	registerAPI(srv, app.NewHealth(env.clock, version, os.Getpid()), s.tools, console)
+	registerConsoleAPI(srv, console)
 
 	ln, err := control.Listen(env.address)
 	if err != nil {
@@ -108,11 +114,13 @@ func runDaemon(ctx context.Context, env *environment) error {
 	}
 	logger.Info("daemon started", "pid", os.Getpid(), "address", env.address)
 	defer logger.Info("daemon stopped")
-	return runAll(ctx,
-		func(ctx context.Context) error { return d.control.Serve(ctx, ln) },
-		// The services that run until shutdown, such as the poll
-		// scheduler, join here.
-	)
+	serve := []func(context.Context) error{func(ctx context.Context) error { return srv.Serve(ctx, ln) }}
+	if env.console != nil {
+		// A test's own console comes with its own services.
+		return runAll(ctx, serve...)
+	}
+	loop := newRunLoop(s, p.Store, env.clock, notifier, logger)
+	return runAll(ctx, append(loop.services(), serve...)...)
 }
 
 // runAll runs every service until ctx is cancelled or one of them fails.
@@ -135,10 +143,16 @@ func runAll(ctx context.Context, services ...func(context.Context) error) error 
 	return errors.Join(errs...)
 }
 
-// newLogger returns the daemon's logger: text on w, with secrets redacted
-// from the message and every string or error attribute by the redactor of
-// the configuration in use.
+// newLogger returns the daemon's logger over newLogHandler.
 func newLogger(w io.Writer, config *app.Configuration) *slog.Logger {
+	return slog.New(newLogHandler(w, config))
+}
+
+// newLogHandler returns the daemon's log handler: text on w, with secrets
+// redacted from the message and every string or error attribute by the
+// redactor of the configuration in use. It is separate from newLogger so
+// that another handler can be added beside it.
+func newLogHandler(w io.Writer, config *app.Configuration) slog.Handler {
 	builtin, _ := domain.NewRedactor(nil)
 	redactor := func() *domain.Redactor {
 		if snap := config.Current(); snap != nil && snap.Redactor != nil {
@@ -146,7 +160,7 @@ func newLogger(w io.Writer, config *app.Configuration) *slog.Logger {
 		}
 		return builtin
 	}
-	return slog.New(slog.NewTextHandler(w, &slog.HandlerOptions{
+	return slog.NewTextHandler(w, &slog.HandlerOptions{
 		ReplaceAttr: func(_ []string, a slog.Attr) slog.Attr {
 			switch v := a.Value; v.Kind() {
 			case slog.KindString:
@@ -158,5 +172,5 @@ func newLogger(w io.Writer, config *app.Configuration) *slog.Logger {
 			}
 			return a
 		},
-	}))
+	})
 }

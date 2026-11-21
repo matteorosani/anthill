@@ -526,3 +526,33 @@ func TestRateLimitRemainingGauge(t *testing.T) {
 		t.Errorf("remaining = %+v, want 4321 for github only", g.DataPoints)
 	}
 }
+
+// The provider ports found through the routes, such as by the ant
+// tools, get provider call spans named by their connection.
+func TestRouteTelemetry(t *testing.T) {
+	te := newTelemetryEnv(t, nil)
+	gh := testkit.NewProvider(testkit.NewClock(t0))
+	client := gh.Client("mrosani")
+	tracker := te.tel.TrackerRoute(func(context.Context, domain.Ref) (ports.TrackerPort, error) { return client, nil })
+	codeHost := te.tel.CodeHostRoute(func(context.Context, domain.Repository) (ports.CodeHostPort, error) { return client, nil })
+	ctx := context.Background()
+	tr, err := tracker(ctx, ghRef(12))
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, _, _ = tr.Item(ctx, ghRef(12))
+	ch, err := codeHost(ctx, shop)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, _, _ = ch.PullRequest(ctx, ghPR(34))
+	calls := te.spansNamed(domain.SpanProviderCall)
+	if len(calls) != 2 {
+		t.Fatalf("%d provider call spans, want 2", len(calls))
+	}
+	for _, c := range calls {
+		if v, _ := spanAttr(c, domain.AttrProvider); v.String() != domain.ConnectionName(shop) {
+			t.Errorf("provider = %q, want %q", v.String(), domain.ConnectionName(shop))
+		}
+	}
+}
