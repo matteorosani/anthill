@@ -20,12 +20,19 @@ type Scheduler struct {
 	connections []Connection
 	// afterPoll is called after each poll; see SetAfterPoll.
 	afterPoll func(ctx context.Context, conn Connection, report PollReport)
+	telemetry *Telemetry
 }
 
 // NewScheduler returns a scheduler for the given connections. The daemon
 // builds one Connection per provider adapter.
 func NewScheduler(ingestion *Ingestion, config *Configuration, clock ports.Clock, notifier ports.Notifier, connections ...Connection) *Scheduler {
 	return &Scheduler{ingestion: ingestion, config: config, clock: clock, notifier: notifier, connections: connections}
+}
+
+// SetTelemetry makes each poll cycle emit a span (spec observability,
+// "Traces"). Call it before Run.
+func (s *Scheduler) SetTelemetry(t *Telemetry) {
+	s.telemetry = t
 }
 
 // Run polls every connection until ctx is cancelled, then returns once
@@ -45,7 +52,9 @@ func (s *Scheduler) Run(ctx context.Context) {
 func (s *Scheduler) loop(ctx context.Context, conn Connection) {
 	failing := false
 	for {
-		report, err := s.ingestion.Poll(ctx, conn)
+		pollCtx, end := s.telemetry.StartPoll(ctx, conn.Name)
+		report, err := s.ingestion.Poll(pollCtx, conn)
+		end(report, err)
 		if ctx.Err() != nil {
 			return
 		}

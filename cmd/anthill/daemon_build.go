@@ -59,6 +59,9 @@ type buildOptions struct {
 	// made, and mcpCommand the command line of the ant tools server.
 	environ    []string
 	mcpCommand func(token string) []string
+	// telemetry gives the services their spans, metrics and agent
+	// telemetry; nil emits nothing.
+	telemetry *app.Telemetry
 }
 
 // buildDaemon is the composition root: it hands the ports to the
@@ -67,7 +70,7 @@ type buildOptions struct {
 // tools and the ant supervisor, are joined through late, which forwards
 // to services made after them.
 func buildDaemon(p daemonPorts, o buildOptions) *services {
-	config, clock, notifier := o.config, o.clock, o.notifier
+	config, clock, notifier, tel := o.config, o.clock, o.notifier, o.telemetry
 	global := func() domain.Effective {
 		if snap := config.Current(); snap != nil {
 			return snap.Global
@@ -85,19 +88,24 @@ func buildDaemon(p daemonPorts, o buildOptions) *services {
 	late := &late{}
 	r := newRoutes(config, p.Git, p.Machine, p.Connections)
 	s.routes = r
+	// The provider calls made through the routes, such as those of the
+	// ant tools, get spans as the polls' do.
+	tracker, codeHost := tel.TrackerRoute(r.tracker), tel.CodeHostRoute(r.codeHost)
 	for _, c := range p.Connections {
-		s.connections = append(s.connections, app.Connection{Name: c.Name, Tracker: c.Provider, CodeHost: c.Provider})
+		s.connections = append(s.connections, app.Connection{
+			Name: c.Name, Tracker: tel.Tracker(c.Name, c.Provider), CodeHost: tel.CodeHost(c.Name, c.Provider),
+		})
 	}
 
 	s.claiming = app.NewClaiming(r.claim, p.Store, clock, notifier, late, app.ClaimingOptions{Lease: global().Lease})
-	s.eligibility = app.NewEligibility(r.tracker, s.claiming, r.target, p.Store)
+	s.eligibility = app.NewEligibility(tracker, s.claiming, r.target, p.Store)
 	workspace := app.NewWorkspace(p.Git, root)
 	s.activity = app.NewActivityHub()
-	usage := app.NewUsageRecorder(p.Store)
+	usage := app.NewUsageRecorder(tel.RunLog(p.Store))
 	s.runEnds = s.activity.RunEnds(usage)
 
 	s.tools = app.NewAntTools(app.AntToolsDeps{
-		Store: p.Store, Claims: s.claiming, Tracker: r.tracker, CodeHost: r.codeHost, Workspace: r.workspace,
+		Store: p.Store, Claims: s.claiming, Tracker: tracker, CodeHost: codeHost, Workspace: r.workspace,
 		Git: p.Git, Clock: clock, Notifier: notifier, Executor: p.Executor,
 		Runs: late, Finishes: late, Reviews: late, Fixes: late,
 	}, app.AntToolsOptions{
@@ -111,14 +119,16 @@ func buildDaemon(p daemonPorts, o buildOptions) *services {
 		Home: o.userHome,
 	})
 	s.fixPass = app.NewFixPass(app.FixPassDeps{
-		Git: p.Git, Executor: p.Executor, Tokens: s.tools, Verifier: p.Verifier, CodeHost: r.codeHost, Clock: clock,
+		Git: p.Git, Executor: p.Executor, Tokens: s.tools, Verifier: p.Verifier, CodeHost: codeHost, Clock: clock,
+		Telemetry: tel,
 	}, app.FixPassOptions{Root: root, MCPCommand: o.mcpCommand, Environ: o.environ})
 	s.rounds = app.NewShepherdRounds(app.ShepherdRoundsDeps{
-		Route: r.workspace, CodeHost: r.codeHost, Git: p.Git, Executor: p.Executor, Tokens: s.tools, Clock: clock,
+		Route: r.workspace, CodeHost: codeHost, Git: p.Git, Executor: p.Executor, Tokens: s.tools, Clock: clock,
+		Telemetry: tel,
 	}, app.ShepherdRoundsOptions{Root: root, MCPCommand: o.mcpCommand, Environ: o.environ})
 
 	s.conversation = app.NewConversation(app.ConversationDeps{
-		Store: p.Store, Tracker: r.tracker, CodeHost: r.codeHost, Claims: s.claiming,
+		Store: p.Store, Tracker: tracker, CodeHost: codeHost, Claims: s.claiming,
 		Ants: late, Reviews: late, Fixes: late, Queen: r.queen,
 		Clock: clock, Notifier: notifier,
 		Staleness: func() time.Duration { return global().QuestionStaleness },
@@ -129,20 +139,21 @@ func buildDaemon(p daemonPorts, o buildOptions) *services {
 		Workspace: workspace, Route: r.workspace, Runners: runners, Executor: p.Executor,
 		Tokens: s.tools,
 		Briefs: &instanceBriefs{deps: app.BriefDeps{
-			Tracker: r.tracker, CodeHost: r.codeHost, Workspace: r.workspace, Git: p.Git,
+			Tracker: tracker, CodeHost: codeHost, Workspace: r.workspace, Git: p.Git,
 			Files: p.Files, Runs: p.Store, Clock: clock,
 		}, instance: r.instance},
 		Answers: s.conversation.Answers(), Clock: clock, Notifier: notifier,
 		Capacity: func() int { return global().Capacity },
 		Runs:     s.runEnds,
-		Tracker:  r.tracker, CodeHost: r.codeHost, Git: p.Git,
-		Activity: s.activity, Messages: s.tools, Extensions: s.tools,
-		Holds: app.NewItemHolds(r.tracker, r.workspace),
+		Tracker:  tracker, CodeHost: codeHost, Git: p.Git,
+		Activity: tel.Activity(s.activity), Messages: s.tools, Extensions: s.tools,
+		Holds:     app.NewItemHolds(tracker, r.workspace),
+		Telemetry: tel,
 	}, app.AntSupervisorOptions{MCPCommand: o.mcpCommand, Environ: o.environ, Errors: errs})
 	s.tools.WatchBudgets(s.supervisor)
 
 	s.shepherd = app.NewShepherd(app.ShepherdDeps{
-		Store: p.Store, Claims: s.claiming, Route: r.workspace, CodeHost: r.codeHost,
+		Store: p.Store, Claims: s.claiming, Route: r.workspace, CodeHost: codeHost,
 		WriteAccess: r.writeAccess,
 		Instance: func(repo domain.Repository) string {
 			ctx, cancel := context.WithTimeout(context.Background(), instanceTimeout)
@@ -153,19 +164,19 @@ func buildDaemon(p daemonPorts, o buildOptions) *services {
 			}
 			return id
 		},
-		Runners: runners, Rounds: s.rounds, RoundEnds: usage, Fixes: s.fixPass,
+		Runners: runners, Rounds: tel.Rounds(s.rounds), RoundEnds: usage, Fixes: s.fixPass,
 		Acks: s.conversation, Ants: s.supervisor, Clock: clock, Errors: errs,
 	})
 	late.supervisor, late.shepherd, late.rounds, late.fixPass = s.supervisor, s.shepherd, s.rounds, s.fixPass
 
 	s.reactor = app.NewChangeReactor(app.ChangeReactorDeps{
 		Store: p.Store, Claims: s.claiming, Ants: s.supervisor,
-		Tracker: r.tracker, CodeHost: r.codeHost, Route: r.workspace,
+		Tracker: tracker, CodeHost: codeHost, Route: r.workspace,
 		Classifier:   app.NewClassifier(p.Executor, clock, o.environ),
 		Conversation: s.conversation, Findings: s.shepherd,
 	})
 	s.closure = app.NewPRClosure(app.PRClosureDeps{
-		Store: p.Store, CodeHost: r.codeHost, Ants: s.supervisor, Shepherd: s.shepherd,
+		Store: p.Store, CodeHost: codeHost, Ants: s.supervisor, Shepherd: s.shepherd,
 	})
 	s.recovery = app.NewSessionRecovery(app.SessionRecoveryDeps{
 		Store: p.Store, Claims: s.claiming, Git: p.Git, Workspace: workspace,
@@ -175,8 +186,8 @@ func buildDaemon(p daemonPorts, o buildOptions) *services {
 	consoleDeps := app.ConsoleDeps{
 		Store: p.Store, Ants: s.supervisor, Eligibility: s.eligibility,
 		Candidates: app.TrackerCandidates(config, r.trackerOf),
-		Tracker:    r.tracker, Answers: s.conversation, Activity: s.activity,
-		Workspace: workspace, Route: r.workspace, CodeHost: r.codeHost,
+		Tracker:    tracker, Answers: s.conversation, Activity: s.activity,
+		Workspace: workspace, Route: r.workspace, CodeHost: codeHost,
 		Repositories: r.repositories, Claims: s.claiming, Rounds: s.shepherd, Clock: clock,
 	}
 	s.console = app.NewConsole(consoleDeps)
@@ -188,6 +199,10 @@ func buildDaemon(p daemonPorts, o buildOptions) *services {
 
 	ingestion := app.NewIngestion(p.Store, config, clock)
 	s.scheduler = app.NewScheduler(ingestion, config, clock, notifier, s.connections...)
+	s.scheduler.SetTelemetry(tel)
+	s.claiming.SetTelemetry(tel)
+	s.eligibility.SetTelemetry(tel)
+	s.tools.SetTelemetry(tel)
 	return s
 }
 

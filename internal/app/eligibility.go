@@ -44,6 +44,8 @@ type Eligibility struct {
 	claims  ClaimHolders
 	target  TargetRoute
 	ants    ports.SessionIndex
+	// telemetry gives each evaluation a span; nil emits nothing.
+	telemetry *Telemetry
 }
 
 // NewEligibility returns the eligibility service.
@@ -57,7 +59,9 @@ func NewEligibility(tracker TrackerRoute, claims ClaimHolders, target TargetRout
 // such as one queued at acceptance, which does not count as work on it;
 // 0 means none. A dependency or child that cannot be read is left out,
 // so it counts as not resolvable.
-func (e *Eligibility) Recheck(ctx context.Context, ref domain.Ref, own ports.AntID) (domain.WorkItem, domain.EligibilityResult, error) {
+func (e *Eligibility) Recheck(ctx context.Context, ref domain.Ref, own ports.AntID) (_ domain.WorkItem, result domain.EligibilityResult, err error) {
+	ctx, end := e.telemetry.StartEligibility(ctx, ref)
+	defer func() { end(result, err) }()
 	tracker, err := e.tracker(ctx, ref)
 	if err != nil {
 		return domain.WorkItem{}, domain.EligibilityResult{}, err
@@ -66,7 +70,7 @@ func (e *Eligibility) Recheck(ctx context.Context, ref domain.Ref, own ports.Ant
 	if err != nil {
 		return domain.WorkItem{}, domain.EligibilityResult{}, fmt.Errorf("reading %s: %w", ref, err)
 	}
-	_, result, err := e.Evaluate(ctx, tracker, item, own)
+	_, result, err = e.evaluate(ctx, tracker, item, own)
 	return item, result, err
 }
 

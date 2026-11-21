@@ -85,6 +85,9 @@ type Claiming struct {
 	notifier ports.Notifier
 	loss     ports.ClaimLossHandler
 	opts     ClaimingOptions
+	// telemetry gives each claim attempt a span and counts claims won
+	// and lost; nil emits nothing.
+	telemetry *Telemetry
 
 	mu    sync.Mutex
 	locks map[heldKey]*sync.Mutex
@@ -129,7 +132,9 @@ func (c *Claiming) lock(ref domain.Ref, kind domain.ClaimKind) func() {
 // A lost race retracts the comment, touches nothing else, and fails with
 // *ClaimTakenError. A claim this instance already holds, such as one left
 // by a crash before the mark, is taken up again instead of posted twice.
-func (c *Claiming) Acquire(ctx context.Context, ref domain.Ref, kind domain.ClaimKind) (ports.HeldClaim, error) {
+func (c *Claiming) Acquire(ctx context.Context, ref domain.Ref, kind domain.ClaimKind) (acquired ports.HeldClaim, err error) {
+	ctx, end := c.telemetry.StartClaim(ctx, ref, kind)
+	defer func() { end(acquired, err) }()
 	defer c.lock(ref, kind)()
 	t, err := c.route(ctx, ref)
 	if err != nil {

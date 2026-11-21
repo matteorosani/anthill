@@ -66,6 +66,9 @@ type FixPassDeps struct {
 	Verifier ports.Verifier
 	CodeHost CodeHostRoute
 	Clock    ports.Clock
+	// Telemetry switches on the fix agent's own telemetry when export is
+	// on (spec observability). Optional.
+	Telemetry *Telemetry
 }
 
 // FixPassOptions are the settings of fix passes.
@@ -218,6 +221,7 @@ func (p *FixPass) runAgent(ctx context.Context, f FixStart, path string) (*FixRe
 			MCPCommand: mcp,
 			ToolToken:  token,
 			Env:        domain.AgentEnv(p.opts.Environ),
+			Telemetry:  p.deps.Telemetry.PRAgentTelemetry(ctx, pr, f.Instance),
 		},
 		Deadline: p.deps.Clock.Now().Add(budget),
 	})

@@ -84,13 +84,19 @@ func runDaemon(ctx context.Context, env *environment) error {
 			}
 		}()
 	}
+	tel, err := startTelemetry(ctx, env.stderr, config, keyringCredentials, p.Store)
+	if err != nil {
+		return err
+	}
+	defer tel.shutdown()
+	logger = tel.logger
 	exe, err := os.Executable()
 	if err != nil {
 		return fmt.Errorf("finding the anthill program: %w", err)
 	}
 	notifier := app.NewNotifications(config, env.desktop(logger))
 	s := buildDaemon(p, buildOptions{
-		config: config, clock: env.clock, notifier: notifier, logger: logger,
+		config: config, clock: env.clock, notifier: notifier, logger: logger, telemetry: tel.tel,
 		userHome: userHomeOf(env.home), environ: os.Environ(),
 		mcpCommand: func(token string) []string { return []string{exe, "mcp", "--ant", token} },
 	})

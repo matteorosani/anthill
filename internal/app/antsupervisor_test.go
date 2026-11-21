@@ -119,6 +119,7 @@ func newSupEnv(t *testing.T, capacity int, opts ...func(*app.AntSupervisorDeps))
 	for _, o := range opts {
 		o(&deps)
 	}
+	e.tools.SetTelemetry(deps.Telemetry)
 	e.sup = app.NewAntSupervisor(deps, app.AntSupervisorOptions{
 		MCPCommand: func(token string) []string { return []string{"anthill", "mcp", "--ant", token} },
 		Environ:    []string{"PATH=/usr/bin", "GH_TOKEN=secret"},

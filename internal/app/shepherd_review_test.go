@@ -48,7 +48,7 @@ type roundEnv struct {
 	nextID ports.RoundID
 }
 
-func newRoundEnv(t *testing.T, branch string) *roundEnv {
+func newRoundEnv(t *testing.T, branch string, opts ...func(*app.ShepherdRoundsDeps)) *roundEnv {
 	t.Helper()
 	e := &roundEnv{t: t, ctx: context.Background(), clock: testkit.NewClock(t0)}
 	e.gh = testkit.NewProvider(e.clock)
@@ -61,13 +61,17 @@ func newRoundEnv(t *testing.T, branch string) *roundEnv {
 		Executor: e.exec, Reviews: reviewSink{&e.rounds},
 	}, app.AntToolsOptions{})
 	client := e.gh.Client("mrosani")
-	e.rounds = app.NewShepherdRounds(app.ShepherdRoundsDeps{
+	deps := app.ShepherdRoundsDeps{
 		Route: func(context.Context, domain.Ref) (app.ToolWorkspace, error) {
 			return app.ToolWorkspace{Clone: clone, Repo: shop, Settings: domain.Defaults()}, nil
 		},
 		CodeHost: func(context.Context, domain.Repository) (ports.CodeHostPort, error) { return client, nil },
 		Git:      e.git, Executor: e.exec, Tokens: e.tools, Clock: e.clock,
-	}, app.ShepherdRoundsOptions{
+	}
+	for _, o := range opts {
+		o(&deps)
+	}
+	e.rounds = app.NewShepherdRounds(deps, app.ShepherdRoundsOptions{
 		Root:       "/worktrees",
 		MCPCommand: func(token string) []string { return []string{"anthill", "mcp", token} },
 	})

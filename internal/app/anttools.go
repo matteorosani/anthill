@@ -207,6 +207,8 @@ type AntTools struct {
 	clock    ports.Clock
 	opts     AntToolsOptions
 	builtin  *domain.Redactor
+	// telemetry gives each call a span; nil emits nothing.
+	telemetry *Telemetry
 
 	mu sync.Mutex
 	// sessions is keyed by the SHA-256 of the token, so the tokens
@@ -374,7 +376,9 @@ func (t *AntTools) Call(ctx context.Context, token, tool string, args json.RawMe
 	if !ok {
 		return errorResult(domain.MessageUnknownToken)
 	}
+	ctx, end := t.telemetry.StartToolCall(ctx, s.Run, tool)
 	result := t.call(ctx, s, key, tool, args)
+	end(result.IsError)
 	if s.Role.IsRun() {
 		result.Notices = t.takeNotices(s.Ant)
 	}
