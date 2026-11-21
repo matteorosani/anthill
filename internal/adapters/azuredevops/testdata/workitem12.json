@@ -8,6 +8,7 @@
     "System.State": "Active",
     "System.Reason": "Approved",
     "System.Title": "Login times out on Safari",
+    "Microsoft.VSTS.Common.Priority": 2,
     "System.Description": "<div>Login fails after 30 s on Safari.</div><div><br></div>",
     "System.Tags": "anthill; repo:Web",
     "System.AssignedTo": {

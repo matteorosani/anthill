@@ -9,6 +9,10 @@
   "labels": [{"name": "anthill"}],
   "assignees": [{"login": "bob"}],
   "type": {"name": "Task"},
+  "issue_field_values": [
+    {"issue_field_id": 7, "node_id": "IFSS_7", "data_type": "single_select", "value": "P1",
+     "single_select_option": {"id": 71, "name": "P1", "color": "red"}}
+  ],
   "comments": 0,
   "html_url": "https://github.com/MatteoRosani/Anthill/issues/12",
   "repository_url": "https://api.github.com/repos/MatteoRosani/Anthill",

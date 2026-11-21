@@ -77,7 +77,7 @@ Terms follow `openspec/glossary.md`. Every group lands its own tests and docs. U
 - [x] 9.1 Implement the poll scheduler per provider connection with independent failures and the last successful poll time, and verify the "one provider unavailable" test with fakes
 - [x] 9.2 Implement hashing per field group, typed change events into the outbox, and the Anthill-authored flag by marker only, and verify the "new comment", "no change" and "developer comments from the same account" tests
 - [x] 9.3 Apply the opt-in label filter and ingest items when the label is added, and verify the opt-in scenarios of work-item-sources
-- [ ] 9.4 Read each provider's priority field into the work item (the Azure DevOps `Microsoft.VSTS.Common.Priority` field, and the GitHub equivalent if the API offers one), add a `priority-labels` key to anthill-configuration and `docs/configuration.md` (labels from highest to lowest priority), and order the proposal list by provider priority, then priority label, then age, and verify fixture tests for both providers and a proposal list ordering test
+- [x] 9.4 Read each provider's priority field into the work item (the Azure DevOps `Microsoft.VSTS.Common.Priority` field, and the GitHub equivalent if the API offers one), add a `priority-labels` key to anthill-configuration and `docs/configuration.md` (labels from highest to lowest priority), and order the proposal list by provider priority, then priority label, then age, and verify fixture tests for both providers and a proposal list ordering test
 
 ## 10. Claiming
 

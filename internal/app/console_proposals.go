@@ -10,10 +10,6 @@ import (
 	"github.com/matteorosani/anthill/internal/ports"
 )
 
-// NoPriority is what the console shows for an item's priority until
-// provider priority and priority labels are modelled.
-const NoPriority = "-"
-
 // Proposal is one entry of the proposal list (spec queen-console,
 // "Viewing proposals").
 type Proposal struct {
@@ -22,8 +18,10 @@ type Proposal struct {
 	// Repository is the item's target repository.
 	Repository domain.Repository
 	Type       domain.ItemType
-	Priority   string
-	CreatedAt  time.Time
+	// Priority is P<n> for a provider priority, otherwise the item's
+	// highest-ranked priority label, otherwise domain.NoPriority.
+	Priority  string
+	CreatedAt time.Time
 	// Runner is the runner an acceptance without override would use.
 	Runner domain.Runner
 }
@@ -40,7 +38,8 @@ type ProposalList struct {
 // Proposals builds the proposal list on fresh provider data (spec
 // task-eligibility, "Proposal list"): every candidate item that passes
 // every prerequisite and that the queen has not hidden on this machine,
-// oldest first.
+// ordered by provider priority, then by the priority labels of each
+// item's target repository, then by age.
 func (c *Console) Proposals(ctx context.Context) (ProposalList, error) {
 	out := ProposalList{Now: c.Now()}
 	candidates, err := c.deps.Candidates(ctx)
@@ -56,6 +55,7 @@ func (c *Console) Proposals(ctx context.Context) (ProposalList, error) {
 	}
 	var items []domain.WorkItem
 	byRef := map[domain.Ref]Proposal{}
+	priorityLabels := map[domain.Ref][]string{}
 	for _, cand := range candidates {
 		item := cand.Item
 		if h, ok := hidden[item.Ref]; ok && domain.ProposalHidden(item, h.Until, h.ItemHash, out.Now) {
@@ -74,12 +74,14 @@ func (c *Console) Proposals(ctx context.Context) (ProposalList, error) {
 		}
 		settings, _ := target.Settings.ForItem(item.Labels)
 		items = append(items, item)
+		priorityLabels[item.Ref] = target.Settings.PriorityLabels
 		byRef[item.Ref] = Proposal{
 			Item: item.Ref, Title: item.Title, Repository: target.Repository, Type: item.Type,
-			Priority: NoPriority, CreatedAt: item.CreatedAt, Runner: settings.Runner,
+			Priority:  domain.ShowPriority(item, target.Settings.PriorityLabels),
+			CreatedAt: item.CreatedAt, Runner: settings.Runner,
 		}
 	}
-	domain.SortProposals(items)
+	domain.SortProposals(items, func(item domain.WorkItem) []string { return priorityLabels[item.Ref] })
 	for _, item := range items {
 		out.Proposals = append(out.Proposals, byRef[item.Ref])
 	}

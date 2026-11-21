@@ -1,10 +1,8 @@
 package domain
 
 import (
-	"cmp"
 	"crypto/sha256"
 	"encoding/hex"
-	"slices"
 	"strconv"
 	"time"
 )
@@ -34,20 +32,4 @@ func ProposalHidden(item WorkItem, until time.Time, declinedHash string, now tim
 		return now.Before(until)
 	}
 	return declinedHash == ProposalHash(item)
-}
-
-// SortProposals orders proposals oldest first (spec task-eligibility,
-// "Proposal list"). Provider priority and a priority label are not
-// modelled yet, so age alone orders them; items of the same age keep the
-// order of their references.
-func SortProposals(items []WorkItem) {
-	slices.SortStableFunc(items, func(a, b WorkItem) int {
-		if c := a.CreatedAt.Compare(b.CreatedAt); c != 0 {
-			return c
-		}
-		if c := cmp.Compare(a.Ref.Repo.String(), b.Ref.Repo.String()); c != 0 {
-			return c
-		}
-		return cmp.Compare(a.Ref.Number, b.Ref.Number)
-	})
 }
