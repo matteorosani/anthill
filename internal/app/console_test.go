@@ -72,6 +72,7 @@ func (e *consoleEnv) newConsole(store *testkit.StateStore) *app.Console {
 			return app.ToolWorkspace{Clone: e.clone, Repo: shop, Settings: e.settings}, nil
 		},
 		Repositories: func() []domain.Repository { return []domain.Repository{shop} },
+		Claims:       e.claiming,
 		Clock:        e.clock,
 	})
 }

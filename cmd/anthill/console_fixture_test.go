@@ -40,6 +40,7 @@ type consoleEnv struct {
 	tools    *app.AntTools
 	sup      *app.AntSupervisor
 	hub      *app.ActivityHub
+	rounds   fakeRounds
 	settings domain.Effective
 
 	// driving moves the clock past every timer while it is set, such as
@@ -128,17 +129,25 @@ func newConsoleEnv(t *testing.T) *consoleEnv {
 		Tracker:    tracker, Answers: conv, Activity: e.hub,
 		Workspace: app.NewWorkspace(e.git, "/home/me/.anthill/worktrees"), Route: workspace,
 		Repositories: func() []domain.Repository { return []domain.Repository{shopRepo} },
-		Clock:        te.clock,
+		Claims:       e.claiming, Rounds: &e.rounds,
+		Clock: te.clock,
 	})
 
 	e.driving.Store(true)
 	stopDriver := e.driveClock()
 	te.startDaemon(t)
 	t.Cleanup(func() {
-		for _, x := range e.exec.Executions() {
-			if !x.Ended() {
-				x.End(ports.ExecExited, ports.Exit{})
+		// End what the test left running, including the runs of queued
+		// ants that start when a slot frees.
+		for ended := true; ended; {
+			ended = false
+			for _, x := range e.exec.Executions() {
+				if !x.Ended() {
+					x.End(ports.ExecExited, ports.Exit{})
+					ended = true
+				}
 			}
+			time.Sleep(20 * time.Millisecond)
 		}
 		e.sup.Wait()
 		stopDriver()
@@ -259,4 +268,22 @@ func (briefs) Resume(_ context.Context, _ ports.AntRecord, answer *domain.Change
 		return "answer: " + answer.Body, nil
 	}
 	return "resume", nil
+}
+
+// fakeRounds stands for the shepherd's rounds in progress.
+type fakeRounds struct {
+	mu  sync.Mutex
+	prs []domain.Ref
+}
+
+func (f *fakeRounds) ActiveRounds() []domain.Ref {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return append([]domain.Ref(nil), f.prs...)
+}
+
+func (f *fakeRounds) set(prs ...domain.Ref) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.prs = prs
 }

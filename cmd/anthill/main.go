@@ -173,6 +173,7 @@ func newRootCommand(env *environment) *cobra.Command {
 		newQuestionsCommand(env), newAnswerCommand(env),
 		newExtensionsCommand(env), newExtensionCommand(env),
 		newFollowUpsCommand(env), newFollowUpCommand(env),
+		newUsageCommand(env),
 	)
 	return root
 }
