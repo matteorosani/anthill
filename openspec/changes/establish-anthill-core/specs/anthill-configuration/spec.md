@@ -19,11 +19,15 @@ Anthill SHALL read `.anthill.yml` from the root of the local clone's working fol
 - **THEN** after the next reload, ants for that repository get 30 minutes, and inspecting the setting shows `.anthill.yml` as its source
 
 ### Requirement: Shared repository settings
-`.anthill.yml` SHALL be able to set team-wide behaviour only: opt-in, hold and claim labels, budgets, maximum base budget and warning threshold, extension allowance and ceiling, branch prefix and base branch, protected branch patterns, shepherd scope, review runner, round limit, auto-follow-up, follow-up limit, auto-resume, verification command, acceptance-criteria requirement, and agent instructions file. It SHALL NOT contain credentials or machine paths.
+`.anthill.yml` SHALL be able to set team-wide behaviour only: opt-in, hold and claim labels, budgets, maximum base budget and warning threshold, extension allowance and ceiling, branch prefix and base branch, protected branch patterns, shepherd scope, review runner, round limit, auto-follow-up, follow-up limit, auto-resume, verification command, acceptance-criteria requirement, agent instructions file, and priority labels. It SHALL NOT contain credentials or machine paths.
 
 #### Scenario: Credentials in repository file
 - **WHEN** `.anthill.yml` contains a `token` key
 - **THEN** the file is rejected with an error naming the forbidden key, and the repository is treated as misconfigured
+
+#### Scenario: Priority labels in repository file
+- **WHEN** the repository's `.anthill.yml` sets the priority labels `urgent`, `high` and `low`, from the highest priority to the lowest, and two proposals of that repository carry `low` and `urgent`
+- **THEN** the proposal with `urgent` is listed before the one with `low`, and inspecting the setting shows `.anthill.yml` as its source
 
 ### Requirement: Local repository entries
 The user's local configuration SHALL list the repositories this machine works on. Each entry holds the provider and remote identity, the path of the local clone, and optional local overrides such as the runner, capacity, and turning shepherd reviewing off for that repository. The global configuration SHALL also allow turning reviewing off for the whole machine.
@@ -45,7 +49,7 @@ The OTLP endpoint SHALL be accepted only in local configuration, never in `.anth
 
 ### Requirement: Built-in defaults for labels and timing
 Anthill SHALL provide these defaults:
-- opt-in label `anthill`; hold label `anthill:hold`; claim label `anthill:claimed`
+- opt-in label `anthill`; hold label `anthill:hold`; claim label `anthill:claimed`; no priority labels
 - poll interval 2 min; claim lease 15 min
 - budget 60 min; maximum base budget 180 min; warning at 80%; ceiling 3× budget; grace period 3 min; follow-up budget 50%; extension auto-approve allowance 0 min (always ask the queen)
 

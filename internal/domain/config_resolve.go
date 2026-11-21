@@ -43,6 +43,9 @@ type Effective struct {
 	VerificationCommand       string // "" means none
 	RequireAcceptanceCriteria bool
 	AgentInstructions         string // "" means none
+	// PriorityLabels runs from the highest priority to the lowest; nil
+	// means none.
+	PriorityLabels []string
 
 	Runner            Runner
 	Capacity          int
@@ -298,6 +301,7 @@ func (l ConfigLayers) Resolve() Effective {
 	e.RequireAcceptanceCriteria = resolveValue(r, KeyRequireAcceptanceCriteria, false,
 		func(s *SettingValues) *bool { return s.RequireAcceptanceCriteria }, strconv.FormatBool)
 	e.AgentInstructions = str(KeyAgentInstructions, "", func(s *SettingValues) *string { return s.AgentInstructions })
+	e.PriorityLabels = resolveList(r, KeyPriorityLabels, func(s *SettingValues) []string { return s.PriorityLabels })
 
 	showRunner := func(v Runner) string { return string(v) }
 	e.Runner = resolveValue(r, KeyRunner, DefaultRunner, func(s *SettingValues) *Runner { return s.Runner }, showRunner)

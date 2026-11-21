@@ -50,7 +50,7 @@ Prints the Anthill version. `anthill --version` does the same.
 
 ### `anthill proposals`
 
-Lists the proposals: the eligible items that are not hidden on this machine, oldest first, with their reference, title, target repository, type, priority, age and the runner an acceptance would use (spec queen-console, "Viewing proposals"). Eligibility is evaluated on fresh provider data. A tracker that cannot be read is reported as a warning on standard error, and its items are left out. Priority shows `-` until provider priority and priority labels are supported.
+Lists the proposals: the eligible items that are not hidden on this machine, in priority order, with their reference, title, target repository, type, priority, age and the runner an acceptance would use (spec queen-console, "Viewing proposals"). Eligibility is evaluated on fresh provider data. A tracker that cannot be read is reported as a warning on standard error, and its items are left out. The list is ordered by provider priority, then priority label, then age, oldest first (spec task-eligibility, "Proposal list"). Priority shows `P<n>` for a provider priority (Azure DevOps' Priority field; GitHub has none), otherwise the item's highest-ranked label from `priority-labels`, otherwise `-` (see [configuration](configuration.md)).
 
 ### `anthill explain <item>`
 
@@ -205,8 +205,8 @@ active rounds:
 
 $ anthill proposals
 ITEM  TITLE                        REPOSITORY  TYPE  PRIORITY  AGE   RUNNER
+#14   Add CSV export               acme/shop   task  urgent    1d4h  claude-code
 #12   Fix login timeout on Safari  acme/shop   bug   -         3d2h  claude-code
-#14   Add CSV export               acme/shop   task  -         1d4h  claude-code
 
 $ anthill explain #13
 #13 Rename the settings page

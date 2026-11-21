@@ -41,7 +41,8 @@ func pollRoutes(t *testing.T, s *server, wiql string) {
 
 // Scenario "Azure DevOps bug mapped": a Bug with the anthill tag is
 // represented with type bug, its Predecessor links as dependency links,
-// and its System.Rev as the revision.
+// and its System.Rev as the revision. Its Priority field is its provider
+// priority (spec task-eligibility, "Proposal list"); the story has none.
 func TestAzureDevOpsBugMapped(t *testing.T) {
 	e := newEnv(t)
 	pollRoutes(t, e.srv, "wiql_tagged.json")
@@ -71,6 +72,7 @@ func TestAzureDevOpsBugMapped(t *testing.T) {
 			CreatedAt: time.Date(2026, 10, 29, 9, 30, 0, 123e6, time.UTC), UpdatedAt: time.Date(2026, 10, 29, 9, 30, 0, 123e6, time.UTC),
 		}},
 		Revision:  "7",
+		Priority:  2,
 		CreatedAt: time.Date(2026, 10, 20, 8, 0, 0, 0, time.UTC),
 		UpdatedAt: time.Date(2026, 10, 29, 9, 30, 0, 123e6, time.UTC),
 	}
@@ -81,7 +83,7 @@ func TestAzureDevOpsBugMapped(t *testing.T) {
 	story := page.Items[1]
 	if story.Type != domain.TypeFeature || story.State != domain.StateClosedNotPlanned || story.Body != "Keep users signed in." ||
 		story.AcceptanceCriteria != "- The session lasts 30 days." || len(story.Children) != 1 || story.Children[0].Number != 16 ||
-		story.Children[0].Repo != shop || story.Comments != nil {
+		story.Children[0].Repo != shop || story.Comments != nil || story.Priority != 0 {
 		t.Errorf("story = %+v", story)
 	}
 
@@ -152,7 +154,8 @@ func TestItemsNoMatch(t *testing.T) {
 	}
 }
 
-// Item reads one work item fresh, lowercasing the names it is given.
+// Item reads one work item fresh, lowercasing the names it is given, with
+// its Priority field.
 func TestItemNormalizesCase(t *testing.T) {
 	e := newEnv(t)
 	e.srv.fixture("GET "+itemPath, http.StatusOK, "workitem12.json")
@@ -162,7 +165,7 @@ func TestItemNormalizesCase(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if item.Ref != ado12 || !now.Equal(serverDate) || item.Revision != "7" {
+	if item.Ref != ado12 || !now.Equal(serverDate) || item.Revision != "7" || item.Priority != 2 {
 		t.Errorf("Item() = %+v at %v", item, now)
 	}
 	if q := e.srv.matching(http.MethodGet, itemPath)[0].Query; !strings.Contains(q, "%24expand=relations") {

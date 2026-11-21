@@ -127,6 +127,7 @@ auto-resume: true
 verification-command: make test
 require-acceptance-criteria: true
 agent-instructions: docs/AGENTS.md
+priority-labels: [urgent, high]
 `)
 	if got != nil {
 		t.Fatalf("errors: %q", got)
@@ -145,6 +146,9 @@ agent-instructions: docs/AGENTS.md
 	}
 	if e.ExtensionAllowance != (domain.ExtensionAllowance{MaxMinutes: 15, Times: 2}) || !slices.Equal(e.ProtectedBranches, []string{"main", "release/*"}) {
 		t.Errorf("allowance %+v, protected %v", e.ExtensionAllowance, e.ProtectedBranches)
+	}
+	if !slices.Equal(e.PriorityLabels, []string{"urgent", "high"}) {
+		t.Errorf("priority labels %v", e.PriorityLabels)
 	}
 }
 

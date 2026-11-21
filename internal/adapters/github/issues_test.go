@@ -211,6 +211,9 @@ func TestItemCommentsFollowPages(t *testing.T) {
 
 // Task 7.2 and the re-check at acceptance: Item reads one issue with
 // GitHub's time, and a ref spelled in another case means the same issue.
+// Task 9.4: GitHub offers no stable priority field, so the issue has no
+// provider priority even when an organization issue field holds one: the
+// REST value names only the field's id.
 func TestItemNormalizesCase(t *testing.T) {
 	e := newEnv(t)
 	e.srv.fixture("GET /repos/matteorosani/anthill/issues/12", http.StatusOK, "issue12.json")
@@ -221,6 +224,9 @@ func TestItemNormalizesCase(t *testing.T) {
 	}
 	if it.Ref != gh12 || !now.Equal(serverDate) {
 		t.Errorf("ref, time = %v, %v", it.Ref, now)
+	}
+	if it.Priority != 0 {
+		t.Errorf("priority = %d, want none", it.Priority)
 	}
 	if got := github.Normalize(mixed.Repo); got != repo {
 		t.Errorf("Normalize = %v, want %v", got, repo)

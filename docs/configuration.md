@@ -68,6 +68,7 @@ extension-allowance:
   minutes: 15
   times: 1
 protected-branches: [main, "release/*"]
+priority-labels: [urgent, high, low]
 verification-command: go test ./...
 auto-follow-up: false
 ```
@@ -91,6 +92,12 @@ Your own configuration file never accepts credential keys either. OTLP headers a
 - Intervals are durations with a unit: `poll-interval: 2m`, `question-staleness: 72h`.
 - `extension-allowance` has `minutes` and `times`. When `minutes` is set and `times` is omitted, the allowance applies once.
 - `protected-branches` is a list of glob patterns such as `release/*`. The base branch and the default branch are always protected.
+- `priority-labels` is a list of labels (tags on Azure DevOps), from the highest priority to the lowest, matched in any case. A label must not be empty or listed twice. The proposal list is ordered by provider priority, then priority label, then age (spec task-eligibility, "Proposal list"):
+  - provider priority is Azure DevOps' Priority field (`Microsoft.VSTS.Common.Priority`, 1 the highest). Items that have one come first, the lowest number first. GitHub offers no stable priority field, so GitHub issues have no provider priority: GitHub's organization issue fields are in preview, exist only for organizations, and the REST API does not name the field of a value. Use priority labels on GitHub;
+  - then items that carry a priority label of their target repository come first, the highest-ranked first. An item with several priority labels ranks by the highest one;
+  - then the oldest item comes first.
+
+  The proposal list shows `P<n>` for a provider priority, otherwise the highest-ranked priority label, otherwise `-`.
 - `azure-devops-projects` is a list of entries, each with `project` (`organization/project`, in any case) and `default-repository` (the name of a Git repository of that project). An Azure DevOps work item goes to the repository its `repo:<name>` label names, else to its project's default repository, else to the project's only Git repository. Otherwise it is unmapped (spec work-item-sources, "Repository mapping").
 - `provider-poll-intervals` maps a provider connection to its own poll interval. Anthill polls each connection on its own: `github` for GitHub, and `azure-devops/<organization>` for each Azure DevOps organization, written in any case. A connection without an entry uses `poll-interval`. Each interval must be at least `30s`.
 - `notifications` turns desktop notifications on (`true`) or off (`false`) per kind. A kind without an entry stays on. The kinds are `proposal`, `question`, `stale-question`, `extension-request`, `warning`, `succeeded`, `failed`, `timed-out`, `no-change`, `follow-up-started`, `follow-up-proposed`, `follow-up-limit`, `change-stored`, `claim-lost` and `poll-failed` (spec queen-console, "Notifications"). An unknown kind or a value that is not `true` or `false` makes the global configuration invalid.
@@ -149,6 +156,7 @@ Credential values never appear in logs, errors, comments, task briefs or telemet
 | `verification-command` | .anthill.yml, local repository entry, global configuration | none | Command that must pass before Anthill pushes a shepherd auto-fix; none means suggested changes only. |
 | `require-acceptance-criteria` | .anthill.yml, local repository entry, global configuration | false | Require an acceptance-criteria section before an item is eligible. |
 | `agent-instructions` | .anthill.yml, local repository entry, global configuration | none | Path, inside the repository, of the instructions file given to agents. |
+| `priority-labels` | .anthill.yml, local repository entry, global configuration | none | Labels that order the proposal list after provider priority, from the highest priority to the lowest. |
 | `runner` | label, local repository entry, global configuration | claude-code | Runner for ants: `claude-code`, `codex` or `opencode`. |
 | `capacity` | local repository entry, global configuration | 2 | Most active runs at a time; in an entry, a limit for that repository within the machine's capacity. |
 | `reviewing` | local repository entry, global configuration | true | Take part in shepherd reviews; `false` globally turns it off for the machine. |

@@ -64,6 +64,13 @@ type WorkItem struct {
 	Children []Ref
 	Comments []Comment
 	Revision string
+	// Priority is the provider's priority of the item, 1 the highest, or
+	// 0 when it has none (spec task-eligibility, "Proposal list"). Azure
+	// DevOps sets it from Microsoft.VSTS.Common.Priority. GitHub offers
+	// no stable priority field, so it is always 0 there: its
+	// organization issue fields are in preview, exist only for
+	// organizations, and their REST values do not name the field.
+	Priority int
 	// CreatedAt is when the item was created, for its age in the
 	// proposal list (spec queen-console, "Viewing proposals").
 	CreatedAt time.Time

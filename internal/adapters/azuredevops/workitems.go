@@ -48,19 +48,22 @@ type workItemJSON struct {
 }
 
 type wiFields struct {
-	TeamProject        string       `json:"System.TeamProject"`
-	Type               string       `json:"System.WorkItemType"`
-	State              string       `json:"System.State"`
-	Reason             string       `json:"System.Reason"`
-	Title              string       `json:"System.Title"`
-	Description        string       `json:"System.Description"`
-	AcceptanceCriteria string       `json:"Microsoft.VSTS.Common.AcceptanceCriteria"`
-	Tags               string       `json:"System.Tags"`
-	AssignedTo         *identityRef `json:"System.AssignedTo"`
-	CreatedBy          *identityRef `json:"System.CreatedBy"`
-	CreatedDate        time.Time    `json:"System.CreatedDate"`
-	ChangedDate        time.Time    `json:"System.ChangedDate"`
-	CommentCount       int          `json:"System.CommentCount"`
+	TeamProject        string `json:"System.TeamProject"`
+	Type               string `json:"System.WorkItemType"`
+	State              string `json:"System.State"`
+	Reason             string `json:"System.Reason"`
+	Title              string `json:"System.Title"`
+	Description        string `json:"System.Description"`
+	AcceptanceCriteria string `json:"Microsoft.VSTS.Common.AcceptanceCriteria"`
+	// Priority is 1 the highest. Some process templates leave it out;
+	// the item then has no provider priority (0).
+	Priority     int          `json:"Microsoft.VSTS.Common.Priority"`
+	Tags         string       `json:"System.Tags"`
+	AssignedTo   *identityRef `json:"System.AssignedTo"`
+	CreatedBy    *identityRef `json:"System.CreatedBy"`
+	CreatedDate  time.Time    `json:"System.CreatedDate"`
+	ChangedDate  time.Time    `json:"System.ChangedDate"`
+	CommentCount int          `json:"System.CommentCount"`
 }
 
 type relation struct {
@@ -264,6 +267,7 @@ func (a *Adapter) mapWorkItem(w workItemJSON, projects map[int]string) domain.Wo
 		Type:               itemType(f.Type),
 		Labels:             splitTags(f.Tags),
 		Revision:           strconv.Itoa(w.Rev),
+		Priority:           max(f.Priority, 0),
 		CreatedAt:          f.CreatedDate,
 		UpdatedAt:          f.ChangedDate,
 	}
