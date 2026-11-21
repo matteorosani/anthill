@@ -163,11 +163,11 @@ Terms follow `openspec/glossary.md`. Every group lands its own tests and docs. U
 
 ## 18. Observability
 
-- [ ] 18.1 Set up the OpenTelemetry SDK, off until a local OTLP endpoint is configured, with headers from the credential store, and verify with an in-process OTLP receiver that nothing is sent without an endpoint and that headers are sent with one
-- [ ] 18.2 Add spans for polls, provider calls, eligibility, claims, runs and tool calls, and shepherd rounds, with the item, PR, ant id, instance and runner attributes, and verify the "ant run trace" test with an in-memory exporter
-- [ ] 18.3 Add the metrics from observability and export application logs and captured agent activity linked to the trace, with redaction and no content, and verify the "usage metrics" and "captured agent log line with code" tests
-- [ ] 18.4 Switch on agent telemetry with Anthill resource attributes and trace context, with content capture off, and verify the "agent telemetry carries Anthill attributes" and "agent prompt logging" tests against the fake agent's environment
-- [ ] 18.5 Write `docs/observability.md` with the setup, attributes and metrics, and verify the documented metric names match the code by a test
+- [x] 18.1 Set up the OpenTelemetry SDK, off until a local OTLP endpoint is configured, with headers from the credential store, and verify with an in-process OTLP receiver that nothing is sent without an endpoint and that headers are sent with one
+- [x] 18.2 Add spans for polls, provider calls, eligibility, claims, runs and tool calls, and shepherd rounds, with the item, PR, ant id, instance and runner attributes, and verify the "ant run trace" test with an in-memory exporter
+- [x] 18.3 Add the metrics from observability and export application logs and captured agent activity linked to the trace, with redaction and no content, and verify the "usage metrics" and "captured agent log line with code" tests
+- [x] 18.4 Switch on agent telemetry with Anthill resource attributes and trace context, with content capture off, and verify the "agent telemetry carries Anthill attributes" and "agent prompt logging" tests against the fake agent's environment
+- [x] 18.5 Write `docs/observability.md` with the setup, attributes and metrics, and verify the documented metric names match the code by a test
 
 ## 19. Integration checks
 

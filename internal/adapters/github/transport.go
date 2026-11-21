@@ -60,6 +60,8 @@ type gateTransport struct {
 	gate   *httpkit.Gate
 	clock  ports.Clock
 	logger *slog.Logger
+	// remaining is the remaining rate limit the responses report.
+	remaining rateRemaining
 }
 
 func (t *gateTransport) RoundTrip(req *http.Request) (*http.Response, error) {
@@ -73,6 +75,7 @@ func (t *gateTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 		return nil, err
 	}
 	t.logger.Debug("github request", "method", req.Method, "path", req.URL.Path, "status", resp.StatusCode)
+	t.remaining.record(resp)
 	if r := resp.Header.Get(headerResource); r != "" {
 		resource = r
 	}

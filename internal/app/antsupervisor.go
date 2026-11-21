@@ -163,6 +163,9 @@ type AntSupervisorDeps struct {
 	// without it no item is on hold. Messages also delivers changes to
 	// active runs; without it they are stored.
 	Holds Holds
+	// Telemetry gives each run a span and switches on the agent's own
+	// telemetry when export is on (spec observability). Optional.
+	Telemetry *Telemetry
 }
 
 // AntSupervisorOptions are the settings of the supervisor.

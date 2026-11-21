@@ -16,7 +16,13 @@ import (
 // as for Recheck. It returns the item's target as well, for the settings
 // the proposal list shows. Recheck reads the item fresh first; the
 // proposal list evaluates the items a tracker listed.
-func (e *Eligibility) Evaluate(ctx context.Context, tracker ports.TrackerPort, item domain.WorkItem, own ports.AntID) (ItemTarget, domain.EligibilityResult, error) {
+func (e *Eligibility) Evaluate(ctx context.Context, tracker ports.TrackerPort, item domain.WorkItem, own ports.AntID) (_ ItemTarget, result domain.EligibilityResult, err error) {
+	ctx, end := e.telemetry.StartEligibility(ctx, item.Ref)
+	defer func() { end(result, err) }()
+	return e.evaluate(ctx, tracker, item, own)
+}
+
+func (e *Eligibility) evaluate(ctx context.Context, tracker ports.TrackerPort, item domain.WorkItem, own ports.AntID) (ItemTarget, domain.EligibilityResult, error) {
 	ref := item.Ref
 	target, err := e.target(ctx, item)
 	if err != nil {

@@ -44,6 +44,9 @@ type ShepherdRoundsDeps struct {
 	Executor ports.Executor
 	Tokens   RoundTokens
 	Clock    ports.Clock
+	// Telemetry switches on the review agent's own telemetry when export
+	// is on (spec observability). Optional.
+	Telemetry *Telemetry
 }
 
 // ShepherdRoundsOptions are the settings of the rounds.
@@ -163,6 +166,7 @@ func (r *ShepherdRounds) review(ctx context.Context, start RoundStart, ws ToolWo
 			MCPCommand: mcp,
 			ToolToken:  token,
 			Env:        domain.AgentEnv(r.opts.Environ),
+			Telemetry:  r.deps.Telemetry.PRAgentTelemetry(ctx, rec.PR, start.Instance),
 		},
 		Deadline: r.deps.Clock.Now().Add(RoundTimeout),
 	})

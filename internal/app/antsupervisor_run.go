@@ -271,6 +271,7 @@ func (s *AntSupervisor) launch(ctx context.Context, rec ports.AntRecord, tw Tool
 		},
 		Deadline: deadline(now, ant.Budget.Remaining(now), tw.Settings.GracePeriod),
 	}
+	spec.Run.Telemetry = s.startRunTelemetry(ctx, rec, tw, run.ID, d.Kind)
 	exec, err := s.deps.Executor.Start(ctx, spec)
 	if err != nil {
 		s.deps.Tokens.Revoke(token)
