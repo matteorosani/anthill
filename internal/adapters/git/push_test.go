@@ -469,3 +469,53 @@ func TestPushUsesDeveloperCredentials(t *testing.T) {
 		t.Errorf("the credential helper planted in the clone was called: %s", readFile(t, planted))
 	}
 }
+
+// A shepherd round reviews the head commit of a PR in a detached
+// worktree (design D9): a commit the clone lacks, as the head of a PR from
+// a fork, which only the remote's refs/pull ref holds, is fetched by its
+// hash, and the worktree refuses git push.
+func TestAddDetachedWorktreeFetchesTheCommit(t *testing.T) {
+	f := newFixture(t)
+	gitIn(t, f.seed, "checkout", "--quiet", "-b", "fork-work")
+	head := f.seedCommit("fork.txt", "from a fork\n", "fork work")
+	gitIn(t, f.seed, "push", "--quiet", "origin", "HEAD:refs/pull/7/head")
+	gitIn(t, f.seed, "checkout", "--quiet", "main")
+	if _, err := gitTry(f.clone, nil, "cat-file", "-e", head+"^{commit}"); err == nil {
+		t.Fatal("the clone already has the fork's commit")
+	}
+	path := filepath.Join(f.root, ".shepherd", "github-acme-web", "pr-7-round-1")
+	if err := f.git.AddDetachedWorktree(f.ctx, f.c, path, head); err != nil {
+		t.Fatalf("AddDetachedWorktree() = %v", err)
+	}
+	if got := gitIn(t, path, "rev-parse", "HEAD"); got != head {
+		t.Errorf("HEAD = %s, want %s", got, head)
+	}
+	if readFile(t, filepath.Join(path, "fork.txt")) != "from a fork\n" {
+		t.Error("the worktree does not hold the fork's file")
+	}
+	st, err := f.git.WorktreeStatus(f.ctx, f.c, path)
+	if err != nil || st != (ports.WorktreeStatus{}) {
+		t.Errorf("WorktreeStatus() = %+v, %v; want detached and clean", st, err)
+	}
+	if refs := gitIn(t, f.clone, "for-each-ref", "refs/anthill/"); refs != "" {
+		t.Errorf("the clone keeps refs %q", refs)
+	}
+	if out, err := gitTry(path, nil, "push", "origin", "HEAD:refs/heads/x"); err == nil {
+		t.Errorf("git push from the round's worktree succeeded:\n%s", out)
+	}
+	if err := f.git.RemoveWorktree(f.ctx, f.c, path, true); err != nil {
+		t.Errorf("RemoveWorktree() = %v", err)
+	}
+
+	// A commit the clone has is checked out without fetching.
+	main := gitIn(t, f.clone, "rev-parse", "HEAD")
+	if err := f.git.AddDetachedWorktree(f.ctx, f.c, path, main); err != nil {
+		t.Errorf("AddDetachedWorktree() of a known commit = %v", err)
+	}
+	if err := f.git.AddDetachedWorktree(f.ctx, f.c, path+"-2", "main"); err == nil {
+		t.Error("AddDetachedWorktree() took a branch name")
+	}
+	if err := f.git.AddDetachedWorktree(f.ctx, f.c, path+"-3", strings.Repeat("0", 40)); err == nil {
+		t.Error("AddDetachedWorktree() of a commit the remote lacks succeeded")
+	}
+}

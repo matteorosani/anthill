@@ -9,6 +9,9 @@ type PRFinding struct {
 	// after a fix pass pushed its fix. A finding without a thread, which
 	// is only in the round's summary, is never resolved.
 	Resolved bool
+	// Thread is the ID of the finding's review thread, or "" for a
+	// finding only in the round's summary.
+	Thread string
 }
 
 // PRRound is one round on the PR, done or in progress, by any instance.

@@ -87,6 +87,13 @@ type SourceControl interface {
 	// D4). The checkout runs without credentials, so a repository whose
 	// Git LFS files need them fails with ErrUnsupported.
 	AddWorktree(ctx context.Context, c Clone, path, branch string, trailers domain.Trailers) error
+	// AddDetachedWorktree checks out commit, a full commit hash, detached,
+	// in a new worktree at path, for a shepherd round (design D9). It
+	// fetches the commit by its hash first when the clone lacks it, such
+	// as the head of a PR from a fork. The worktree gets the hooks of
+	// AddWorktree, the pre-push hook that refuses included, and no push
+	// credentials, but no commit trailers.
+	AddDetachedWorktree(ctx context.Context, c Clone, path, commit string) error
 	// WorktreeStatus returns the state of a worktree of the clone, or
 	// ErrNotFound when there is none at path.
 	WorktreeStatus(ctx context.Context, c Clone, path string) (WorktreeStatus, error)

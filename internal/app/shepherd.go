@@ -77,7 +77,10 @@ type ShepherdDeps struct {
 	RoundEnds RoundEnds
 	// Acks acknowledges the /anthill review that a requested round
 	// serves.
-	Acks  CommandAcks
+	Acks CommandAcks
+	// Ants takes the findings handed to the ant of an ant PR of this
+	// instance (spec change-reaction, "Shepherd findings on ant PRs").
+	Ants  FindingsRouter
 	Clock ports.Clock
 	// Errors receives the errors of work the shepherd does in the
 	// background: a round and the decisions after it. Nil drops them.
@@ -111,6 +114,8 @@ type Shepherd struct {
 	locks map[domain.Ref]*sync.Mutex
 	// active holds the PRs with a round in progress on this instance.
 	active map[domain.Ref]bool
+	// handed holds the rounds this instance handed to its ants.
+	handed handedRounds
 
 	wg sync.WaitGroup
 }
@@ -127,6 +132,7 @@ func NewShepherd(deps ShepherdDeps) *Shepherd {
 	}
 	handlePR(s, true, s.startRound)
 	handlePR(s, true, s.postRoundLimit)
+	handlePR(s, false, s.handFindings)
 	return s
 }
 

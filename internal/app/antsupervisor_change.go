@@ -81,7 +81,7 @@ func (s *AntSupervisor) deliverChange(ctx context.Context, t *antTurn, d domain.
 // the stored changes can be proposed again, and the queen is told.
 func (s *AntSupervisor) storeChange(ctx context.Context, t *antTurn, d domain.StoreChange) (bool, error) {
 	rec, c := t.rec, d.Change
-	err := s.store.StoreChange(ctx, ports.StoredChange{Ant: rec.ID, Source: ports.OutboxID(c.ID), Event: c.Event, StoredAt: s.clock.Now()})
+	err := s.store.StoreChange(ctx, ports.StoredChange{Ant: rec.ID, Source: ports.OutboxID(c.ID), Key: findingsKey(c), Event: c.Event, Findings: c.Findings, StoredAt: s.clock.Now()})
 	if err != nil {
 		return false, fmt.Errorf("storing a change for ant %d: %w", rec.ID, err)
 	}
@@ -212,4 +212,14 @@ func describeChanges(changes []domain.AntChange) string {
 		return domain.DescribeChange(changes[0].Event)
 	}
 	return fmt.Sprintf("%s, and %d more", domain.DescribeChange(changes[0].Event), len(changes)-1)
+}
+
+// findingsKey is the key of a change that hands a round's findings to
+// the ant, so that it is stored once: the round's summary comment. Other
+// changes have none and are stored once by their outbox event.
+func findingsKey(c domain.AntChange) string {
+	if len(c.Findings) == 0 {
+		return ""
+	}
+	return "findings:" + c.Event.Ref.Full() + ":" + c.Event.CommentID
 }

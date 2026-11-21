@@ -55,7 +55,7 @@ func TestRoundOf(t *testing.T) {
 		{"human comment", domain.Comment{Body: "round_head c1"}, domain.PRRound{}, false},
 	}
 	for _, tt := range tests {
-		got, ok := domain.RoundOf(tt.c)
+		got, ok := domain.RoundOf(tt.c, nil)
 		if ok != tt.ok || got.Head != tt.want.Head || got.Requested != tt.want.Requested {
 			t.Errorf("%s: RoundOf = %+v, %v, want %+v, %v", tt.name, got, ok, tt.want, tt.ok)
 		}

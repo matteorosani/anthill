@@ -281,8 +281,15 @@ type StoredChange struct {
 	// Source is the outbox event the change came from. Storing a change
 	// with a Source already stored does nothing, which keeps the outbox
 	// handler idempotent.
-	Source   OutboxID
-	Event    domain.ChangeEvent
+	Source OutboxID
+	// Key identifies a change that does not come from the outbox, such
+	// as the findings of one shepherd round. Storing a change with a Key
+	// already stored, given to a run or not, does nothing.
+	Key   string
+	Event domain.ChangeEvent
+	// Findings are the shepherd findings the change hands to the ant
+	// (domain.AntChange).
+	Findings []domain.Finding
 	StoredAt time.Time
 }
 

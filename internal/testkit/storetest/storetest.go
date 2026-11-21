@@ -356,6 +356,22 @@ func testStoredChanges(t *testing.T, s ports.StateStore) {
 		t.Errorf("other ant has %d changes", n)
 	}
 	notFound(t, "ConsumeChanges of a missing change", s.ConsumeChanges(ctx, []int64{99}, T0))
+
+	// A change with a key, such as the findings of one round, is stored
+	// once, even after it was given to a run.
+	findings := []domain.Finding{{Location: domain.Location{File: "a.go", StartLine: 3}, Severity: domain.SeverityBlocking, Classification: domain.NeedsDeveloper, Message: "nil map"}}
+	round := ports.StoredChange{Ant: other, Key: "round:gh-pr-2:c1", Event: edit, Findings: findings, StoredAt: T0}
+	check(t, s.StoreChange(ctx, round))
+	check(t, s.StoreChange(ctx, round))
+	keyed := must(s.StoredChanges(ctx, other))
+	if len(keyed) != 2 || keyed[1].Key != round.Key || !reflect.DeepEqual(keyed[1].Findings, findings) {
+		t.Fatalf("StoredChanges() with a key = %+v", keyed)
+	}
+	check(t, s.ConsumeChanges(ctx, []int64{keyed[1].ID}, T0))
+	check(t, s.StoreChange(ctx, round))
+	if n := len(must(s.StoredChanges(ctx, other))); n != 1 {
+		t.Errorf("a consumed keyed change was stored again: %d changes", n)
+	}
 }
 
 func testQuestions(t *testing.T, s ports.StateStore) {

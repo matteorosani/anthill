@@ -46,16 +46,3 @@ func RoundLimitText(limit int) string {
 	return fmt.Sprintf("This PR has had its %d automatic review rounds, so new commits start no round. "+
 		"Comment `/anthill review` to request another one.", limit)
 }
-
-// RoundOf reads the round that a round's summary comment records: its
-// head commit and whether it was requested. It returns false for any
-// other comment, including the run summaries of ants. Whether the
-// author has write access, so that a forged marker does not count, is
-// for the caller to check.
-func RoundOf(c Comment) (PRRound, bool) {
-	m, ok := FindMarker(c.Body)
-	if !ok || m.Kind != CommentSummary || m.RoundFields == nil {
-		return PRRound{}, false
-	}
-	return PRRound{Head: m.Head, Requested: m.Requested}, true
-}
