@@ -292,6 +292,7 @@ func registerConsoleAPI(srv *control.Server, c *app.Console) {
 		})
 	}
 	handle(methodProposals, handleProposals)
+	handle(methodUsage, handleUsage)
 	handle(methodExplain, withItem(func(ctx context.Context, c *app.Console, item domain.Ref) (any, error) {
 		x, err := c.Explain(ctx, item)
 		if err != nil {

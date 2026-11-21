@@ -44,6 +44,7 @@ type ConsoleStore interface {
 	ports.Extensions
 	ports.Proposals
 	ports.StoredChanges
+	ports.PollState
 }
 
 // ConsoleDeps are the services and ports behind the console.
@@ -60,11 +61,29 @@ type ConsoleDeps struct {
 	// Workspace and Route clean up an ant's worktree and branch.
 	Workspace *Workspace
 	Route     WorkspaceRoute
+	// CodeHost reads an ant's PR, for its state at cleanup.
+	CodeHost CodeHostRoute
 	// Repositories lists the repositories of this instance's enabled
 	// entries, against which the queen's item references are resolved.
 	Repositories func() []domain.Repository
-	Clock        ports.Clock
+	// Claims lists the claims this instance holds, and Rounds the PRs
+	// with a shepherd round in progress, for the status. Rounds is
+	// optional: without it no round is shown.
+	Claims HeldClaimLister
+	Rounds ActiveRounds
+	Clock  ports.Clock
 }
+
+// ActiveRounds lists the PRs with a round in progress on this instance.
+// The shepherd implements it.
+type ActiveRounds interface {
+	ActiveRounds() []domain.Ref
+}
+
+var (
+	_ ActiveRounds    = (*Shepherd)(nil)
+	_ HeldClaimLister = (*Claiming)(nil)
+)
 
 // Console carries out the queen console's operations on the daemon's
 // services (spec queen-console). The control interface calls it for the

@@ -34,6 +34,9 @@ type statusResult struct {
 	StartedAt time.Time `json:"started_at"`
 	// Uptime is in whole seconds.
 	Uptime int64 `json:"uptime"`
+	// Console is the rest of the daemon's health, when it serves a
+	// console (spec queen-console, "Health and status").
+	Console *consoleStatus `json:"console,omitempty"`
 }
 
 // antToolsParams are the params of ant.tools.
@@ -75,15 +78,24 @@ type antNoticesResult struct {
 }
 
 // registerAPI registers the handler of every control method on srv.
-func registerAPI(srv *control.Server, health *app.Health, tools *app.AntTools) {
-	srv.Handle(methodStatus, func(context.Context, json.RawMessage, control.Stream) (any, error) {
+// console is the queen console, or nil while the daemon runs no ants.
+func registerAPI(srv *control.Server, health *app.Health, tools *app.AntTools, console *app.Console) {
+	srv.Handle(methodStatus, func(ctx context.Context, _ json.RawMessage, _ control.Stream) (any, error) {
 		s := health.Status()
-		return statusResult{
+		out := statusResult{
 			Version:   s.Version,
 			PID:       s.PID,
 			StartedAt: s.StartedAt,
 			Uptime:    int64(s.Uptime / time.Second),
-		}, nil
+		}
+		if console != nil {
+			report, err := console.Status(ctx)
+			if err != nil {
+				return nil, err
+			}
+			out.Console = consoleStatusOf(report)
+		}
+		return out, nil
 	})
 	srv.Handle(methodAntTools, func(_ context.Context, raw json.RawMessage, _ control.Stream) (any, error) {
 		var p antToolsParams

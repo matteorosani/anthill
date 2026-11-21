@@ -75,7 +75,7 @@ func newAnswerCommand(env *environment) *cobra.Command {
 func newExtensionsCommand(env *environment) *cobra.Command {
 	return &cobra.Command{
 		Use:   "extensions",
-		Short: "List the extension requests waiting for you",
+		Short: "List the open extension requests",
 		Args:  noArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			var res extensionsResult
@@ -139,7 +139,7 @@ func newExtensionCommand(env *environment) *cobra.Command {
 func newFollowUpsCommand(env *environment) *cobra.Command {
 	return &cobra.Command{
 		Use:   "follow-ups",
-		Short: "List the follow-up proposals waiting for you",
+		Short: "List the follow-up proposals for you to decide",
 		Args:  noArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			var res followUpsResult

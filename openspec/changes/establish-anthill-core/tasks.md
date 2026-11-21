@@ -158,8 +158,8 @@ Terms follow `openspec/glossary.md`. Every group lands its own tests and docs. U
 - [x] 17.1 Add proposal commands: list, explain an item's prerequisites, accept with runner, budget and base overrides, decline, snooze and un-hide, and verify CLI tests against a daemon with fakes for each queen-console proposal scenario
 - [x] 17.2 Add ant commands: list, follow the active run's activity, stop, abandon, retry, continue, clean up, and verify the "follow an ant" test and that detaching does not affect the run
 - [x] 17.3 Add commands to list and answer questions, list and decide extension requests, and accept or decline follow-up proposals, and verify the "answer from the console" test
-- [ ] 17.4 Add `usage` and a full `status` (providers, rate limits, active runs, queued ants, held claims with lease expiry, active rounds), and verify the "daily usage" and "status overview" tests
-- [ ] 17.5 Write `docs/cli.md` with every command and an example session, and verify each documented command exists by a test against the `cobra` command tree
+- [x] 17.4 Add `usage` and a full `status` (providers, rate limits, active runs, queued ants, held claims with lease expiry, active rounds), and verify the "daily usage" and "status overview" tests
+- [x] 17.5 Write `docs/cli.md` with every command and an example session, and verify each documented command exists by a test against the `cobra` command tree
 
 ## 18. Observability
 

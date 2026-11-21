@@ -131,12 +131,13 @@ func (e *CleanupRefusedError) Error() string {
 }
 
 // Cleanup removes the worktree and local branch of the item's final ant
-// (spec branching-policy, "Worktree cleanup"). Unpushed commits or
-// uncommitted changes need confirm, or it returns a
-// *NeedsConfirmationError and removes nothing ("Unpushed work").
-//
-// A done ant counts as having its PR closed: the remote branch is kept,
-// because whether the PR was merged is not recorded yet.
+// (spec branching-policy, "Worktree cleanup"), on the path of a PR that
+// ended (PRCleanup): for an ant with a PR, the PR is read fresh, and its
+// remote branch is deleted only when the PR was merged and the provider
+// kept it. A done ant without a PR, which needed no change, counts as
+// closed, so its remote branch is kept. Unpushed commits or uncommitted
+// changes need confirm, or it returns a *NeedsConfirmationError and
+// removes nothing ("Unpushed work").
 func (c *Console) Cleanup(ctx context.Context, item domain.Ref, confirm bool) (domain.CleanupPlan, error) {
 	rec, err := c.currentAnt(ctx, item)
 	if err != nil {
@@ -152,12 +153,17 @@ func (c *Console) Cleanup(ctx context.Context, item domain.Ref, confirm bool) (d
 	if err != nil {
 		return domain.CleanupPlan{}, fmt.Errorf("finding the clone of %s: %w", ItemName(item), err)
 	}
-	req := CleanupRequest{
-		Clone: tw.Clone, Branch: rec.Branch, Worktree: rec.Worktree,
-		Abandoned: rec.State() == domain.AntAbandoned, Requested: true, Confirmed: confirm,
+	pr := domain.PullRequest{State: domain.PRClosed}
+	if rec.PR != nil {
+		host, err := c.deps.CodeHost(ctx, rec.PR.Repo)
+		if err != nil {
+			return domain.CleanupPlan{}, err
+		}
+		if pr, _, err = host.PullRequest(ctx, *rec.PR); err != nil {
+			return domain.CleanupPlan{}, fmt.Errorf("reading %s: %w", ItemName(*rec.PR), err)
+		}
 	}
-	if rec.State() == domain.AntDone {
-		req.PR = domain.PRClosed
-	}
+	req := PRCleanup(tw.Clone, rec, pr)
+	req.Abandoned, req.Requested, req.Confirmed = rec.State() == domain.AntAbandoned, true, confirm
 	return c.deps.Workspace.Cleanup(ctx, req)
 }

@@ -99,7 +99,7 @@ func runDaemon(ctx context.Context, env *environment) error {
 		Redactor:      func() *domain.Redactor { return config.Current().Redactor },
 		Home:          filepath.Dir(env.home),
 	})
-	registerAPI(d.control, d.health, d.tools)
+	registerAPI(d.control, d.health, d.tools, env.console)
 	registerConsoleAPI(d.control, env.console)
 
 	ln, err := control.Listen(env.address)

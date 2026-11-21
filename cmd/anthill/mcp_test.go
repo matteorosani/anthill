@@ -68,7 +68,7 @@ func serveAntTools(t *testing.T, te *testEnv) (*app.AntTools, ports.AntID) {
 	}, app.AntToolsOptions{})
 
 	srv := control.NewServer(testLogger(t))
-	registerAPI(srv, app.NewHealth(te.clock, version, 1), tools)
+	registerAPI(srv, app.NewHealth(te.clock, version, 1), tools, nil)
 	ln, err := control.Listen(te.address)
 	if err != nil {
 		t.Fatal(err)

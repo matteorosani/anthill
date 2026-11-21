@@ -37,9 +37,14 @@ func newStatusCommand(env *environment) *cobra.Command {
 			if err != nil {
 				return fmt.Errorf("asking the daemon for its status: %w", err)
 			}
-			_, err = fmt.Fprintf(cmd.OutOrStdout(), "daemon: running (pid %d, anthill %s)\nuptime: %s\n",
-				st.PID, st.Version, time.Duration(st.Uptime)*time.Second)
-			return err
+			if _, err := fmt.Fprintf(cmd.OutOrStdout(), "daemon: running (pid %d, anthill %s)\nuptime: %s\n",
+				st.PID, st.Version, time.Duration(st.Uptime)*time.Second); err != nil {
+				return err
+			}
+			if st.Console == nil {
+				return nil
+			}
+			return printConsoleStatus(cmd.OutOrStdout(), st.Console)
 		},
 	}
 }
