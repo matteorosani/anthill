@@ -77,6 +77,7 @@ Terms follow `openspec/glossary.md`. Every group lands its own tests and docs. U
 - [x] 9.1 Implement the poll scheduler per provider connection with independent failures and the last successful poll time, and verify the "one provider unavailable" test with fakes
 - [x] 9.2 Implement hashing per field group, typed change events into the outbox, and the Anthill-authored flag by marker only, and verify the "new comment", "no change" and "developer comments from the same account" tests
 - [x] 9.3 Apply the opt-in label filter and ingest items when the label is added, and verify the opt-in scenarios of work-item-sources
+- [ ] 9.4 Read each provider's priority field into the work item (the Azure DevOps `Microsoft.VSTS.Common.Priority` field, and the GitHub equivalent if the API offers one), add a `priority-labels` key to anthill-configuration and `docs/configuration.md` (labels from highest to lowest priority), and order the proposal list by provider priority, then priority label, then age, and verify fixture tests for both providers and a proposal list ordering test
 
 ## 10. Claiming
 
@@ -90,6 +91,7 @@ Terms follow `openspec/glossary.md`. Every group lands its own tests and docs. U
 - [x] 11.2 Implement the JSON-RPC control interface over a Unix socket and a Windows named pipe (`go-winio`), local-only, with streaming responses, and verify a client round-trip test on each OS in CI
 - [x] 11.3 Implement the CLI skeleton with `cobra` as a thin client, with `anthill daemon` and `anthill status`, and verify an end-to-end test that `status` reports uptime from a running daemon
 - [x] 11.4 Implement the `Notifier` port with desktop notifications (`beeep`) and a per-kind switch, and verify with a fake notifier that each notification kind of queen-console is raised and can be turned off
+- [ ] 11.5 Wire the composition root and run loop of `anthill daemon`: the SQLite store, the configured provider adapters, git, the executor and runners, the poll scheduler with ingestion, eligibility re-evaluation after every poll with the "new proposal" notification, claim renewals, the ant supervisor, the conversation, the change reactor, shepherd triggers after each PR poll, and the console, and verify an end-to-end test on fake adapters that an opted-in item is proposed and, once accepted, gets an ant and a run
 
 ## 12. Ant tools
 
