@@ -113,8 +113,22 @@ type SourceControl interface {
 	// branching-policy, "History rewriting"). Otherwise someone else
 	// pushed, and it is ErrConflict (spec ant-tools, "Push tool").
 	Push(ctx context.Context, c Clone, worktree, branch string, owner domain.BranchOwner) (string, error)
+	// SetTrailers sets the trailers that the prepare-commit-msg hook adds
+	// to each commit made in the worktree at path, such as a fix pass's
+	// detached worktree (spec branching-policy, "Commit identity and
+	// traceability").
+	SetTrailers(ctx context.Context, c Clone, path string, trailers domain.Trailers) error
+	// PushTo pushes the commit checked out in worktree, its HEAD whether
+	// detached or not, to the branch of target, never with force, and
+	// returns git's output. Like Push, it first runs the repository's
+	// pre-push hook in worktree without credentials, and pushes from a
+	// transfer repository (design D4). A branch that is not at
+	// target.Expect, or a push the remote rejects because the branch
+	// moved, returns ErrConflict and pushes nothing.
+	PushTo(ctx context.Context, c Clone, worktree string, target PushTarget) (string, error)
 	// NewCommits lists, oldest first, the commits of the worktree's HEAD
-	// that are not on the fetched remote branch base (spec ant-tools,
+	// that are not on the fetched remote branch base, or, when base is a
+	// full commit hash (domain.IsCommitHash), not in its history (spec ant-tools,
 	// "Finish tool").
 	NewCommits(ctx context.Context, c Clone, worktree, base string) ([]Commit, error)
 	// Unpushed lists, oldest first, the commits of a local branch that are

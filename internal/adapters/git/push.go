@@ -172,8 +172,12 @@ func (g *Git) commitLog(ctx context.Context, dir string, args ...string) ([]port
 }
 
 // NewCommits lists the commits of the worktree's HEAD after the fetched
-// base branch.
+// base branch, or after base itself when it is a full commit hash, such
+// as the head commit a fix pass started from.
 func (g *Git) NewCommits(ctx context.Context, c ports.Clone, worktree, base string) ([]ports.Commit, error) {
+	if domain.IsCommitHash(base) {
+		return g.commitLog(ctx, worktree, "HEAD", "--not", base)
+	}
 	if sha, err := g.resolve(ctx, c.Path, remoteRef(c, base)); err != nil {
 		return nil, err
 	} else if sha == "" {

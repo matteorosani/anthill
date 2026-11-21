@@ -144,6 +144,9 @@ func (p *Provider) PutPullRequest(pr domain.PullRequest) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	pr = clonePR(pr)
+	if pr.State == domain.PRNone {
+		pr.State = domain.PROpen
+	}
 	pr.Revision, pr.UpdatedAt = p.bump(), p.clock.Now()
 	p.prs[pr.Ref] = &prEntry{pr: pr, seq: p.seq}
 	p.prNumber = max(p.prNumber, pr.Ref.Number)
@@ -748,8 +751,9 @@ func (c *ProviderClient) edit(ctx context.Context, op Op, ref domain.Ref, id str
 	return comment, p.wait(ctx, op)
 }
 
-// PullRequests returns the PRs of repo changed since cursor, every PR
-// when cursor is empty, in ref order.
+// PullRequests returns the open PRs of repo changed since cursor, every
+// open PR when cursor is empty, in ref order. As on the providers, a PR
+// merged or closed leaves the list without being reported.
 func (c *ProviderClient) PullRequests(_ context.Context, repo domain.Repository, cursor string) (ports.PullRequestPage, error) {
 	p := c.p
 	p.mu.Lock()
@@ -760,7 +764,7 @@ func (c *ProviderClient) PullRequests(_ context.Context, repo domain.Repository,
 	since, _ := strconv.Atoi(cursor)
 	page := ports.PullRequestPage{Cursor: strconv.Itoa(p.seq), ServerTime: p.clock.Now()}
 	for _, e := range p.prs {
-		if e.pr.Ref.Repo == repo && e.seq > since {
+		if e.pr.Ref.Repo == repo && e.seq > since && !e.pr.State.Ended() {
 			page.PullRequests = append(page.PullRequests, p.visiblePR(e.pr))
 		}
 	}
@@ -829,6 +833,7 @@ func (c *ProviderClient) OpenPullRequest(_ context.Context, n ports.NewPullReque
 		Author:       c.login,
 		Draft:        n.Draft,
 		Labels:       slices.Clone(n.Labels),
+		State:        domain.PROpen,
 	}
 	if n.Item != nil {
 		item := *n.Item

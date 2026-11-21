@@ -23,14 +23,20 @@ const prPage = 100
 
 // prJSON is a Git pull request as the REST API returns it.
 type prJSON struct {
-	PullRequestID         int          `json:"pullRequestId"`
-	Title                 string       `json:"title"`
-	Description           string       `json:"description"`
-	SourceRefName         string       `json:"sourceRefName"`
-	TargetRefName         string       `json:"targetRefName"`
-	CreatedBy             *identityRef `json:"createdBy"`
-	CreationDate          time.Time    `json:"creationDate"`
-	IsDraft               bool         `json:"isDraft"`
+	PullRequestID int          `json:"pullRequestId"`
+	Title         string       `json:"title"`
+	Description   string       `json:"description"`
+	SourceRefName string       `json:"sourceRefName"`
+	TargetRefName string       `json:"targetRefName"`
+	CreatedBy     *identityRef `json:"createdBy"`
+	CreationDate  time.Time    `json:"creationDate"`
+	IsDraft       bool         `json:"isDraft"`
+	// Status is active, completed (merged) or abandoned (closed).
+	Status string `json:"status"`
+	// ForkSource is set for a PR from a fork.
+	ForkSource *struct {
+		Name string `json:"name"`
+	} `json:"forkSource"`
 	LastMergeSourceCommit *struct {
 		CommitID string `json:"commitId"`
 	} `json:"lastMergeSourceCommit"`
@@ -216,6 +222,18 @@ func (a *Adapter) mapPullRequest(repo domain.Repository, p prJSON, threads []thr
 	if p.LastMergeSourceCommit != nil {
 		mapped.HeadCommit = p.LastMergeSourceCommit.CommitID
 	}
+	switch p.Status {
+	case "completed":
+		mapped.State = domain.PRMerged
+	case "abandoned":
+		mapped.State = domain.PRClosed
+	default:
+		mapped.State = domain.PROpen
+	}
+	// Azure DevOps has no setting that lets the repository's maintainers
+	// push to a fork's branch, so a fork PR is never pushable for an
+	// auto-fix (spec pr-shepherd, "Fork branch not pushable").
+	mapped.Fork = p.ForkSource != nil
 	for _, l := range p.Labels {
 		if l.Active == nil || *l.Active {
 			mapped.Labels = append(mapped.Labels, l.Name)

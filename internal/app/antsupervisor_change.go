@@ -163,6 +163,13 @@ func (s *AntSupervisor) answerProposal(ctx context.Context, id ports.AntID, acti
 // becomes abandoned with the reason (domain.Withdrawal), and the queen is told. An open ant
 // PR is left to the developers. A final ant is left alone.
 func (s *AntSupervisor) Withdraw(ctx context.Context, id ports.AntID, reason string) error {
+	// A merged PR that closes its item makes the ant done (spec
+	// pr-shepherd, "PR closure is human").
+	if reason == domain.ReasonItemClosed {
+		if done, err := s.closedByPR(ctx, id); done || err != nil {
+			return err
+		}
+	}
 	err := s.Abandon(ctx, id, reason)
 	var refused *ActionRefusedError
 	if errors.As(err, &refused) {
