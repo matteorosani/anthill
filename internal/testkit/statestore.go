@@ -376,11 +376,13 @@ func (s *StateStore) Done(_ context.Context, id ports.OutboxID, _ time.Time) err
 	return nil
 }
 
-// StoreChange stores a change unless its Source is already stored.
+// StoreChange stores a change unless its Source or Key is already stored.
 func (s *StateStore) StoreChange(_ context.Context, c ports.StoredChange) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if c.Source != 0 && slices.ContainsFunc(s.changes, func(e changeEntry) bool { return e.change.Source == c.Source }) {
+	if slices.ContainsFunc(s.changes, func(e changeEntry) bool {
+		return c.Source != 0 && e.change.Source == c.Source || c.Key != "" && e.change.Key == c.Key
+	}) {
 		return nil
 	}
 	c.ID = int64(len(s.changes) + 1)

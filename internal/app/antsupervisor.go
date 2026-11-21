@@ -415,7 +415,7 @@ func (s *AntSupervisor) snapshot(ctx context.Context, rec ports.AntRecord, setti
 		return domain.AntSnapshot{}, fmt.Errorf("reading the stored changes of ant %d: %w", rec.ID, err)
 	}
 	for _, c := range stored {
-		snap.Stored = append(snap.Stored, domain.AntChange{ID: c.ID, Event: c.Event})
+		snap.Stored = append(snap.Stored, domain.AntChange{ID: c.ID, Event: c.Event, Findings: c.Findings})
 	}
 	return snap, nil
 }
