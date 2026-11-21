@@ -23,10 +23,9 @@ Commands on an ant act on the item's current ant on this machine.
 
 ### Exit codes and errors
 
-A command exits with 0 on success, 1 when it failed, and 2 when the command line itself is wrong. Errors go to standard error, after `anthill:`. Two errors are common to every console command:
+A command exits with 0 on success, 1 when it failed, and 2 when the command line itself is wrong. Errors go to standard error, after `anthill:`. One error is common to every console command:
 
 - `anthill: daemon not running`: start it with `anthill daemon`.
-- `anthill: <command> is not available: the daemon does not run ants yet`: the daemon is running, but it does not serve the console yet. `anthill status` still works.
 
 ### Durations and times
 
@@ -37,6 +36,10 @@ Ages, budgets and durations print as `2d3h`, `1h30m`, `45m`, or `30s` under a mi
 ### `anthill daemon`
 
 Runs the daemon in the foreground until Ctrl+C or SIGTERM. The daemon polls, evaluates eligibility, renews claims, supervises runs and runs the shepherd, whether or not a console is attached. Only one daemon runs per user and machine: a second one exits with `daemon already running (pid 4242)`.
+
+At start, the daemon rebuilds missing ant records from the providers and git, wraps up the runs a restart interrupted, starts queued ants, handles the changes left from before, and evaluates the proposal list. Then each provider connection is polled on its interval. After each poll the daemon handles the changes it found, checks the PRs of its ants for merge or close, asks the shepherd about each PR that changed, and evaluates the proposals of that connection's repositories again. A proposal that was not in the list before raises the "new proposal" notification; after a start, the whole list raises one notification.
+
+The daemon keeps its local state in `~/.anthill/anthill.db`. It starts without credentials or network: a provider it cannot reach shows as a failed poll in `anthill status` and raises the polling-failure notification.
 
 ### `anthill status`
 
