@@ -127,7 +127,7 @@ func newConsoleEnv(t *testing.T) *consoleEnv {
 		Store: e.store, Ants: e.sup, Eligibility: eligibility,
 		Candidates: app.TrackerCandidates(config, func(context.Context, domain.Repository) (ports.TrackerPort, error) { return client, nil }),
 		Tracker:    tracker, Answers: conv, Activity: e.hub,
-		Workspace: app.NewWorkspace(e.git, "/home/me/.anthill/worktrees"), Route: workspace,
+		Workspace: app.NewWorkspace(e.git, "/home/me/.anthill/worktrees"), Route: workspace, CodeHost: codeHost,
 		Repositories: func() []domain.Repository { return []domain.Repository{shopRepo} },
 		Claims:       e.claiming, Rounds: &e.rounds,
 		Clock: te.clock,

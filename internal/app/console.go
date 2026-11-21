@@ -61,6 +61,8 @@ type ConsoleDeps struct {
 	// Workspace and Route clean up an ant's worktree and branch.
 	Workspace *Workspace
 	Route     WorkspaceRoute
+	// CodeHost reads an ant's PR, for its state at cleanup.
+	CodeHost CodeHostRoute
 	// Repositories lists the repositories of this instance's enabled
 	// entries, against which the queen's item references are resolved.
 	Repositories func() []domain.Repository

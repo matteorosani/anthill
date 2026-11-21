@@ -106,13 +106,7 @@ func (s *AntSupervisor) cleanUpClosed(ctx context.Context, rec ports.AntRecord, 
 	if err != nil {
 		return fmt.Errorf("finding the clone of %s: %w", rec.Item, err)
 	}
-	_, err = s.deps.Workspace.Cleanup(ctx, CleanupRequest{
-		Clone:    ws.Clone,
-		Branch:   rec.Branch,
-		Worktree: rec.Worktree,
-		PR:       pr.State,
-		PRHead:   pr.HeadCommit,
-	})
+	_, err = s.deps.Workspace.Cleanup(ctx, PRCleanup(ws.Clone, rec, pr))
 	if err != nil && !errors.Is(err, ErrNeedsConfirmation) {
 		return fmt.Errorf("cleaning up ant %d: %w", rec.ID, err)
 	}
@@ -142,4 +136,18 @@ func (s *AntSupervisor) closedByPR(ctx context.Context, id ports.AntID) (bool, e
 		return false, nil
 	}
 	return true, s.PRClosed(ctx, id, pr)
+}
+
+// PRCleanup is the cleanup of an ant's worktree and branches after its
+// PR, as just read: the remote branch goes only when the PR was merged,
+// and commits up to the PR's head count as pushed (spec branching-policy,
+// "Worktree cleanup").
+func PRCleanup(clone ports.Clone, rec ports.AntRecord, pr domain.PullRequest) CleanupRequest {
+	return CleanupRequest{
+		Clone:    clone,
+		Branch:   rec.Branch,
+		Worktree: rec.Worktree,
+		PR:       pr.State,
+		PRHead:   pr.HeadCommit,
+	}
 }

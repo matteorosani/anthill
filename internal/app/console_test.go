@@ -3,6 +3,7 @@ package app_test
 import (
 	"context"
 	"errors"
+	"slices"
 	"testing"
 	"testing/synctest"
 	"time"
@@ -68,6 +69,9 @@ func (e *consoleEnv) newConsole(store *testkit.StateStore) *app.Console {
 		Answers:   e.conv,
 		Activity:  e.hub,
 		Workspace: app.NewWorkspace(e.git, "/home/me/.anthill/worktrees"),
+		CodeHost: func(context.Context, domain.Repository) (ports.CodeHostPort, error) {
+			return e.gh.Client("mrosani"), nil
+		},
 		Route: func(context.Context, domain.Ref) (app.ToolWorkspace, error) {
 			return app.ToolWorkspace{Clone: e.clone, Repo: shop, Settings: e.settings}, nil
 		},
@@ -460,5 +464,44 @@ func TestTrackerCandidates(t *testing.T) {
 	got, err := list(context.Background())
 	if !errors.Is(err, broken) || len(got) != 1 || got[0].Item.Ref != ghRef(1) {
 		t.Errorf("candidates = %+v, %v", got, err)
+	}
+}
+
+// Cleanup of a done ant follows the state of its PR, read fresh (spec
+// branching-policy, "Worktree cleanup"): the remote branch goes only
+// for a merged PR. The worktree PR closure kept for its uncommitted
+// changes needs the queen's confirmation ("Unpushed work").
+func TestConsoleCleanupAfterThePREnded(t *testing.T) {
+	for _, state := range []domain.PRState{domain.PRMerged, domain.PRClosed} {
+		synctest.Test(t, func(t *testing.T) {
+			e := newConsoleEnv(t)
+			id := e.succeed(12)
+			rec := e.ant(id)
+			e.git.SetDirty(rec.Worktree, true)
+			e.gh.EditPullRequest(*rec.PR, func(pr *domain.PullRequest) { pr.State = state })
+			pr, _ := e.gh.PullRequest(*rec.PR)
+			e.mustDo(func() error { return e.sup.PRClosed(e.ctx, id, pr) })
+			e.wantState(id, domain.AntDone)
+			if got := e.git.Worktrees(supClone); !slices.Contains(got, rec.Worktree) {
+				t.Fatalf("PR closure removed the changed worktree: %v", got)
+			}
+
+			if _, err := e.console.Cleanup(e.ctx, ghRef(12), false); !errors.As(err, new(*app.NeedsConfirmationError)) {
+				t.Errorf("cleanup without confirmation = %v", err)
+			}
+			var plan domain.CleanupPlan
+			e.mustDo(func() (err error) { plan, err = e.console.Cleanup(e.ctx, ghRef(12), true); return err })
+			merged := state == domain.PRMerged
+			if !plan.RemoveWorktree || !plan.DeleteLocalBranch || plan.DeleteRemoteBranch != merged {
+				t.Errorf("%v: plan = %+v", state, plan)
+			}
+			if got := e.git.RemoteBranches(supClone); slices.Contains(got, rec.Branch) == merged {
+				t.Errorf("%v: remote branches = %v", state, got)
+			}
+			if got := e.git.Worktrees(supClone); slices.Contains(got, rec.Worktree) {
+				t.Errorf("%v: worktrees = %v", state, got)
+			}
+			e.wantNoErrors()
+		})
 	}
 }

@@ -112,7 +112,7 @@ Ends any active run, releases the claim and makes the ant `abandoned`. The workt
 
 ### `anthill cleanup <item>`
 
-Removes the worktree and the local branch of a `done` or `abandoned` ant (spec branching-policy, "Worktree cleanup"). Unpushed commits or uncommitted changes are not deleted without confirmation: the command fails and says what would be lost. The remote branch is kept.
+Removes the worktree and the local branch of a `done` or `abandoned` ant (spec branching-policy, "Worktree cleanup"). Unpushed commits or uncommitted changes are not deleted without confirmation: the command fails and says what would be lost. The remote branch is deleted too when the ant's PR was merged and the provider kept the branch; after a closed PR, or for an ant that needed no change, it is kept.
 
 - `--confirm`: also delete unpushed commits and uncommitted changes.
 
