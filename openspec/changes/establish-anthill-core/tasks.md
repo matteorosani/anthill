@@ -171,9 +171,9 @@ Terms follow `openspec/glossary.md`. Every group lands its own tests and docs. U
 
 ## 19. Integration checks
 
-- [ ] 19.1 Run the full ant lifecycle on a fake provider with the fake agent: accept, first run, question and answer, PR, shepherd round, follow-up run, merge, `done`, and verify the test passes on all three OSes in CI
-- [ ] 19.2 Run two instances against one fake provider racing for the same item and the same PR, and verify exactly one ant and one round result
-- [ ] 19.3 Restart the daemon during a run and with a pending change, and verify the change is handled once and the ant is `failed` or resumed according to `auto-resume`
+- [x] 19.1 Run the full ant lifecycle on a fake provider with the fake agent: accept, first run, question and answer, PR, shepherd round, follow-up run, merge, `done`, and verify the test passes on all three OSes in CI
+- [x] 19.2 Run two instances against one fake provider racing for the same item and the same PR, and verify exactly one ant and one round result
+- [x] 19.3 Restart the daemon during a run and with a pending change, and verify the change is handled once and the ant is `failed` or resumed according to `auto-resume`
 - [ ] 19.4 Do a manual smoke test on a sandbox GitHub repository and a sandbox Azure DevOps project with Claude Code, following and updating `docs/smoke-test.md`, and verify every step in it passes
 
 ## Workflow follow-up
