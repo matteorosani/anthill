@@ -104,17 +104,25 @@ func (r *Runner) start(ctx context.Context, resume string, spec ports.RunSpec, o
 		return nil, err
 	}
 	// The brief goes on standard input, never on the command line.
-	args := []string{"run", "--format", "json"}
+	// --standalone runs the run on a private OpenCode server, a child of
+	// this process, instead of the developer's shared background service
+	// (issue #150): the private server gets the run's configuration and
+	// environment, and stays in the run's process tree, so a stop ends
+	// the agent's commands too.
+	args := []string{"run", "--standalone", "--format", "json"}
 	if resume != "" {
 		args = append(args, "--session", resume)
 	}
 
 	rn := &run{dir: dir, session: resume, log: out.Activity}
+	// opencode run takes its project directory from PWD before its
+	// working directory, and an inherited PWD is the daemon's, so PWD is
+	// the worktree.
 	proc, err := agentproc.Start(agentproc.Spec{
 		Path:   r.opts.Command,
 		Args:   args,
 		Dir:    spec.Worktree,
-		Env:    agentenv.With(spec.Env, []string{"OPENCODE_CONFIG=" + configPath}),
+		Env:    agentenv.With(spec.Env, []string{"OPENCODE_CONFIG=" + configPath, "PWD=" + spec.Worktree}),
 		Stdin:  true,
 		Line:   rn.line,
 		Stderr: out.Activity,

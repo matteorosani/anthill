@@ -193,6 +193,9 @@ func TestStart(t *testing.T) {
 		{"-c", "mcp_servers={}"},
 		{"-c", `mcp_servers.anthill.command="/opt/anthill/bin/anthill"`},
 		{"-c", `mcp_servers.anthill.args=["mcp","--ant","ant_tok3n"]`},
+		// Task 13.8: without it, Codex 0.163 refuses every ant tool call
+		// in a headless run (testdata/smoke/x1.events.jsonl).
+		{"-c", `mcp_servers.anthill.default_tools_approval_mode="approve"`},
 		{"-c", "otel.log_user_prompt=false"},
 	} {
 		if !containsSeq(args, want) {
