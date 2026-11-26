@@ -1,4 +1,4 @@
-smoke: run started with opencode in C:\Users\m.rosani\AppData\Local\Temp\anthill-smoke-pM5izH\repo
+smoke: run started with opencode in C:\Users\user\AppData\Local\Temp\anthill-smoke-pM5izH\repo
 smoke: session id: ses_e4eeca393ffec7DbLrZPKI5keN
 smoke: stopping the run (--stop-after), grace 10s
 smoke: run ended: exit code -1, crashed true
