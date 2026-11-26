@@ -49,6 +49,19 @@ func newRunLoop(s *services, store ports.StateStore, clock ports.Clock, notifier
 	return l
 }
 
+// detach is the end of the daemon's run, once runAll has returned and
+// before the store is closed: the supervisor and the shepherd let go of
+// their agents (AntSupervisor.Detach, Shepherd.Detach), and detach waits
+// for the background work still in progress, so that none of it uses the
+// store once it is closed. The wait is bounded: no agent is waited for,
+// apart from the StopGrace of those being stopped.
+func (l *runLoop) detach() {
+	l.s.supervisor.Detach()
+	l.s.shepherd.Detach()
+	l.s.supervisor.Wait()
+	l.s.shepherd.Wait()
+}
+
 // services returns the loops the daemon runs until shutdown, for runAll.
 func (l *runLoop) services() []func(context.Context) error {
 	l.s.scheduler.SetAfterPoll(l.afterPoll)
@@ -72,7 +85,7 @@ func (l *runLoop) services() []func(context.Context) error {
 				case <-ctx.Done():
 					return nil
 				case <-l.clock.After(staleCheckInterval):
-					l.report("checking stale questions", l.s.conversation.CheckStale(ctx))
+					l.report(ctx, "checking stale questions", l.s.conversation.CheckStale(ctx))
 				}
 			}
 		},
@@ -89,15 +102,15 @@ func (l *runLoop) catchUp(ctx context.Context) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	if rep, err := l.s.recovery.Recover(ctx); err != nil {
-		l.report("recovering the session index", err)
+		l.report(ctx, "recovering the session index", err)
 	} else if len(rep.Rebuilt) > 0 {
 		l.logger.Info("ant records rebuilt", "count", len(rep.Rebuilt))
 	}
-	l.report("reconciling the ants", l.s.supervisor.Reconcile(ctx))
-	l.report("reconciling the stored changes", l.s.reactor.Reconcile(ctx))
+	l.report(ctx, "reconciling the ants", l.s.supervisor.Reconcile(ctx))
+	l.report(ctx, "reconciling the stored changes", l.s.reactor.Reconcile(ctx))
 	prs := l.drain(ctx)
 	ants, err := l.store.Ants(ctx)
-	l.report("listing the ants", err)
+	l.report(ctx, "listing the ants", err)
 	for _, a := range ants {
 		if a.PR != nil && !a.State().Final() && !slices.Contains(prs, *a.PR) {
 			prs = append(prs, *a.PR)
@@ -115,7 +128,7 @@ func (l *runLoop) afterPoll(ctx context.Context, conn app.Connection, _ app.Poll
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	prs := l.drain(ctx)
-	l.report("checking for ended PRs", l.s.closure.Check(ctx))
+	l.report(ctx, "checking for ended PRs", l.s.closure.Check(ctx))
 	l.trigger(ctx, prs)
 	if c, ok := l.s.consoles[conn.Name]; ok {
 		l.evaluate(ctx, conn.Name, c)
@@ -127,8 +140,8 @@ func (l *runLoop) afterPoll(ctx context.Context, conn app.Connection, _ app.Poll
 func (l *runLoop) drain(ctx context.Context) []domain.Ref {
 	l.drained = nil
 	_, err := l.outbox.Drain(ctx)
-	l.report("handling change events", err)
-	l.report("triggering ants after their changes", l.s.reactor.Flush(ctx))
+	l.report(ctx, "handling change events", err)
+	l.report(ctx, "triggering ants after their changes", l.s.reactor.Flush(ctx))
 	return l.drained
 }
 
@@ -144,7 +157,7 @@ func (l *runLoop) noteEvent(e ports.OutboxEvent) {
 func (l *runLoop) trigger(ctx context.Context, prs []domain.Ref) {
 	slices.SortFunc(prs, func(a, b domain.Ref) int { return strings.Compare(a.Full(), b.Full()) })
 	for _, pr := range prs {
-		l.report("triggering the shepherd on "+pr.Full(), l.s.shepherd.Trigger(ctx, pr))
+		l.report(ctx, "triggering the shepherd on "+pr.Full(), l.s.shepherd.Trigger(ctx, pr))
 	}
 }
 
@@ -152,7 +165,7 @@ func (l *runLoop) trigger(ctx context.Context, prs []domain.Ref) {
 func (l *runLoop) evaluate(ctx context.Context, connection string, c *app.Console) {
 	list, err := c.Proposals(ctx)
 	if err != nil {
-		l.report("evaluating the proposals", err)
+		l.report(ctx, "evaluating the proposals", err)
 		return
 	}
 	for _, w := range list.Warnings {
@@ -162,9 +175,11 @@ func (l *runLoop) evaluate(ctx context.Context, connection string, c *app.Consol
 }
 
 // report logs the error of background work, unless the daemon is
-// stopping.
-func (l *runLoop) report(what string, err error) {
-	if err != nil {
+// stopping: once ctx is done, an error is the stop's doing, whatever its
+// form, such as a cancelled query or a killed git. An error from before
+// the stop is still logged.
+func (l *runLoop) report(ctx context.Context, what string, err error) {
+	if err != nil && ctx.Err() == nil {
 		l.logger.Error(what+" failed", "error", err)
 	}
 }
