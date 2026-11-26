@@ -19,6 +19,10 @@ func (s *Shepherd) activate(ctx context.Context, pr domain.Ref) context.Context 
 	defer s.mu.Unlock()
 	s.active[pr] = true
 	s.cancels[pr] = cancel
+	if s.detached {
+		// Detach came after the decision to start: end the work at once.
+		cancel()
+	}
 	return wctx
 }
 

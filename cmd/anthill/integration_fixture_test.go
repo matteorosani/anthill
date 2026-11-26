@@ -126,12 +126,14 @@ type instance struct {
 	reply func(spec ports.ExecSpec) (string, bool)
 	// queue is given to the executor of the next daemon start.
 	queue []testkit.AgentRun
-	// stopping are the offsets in the daemon log where each stop began.
-	// Work that a stop cancels may log its context error after them.
-	stopping []int
-	exec     *testkit.AgentExecutor
-	store    *sqlite.Store
-	stop     func(between func()) int
+	exec  *testkit.AgentExecutor
+	store *sqlite.Store
+	stop  func(between func()) int
+	// beforeClose, when set, is called once by the next daemon stop
+	// after the daemon has let go of its runs and waited for its
+	// background work, and before it closes its store: the adapters'
+	// Close.
+	beforeClose func()
 	// execs keeps the executor of every daemon start, the current one
 	// last.
 	execs []*testkit.AgentExecutor
@@ -218,6 +220,13 @@ func (in *instance) ports(ctx context.Context, env *environment, _ *app.ConfigSn
 		Runners:  map[domain.Runner]ports.AgentRunner{domain.RunnerClaudeCode: testkit.NewAgentRunner(caps)},
 		Verifier: &testkit.Verifier{}, Machine: in.opts.machine,
 		Close: func() error {
+			in.mu.Lock()
+			before := in.beforeClose
+			in.beforeClose = nil
+			in.mu.Unlock()
+			if before != nil {
+				before()
+			}
 			exec.Close()
 			return store.Close()
 		},
@@ -288,8 +297,10 @@ func (in *instance) start() {
 // stopDaemon stops the daemon, as a signal would, and waits until it has
 // closed its store. Once the daemon's context is cancelled, the
 // classifier calls still in progress end as killed: they die with the
-// daemon's process, and the daemon waits for them. The runs' agents are
-// left to the executor's Close.
+// daemon's process, and the daemon waits for them. The daemon lets go of
+// the runs' agents before it closes its store; the executor's Close then
+// kills and ends them, as their processes would end after the daemon's,
+// and nothing records those ends.
 func (in *instance) stopDaemon() {
 	in.t.Helper()
 	in.mu.Lock()
@@ -299,15 +310,11 @@ func (in *instance) stopDaemon() {
 	if stop == nil {
 		return
 	}
-	from := len(in.stderr.String())
 	code := stop(func() {
 		for _, x := range in.classifierCalls() {
 			x.End(ports.ExecExited, testkit.StoppedExit)
 		}
 	})
-	in.mu.Lock()
-	in.stopping = append(in.stopping, from, len(in.stderr.String()))
-	in.mu.Unlock()
 	if code != 0 {
 		in.t.Errorf("%s: the daemon exited with %d", in.name(), code)
 	}
@@ -329,11 +336,9 @@ func (in *instance) cleanup() {
 	in.stopDaemon()
 	var bad []string
 	log := in.stderr.String()
-	for offset := 0; offset < len(log); {
-		line, _, _ := strings.Cut(log[offset:], "\n")
-		at := offset
-		offset += len(line) + 1
-		if strings.Contains(line, "level=ERROR") && !in.cancelledByStop(at, line) {
+	for line := range strings.Lines(log) {
+		line = strings.TrimSuffix(line, "\n")
+		if strings.Contains(line, "level=ERROR") {
 			bad = append(bad, line)
 		}
 	}
@@ -343,22 +348,6 @@ func (in *instance) cleanup() {
 	if in.t.Failed() {
 		in.t.Logf("daemon log of %s:\n%s%s", in.name(), in.stderr.String(), in.agentOutput())
 	}
-}
-
-// cancelledByStop reports whether the log line at offset is the context
-// error of work that a stop cancelled: logged while the daemon stopped.
-func (in *instance) cancelledByStop(offset int, line string) bool {
-	if !strings.Contains(line, context.Canceled.Error()) {
-		return false
-	}
-	in.mu.Lock()
-	defer in.mu.Unlock()
-	for i := 0; i+1 < len(in.stopping); i += 2 {
-		if offset >= in.stopping[i] && offset < in.stopping[i+1] {
-			return true
-		}
-	}
-	return false
 }
 
 // executor is the executor of the daemon running now, or of the last.

@@ -124,7 +124,9 @@ func (s *AntSupervisor) Tick(ctx context.Context) error {
 }
 
 // RunTimekeeper calls Tick every interval, TimekeeperInterval when it is
-// 0 or less, until ctx ends. Errors go to the supervisor's Errors.
+// 0 or less, until ctx ends. Errors go to the supervisor's Errors, but
+// not those of a Tick that ctx's end cut short: they are the stop's
+// doing.
 func (s *AntSupervisor) RunTimekeeper(ctx context.Context, interval time.Duration) {
 	if interval <= 0 {
 		interval = TimekeeperInterval
@@ -134,7 +136,9 @@ func (s *AntSupervisor) RunTimekeeper(ctx context.Context, interval time.Duratio
 		case <-ctx.Done():
 			return
 		case <-s.clock.After(interval):
-			s.report(s.Tick(ctx))
+			if err := s.Tick(ctx); ctx.Err() == nil {
+				s.report(err)
+			}
 		}
 	}
 }

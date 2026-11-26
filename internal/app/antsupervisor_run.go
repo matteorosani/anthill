@@ -375,9 +375,14 @@ func (s *AntSupervisor) input(ctx context.Context, rec ports.AntRecord, d domain
 // ant queued at acceptance that is no longer eligible becomes abandoned
 // with the unmet prerequisites (see prepareFirst).
 func (s *AntSupervisor) slotFreed(ctx context.Context) {
+	if s.isDetached() {
+		// The daemon is stopping: the queued ants start after the
+		// restart (Reconcile).
+		return
+	}
 	queued, err := s.store.Ants(ctx, domain.AntQueued)
 	if err != nil {
-		s.report(fmt.Errorf("listing the queued ants: %w", err))
+		s.reportUnlessDone(ctx, fmt.Errorf("listing the queued ants: %w", err))
 		return
 	}
 	slices.SortStableFunc(queued, func(a, b ports.AntRecord) int {
@@ -387,6 +392,6 @@ func (s *AntSupervisor) slotFreed(ctx context.Context) {
 		if !s.freeSlot() {
 			return
 		}
-		s.report(s.Trigger(ctx, rec.ID))
+		s.reportUnlessDone(ctx, s.Trigger(ctx, rec.ID))
 	}
 }

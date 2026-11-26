@@ -162,17 +162,33 @@ func TestAgentExecutorReplies(t *testing.T) {
 	}
 }
 
-// Close kills the agents and leaves their executions active, as when the
-// daemon's process ends.
-func TestAgentExecutorCloseAbandons(t *testing.T) {
+// Close ends every execution still active: a running fake agent, which it
+// kills, and a held execution, which ends as killed. The ends are
+// reported as usual.
+func TestAgentExecutorCloseEndsExecutions(t *testing.T) {
 	x := newAgentExecutor(t, nil)
-	x.Queue(testkit.AgentRun{Script: testkit.AgentScript{Steps: []testkit.AgentStep{{Op: testkit.StepIdle, Duration: "1h"}}}})
-	ex, err := x.Start(context.Background(), ports.ExecSpec{Runner: domain.RunnerClaudeCode, Run: ports.RunSpec{ToolToken: "ant_1"}})
+	x.Queue(
+		testkit.AgentRun{Script: testkit.AgentScript{Steps: []testkit.AgentStep{{Op: testkit.StepIdle, Duration: "1h"}}}},
+		testkit.AgentRun{Hold: true},
+	)
+	running, err := x.Start(context.Background(), ports.ExecSpec{Runner: domain.RunnerClaudeCode, Run: ports.RunSpec{ToolToken: "ant_1"}})
 	if err != nil {
 		t.Fatal(err)
 	}
+	held, err := x.Start(context.Background(), ports.ExecSpec{Runner: domain.RunnerClaudeCode, Run: ports.RunSpec{ToolToken: "ant_2"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+
 	x.Close()
-	if x.Running() != 0 || x.Execution(ex.ID).Ended() {
-		t.Errorf("after Close: running %d, ended %v; want no process and the execution active", x.Running(), x.Execution(ex.ID).Ended())
+	if x.Running() != 0 {
+		t.Errorf("running after Close = %d", x.Running())
+	}
+	// The killed agent's exit code depends on the OS; it ends either way.
+	if events := drain(t, running); !events[len(events)-1].Final() {
+		t.Errorf("events of the running agent = %+v", events)
+	}
+	if events := drain(t, held); events[len(events)-1].Exit != testkit.StoppedExit {
+		t.Errorf("events of the held execution = %+v", events)
 	}
 }

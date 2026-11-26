@@ -120,7 +120,10 @@ func runDaemon(ctx context.Context, env *environment) error {
 		return runAll(ctx, serve...)
 	}
 	loop := newRunLoop(s, p.Store, env.clock, notifier, logger)
-	return runAll(ctx, append(loop.services(), serve...)...)
+	err = runAll(ctx, append(loop.services(), serve...)...)
+	// The deferred closes of the store and telemetry run after this.
+	loop.detach()
+	return err
 }
 
 // runAll runs every service until ctx is cancelled or one of them fails.
