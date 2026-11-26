@@ -135,13 +135,20 @@ func (r *Runner) start(ctx context.Context, resume string, spec ports.RunSpec, o
 
 // options are the options of codex exec, before resume and the prompt:
 //   - JSON events on standard output;
-//   - the workspace-write sandbox, with the worktree's git directory,
-//     which lies outside the worktree, writable so the agent can commit,
-//     and network access so builds and tests can fetch dependencies;
+//   - the workspace-write sandbox, with the repository's shared git
+//     directory, which lies outside the worktree, writable so the agent
+//     can commit, and network access so builds and tests can fetch
+//     dependencies. On Windows, Codex 0.163 still keeps a linked
+//     worktree's own git directory read-only, and Schannel TLS fails in
+//     its sandbox; docs/runners.md lists these known limits (issue #149);
 //   - no approval prompt;
 //   - the developer's own MCP servers removed, then only the ant tools
 //     server, because a server holding a token would give the agent
 //     provider access (design D4);
+//   - the ant tools server's tools approved: under approval_policy
+//     "never", Codex refuses an MCP tool call that needs approval, and a
+//     tool without annotations always does in workspace-write (issue
+//     #149);
 //   - prompt logging off, and the OTLP exporter when t is set.
 //
 // Values are TOML, which Codex parses for -c; a JSON string or array is
@@ -157,6 +164,7 @@ func options(gitDir string, mcp []string, t *ports.AgentTelemetry) []string {
 		"-c", "mcp_servers={}",
 		"-c", "mcp_servers." + MCPServerName + ".command=" + tomlString(mcp[0]),
 		"-c", "mcp_servers." + MCPServerName + ".args=" + tomlArray(mcp[1:]),
+		"-c", "mcp_servers." + MCPServerName + `.default_tools_approval_mode="approve"`,
 		"-c", "otel.log_user_prompt=false",
 	}
 	if t != nil {

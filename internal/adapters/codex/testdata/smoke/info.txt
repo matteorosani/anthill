@@ -1,0 +1,6 @@
+date: Fri Nov  6 14:13:02     2026
+os: MINGW64_NT-10.0-26200 PC1 3.6.3-7674c51e.x86_64 2025-07-01 09:13 UTC x86_64 Msys
+anthill: /c/Users/user/Downloads/anthill-smoke-kit/anthill.exe
+anthill dev
+git version 2.50.1.windows.1
+codex-cli 0.163.0

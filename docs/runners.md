@@ -118,15 +118,21 @@ codex exec --json --sandbox workspace-write --skip-git-repo-check --add-dir <git
   -c sandbox_workspace_write.network_access=true -c 'approval_policy="never"' \
   -c 'mcp_servers={}' -c 'mcp_servers.anthill.command="<anthill>"' \
   -c 'mcp_servers.anthill.args=["mcp","--ant","<token>"]' \
+  -c 'mcp_servers.anthill.default_tools_approval_mode="approve"' \
   -c otel.log_user_prompt=false [-c 'otel.exporter=…'] \
   [resume <session id>] -
 ```
 
+Anthill needs Codex 0.122.0 or later, the first version with `default_tools_approval_mode` for an MCP server. It does not check the version. Codex's documentation is at developers.openai.com and describes the newest version; where it differs from 0.163.0, the version of the Windows smoke run (issue #149), the notes below cite the source code at that version's tag, `rust-v0.163.0`.
+
 - **The brief.** The final `-` makes Codex read the prompt from standard input. Anthill writes the brief there and closes it, so the brief is never on the command line.
-- **`--sandbox workspace-write`.** This is the most restrictive headless sandbox that still lets the agent edit files and run commands in its worktree (design, Risks).
-- **`--add-dir <git directory>`.** A worktree's commits go to the clone's shared git directory (`git rev-parse --git-common-dir`), which lies outside the worktree. Without this flag, every `git commit` fails in the sandbox.
+- **`--sandbox workspace-write`.** This is the most restrictive headless sandbox that still lets the agent edit files and run commands in its worktree (design, Risks). On Windows, Codex enforces it only with a Windows sandbox level set in the developer's configuration (`windows.sandbox`, `elevated` or `unelevated`). Without one, `workspace-write` silently becomes read-only ([Windows](https://developers.openai.com/codex/windows); `effective_sandbox_mode` in [`config_toml.rs`](https://github.com/openai/codex/blob/rust-v0.163.0/codex-rs/config/src/config_toml.rs) at 0.163.0), and the agent can edit nothing. Anthill does not set the level: `elevated` needs a one-time setup as administrator, and the choice is the developer's.
+- **`--add-dir <git directory>`.** A worktree's commits go to the clone's shared git directory (`git rev-parse --git-common-dir`), which lies outside the worktree, so Anthill makes it writable.
+- **Known limit: no commits in a linked worktree on Windows** (issue #149, X2). In `workspace-write`, Codex keeps `<writable root>/.git` read-only, and when `.git` is a `gitdir:` file, as in a linked worktree, "the resolved Git directory path is also protected as read-only" ([security](https://developers.openai.com/codex/agent-approvals-security)). The ant's worktree is such a worktree, so its own git directory, `<repo>/.git/worktrees/<name>`, stays read-only. On Windows, Codex enforces this with a deny rule that `--add-dir` does not lift: `git commit` fails with `Unable to create '…/.git/worktrees/<name>/index.lock': Permission denied`. This is the open issue [openai/codex#32880](https://github.com/openai/codex/issues/32880); see also [#18918](https://github.com/openai/codex/issues/18918). Anthill keeps the sandbox rather than run Codex without it (design, Risks), so until that issue is fixed, Codex ants on Windows cannot commit, and their `push` has nothing to push. The documentation describes the same protection on every platform, and the Linux report [#14338](https://github.com/openai/codex/issues/14338) says `--add-dir` does not lift it there either; the X2 check on macOS or Linux shows whether commits work there.
 - **`sandbox_workspace_write.network_access=true`.** Builds and tests need to fetch dependencies.
+- **Known limit: Schannel TLS fails in the Windows sandbox** (issue #149, X2 and X3). The network is open, but Codex runs the agent's commands under dedicated local sandbox accounts with no user profile loaded, so every program that uses Windows' own TLS (Schannel) fails with `SEC_E_NO_CREDENTIALS`. That includes git for Windows with its default `schannel` backend, curl, PowerShell's web commands and dotnet. Programs with their own TLS, such as Node and Python, work. These are the open issues [openai/codex#50582](https://github.com/openai/codex/issues/50582), [#46726](https://github.com/openai/codex/issues/46726), [#17459](https://github.com/openai/codex/issues/17459) and [#55492](https://github.com/openai/codex/issues/55492), the last reported on 0.163.0. Anthill does not work around it.
 - **`approval_policy="never"`.** Nobody answers a headless run.
+- **`default_tools_approval_mode="approve"`** (issue #149). Under `approval_policy="never"`, Codex refuses an MCP tool call that needs approval, with `MCP tool call requires approval, but approval policy is never`. In `workspace-write`, a tool needs approval unless it is marked read-only and not destructive, and the ant tools carry no such marks ([`mcp_tool_call.rs`](https://github.com/openai/codex/blob/rust-v0.163.0/codex-rs/core/src/mcp_tool_call.rs) and [`mcp/mod.rs`](https://github.com/openai/codex/blob/rust-v0.163.0/codex-rs/codex-mcp/src/mcp/mod.rs) at 0.163.0). So in the smoke run the agent could call no ant tool. `mcp_servers.<id>.default_tools_approval_mode` sets the "default approval behavior for MCP tools on this server", and `approve` runs them without asking ([configuration reference](https://developers.openai.com/codex/config-reference), [MCP](https://developers.openai.com/codex/mcp)). It applies to the ant tools server only. The other ways out were rejected: marking the ant tools read-only would be false for tools such as `push`, and `danger-full-access` or `--dangerously-bypass-approvals-and-sandbox` would also drop the sandbox.
 - **`mcp_servers={}`, then `mcp_servers.anthill`.** The first override drops the developer's own MCP servers. A server holding a token would give the agent provider access, which design D4 rules out. The next two overrides add only the ant tools server. Values are TOML, and Anthill writes them as JSON strings and arrays, which are valid TOML.
 - **Session id.** It is the `thread_id` of the `thread.started` event.
 - **Usage.** Tokens are `input_tokens + output_tokens` of each `turn.completed` event, added up; `input_tokens` already include the cached ones. Codex reports no cost, so the cost is recorded as unknown.
@@ -139,15 +145,20 @@ codex exec --json --sandbox workspace-write --skip-git-repo-check --add-dir <git
 
 ### What is not certain yet
 
-The recorded output in the tests is written from Codex's documentation, not captured from a real run. The smoke checks confirm:
+The tests replay the event streams of the Windows smoke run of issue #149 (codex-cli 0.163.0, `internal/adapters/codex/testdata/smoke`). That run confirmed:
 
-1. The global `exec` options go before `resume <id>`, and `-` reads the prompt from standard input for `resume` too (X1, X4).
-2. `--add-dir` makes the git directory writable, so `git commit` works in a linked worktree (X2).
-3. `-c 'mcp_servers={}'` clears the developer's MCP servers, and the later `mcp_servers.anthill.*` overrides still add the ant tools server (X1, X5).
-4. The JSON event names and fields: `thread.started.thread_id`, `turn.completed.usage` and the `agent_message` item's `text` (X1).
-5. `-c sandbox_workspace_write.network_access=true` and `-c approval_policy="never"` are accepted with `exec` (X2).
-6. The `[otel]` exporter format, and whether the exporter reads `OTEL_EXPORTER_OTLP_HEADERS` and `OTEL_RESOURCE_ATTRIBUTES`. This needs an OTLP endpoint and is not part of the smoke checks below; check it when the telemetry export of task group 18 can be switched on.
-7. On Windows, whether the `workspace-write` sandbox is enforced at all (X2).
+- the global `exec` options before `resume <id>`, and `-` reading the prompt from standard input, for `resume` too (X1, X4);
+- the JSON event names and fields: `thread.started.thread_id`, `turn.completed.usage` and the `agent_message` item's `text` (X1);
+- `-c sandbox_workspace_write.network_access=true` and `-c approval_policy="never"` accepted with `exec`, with no prompt (X2);
+- the two known limits above on Windows (X2, X3);
+- a stop leaving no process behind (X6).
+
+Still to confirm:
+
+1. With `default_tools_approval_mode="approve"`, the agent calls the ant tools without approval, and a notice comes with the tool result (X1, X5, on Windows).
+2. `-c 'mcp_servers={}'` clears the developer's MCP servers, and the later `mcp_servers.anthill.*` overrides still add the ant tools server (X1).
+3. On macOS and Linux: whether `git commit` works in a linked worktree, and whether the network works (X2).
+4. The `[otel]` exporter format, and whether the exporter reads `OTEL_EXPORTER_OTLP_HEADERS` and `OTEL_RESOURCE_ATTRIBUTES`. This needs an OTLP endpoint and is not part of the smoke checks below; check it when the telemetry export of task group 18 can be switched on.
 
 ## OpenCode
 
@@ -161,16 +172,21 @@ The recorded output in the tests is written from Codex's documentation, not capt
 
 ### How a run is started
 
-In the worktree, with `OPENCODE_CONFIG=<run dir>/opencode.json` in its environment, Anthill runs:
+In the worktree, with `OPENCODE_CONFIG=<run dir>/opencode.json` and `PWD=<worktree>` in its environment, Anthill runs:
 
 ```
-opencode run --format json [--session <session id>]
+opencode run --standalone --format json [--session <session id>]
 ```
 
+Anthill needs OpenCode 2.0.0 or later, the first version with `--standalone`. It does not check the version: an older OpenCode refuses the flag and the run fails.
+
+- **`--standalone`** (issue #150). By default, OpenCode 2.x "discovers or starts one shared background server for your user account. Every local OpenCode client connects to that server, which owns sessions, configuration, integrations, permissions, and tool execution" ([CLI, "Background service"](https://opencode.ai/docs/cli/), v2.2.5). In the Windows smoke run, `opencode run` handed the run to that service, `opencode serve --service`, started earlier outside Anthill. The run's configuration never reached it, so the agent had no ant tools and the deny rules did not apply: `gh pr create` ran with the developer's own `gh` login. The agent's commands ran under the service, outside the run's Job Object, and outlived the stop. `--standalone` instead runs the run "with a private server instead of the background service". OpenCode starts that server as a child of `opencode run`, `opencode serve --stdio --port 0` with the run's whole environment ([`standalone.ts`](https://github.com/anomalyco/opencode/blob/v2.2.5/packages/cli/src/services/standalone.ts) at v2.2.5). So the server reads the run's configuration, the agent's commands get Anthill's agent environment (`domain.AgentEnv`), and the whole server sits in the run's process tree, which a stop ends. The other documented opt-out, `opencode service set disabled true`, changes the developer's machine for every OpenCode client, so Anthill does not use it.
+- **`PWD`.** `opencode run` takes its project directory from `PWD` before its working directory ([`run.ts`](https://github.com/anomalyco/opencode/blob/v2.2.5/packages/cli/src/run/run.ts) at v2.2.5). An inherited `PWD` is the daemon's, so Anthill sets it to the worktree.
 - **The brief.** Anthill writes the brief to standard input and closes it. There is no message argument, so the brief is never on the command line.
 - **The run's configuration.** `<run dir>` is a temporary directory outside the worktree, removed when the run ends. OpenCode merges `opencode.json` over the developer's global configuration. A developer's own `OPENCODE_CONFIG` is replaced for the run. The file holds two things:
   - **`mcp.anthill`**: the ant tools server, as a local server running `anthill mcp --ant <token>`.
   - **`permission`**: `edit: allow`, and for `bash`, `*: allow` with `git push`, `git push *`, `gh`, `gh *`, `az` and `az *` set to `deny`. A headless run cannot answer a prompt, so everything else is allowed. The deny rules are a layer on top of the missing credentials (design D4). They match only commands that start that way, and their refusal does not name the ant tool to use, so they do not count as hooks.
+  - Both keys are OpenCode 1.x forms. OpenCode 2.x still reads them: "The V1 config format remains supported", and `bash` maps to the 2.x action `shell` ([Migrating from V1](https://opencode.ai/docs/migrate-v1/)).
 - **Gap: the developer's MCP servers.** The developer's own MCP servers stay enabled: a merged configuration can only switch off servers by name, and Anthill does not know their names. A GitHub MCP server holding a token would give the agent provider access. Developers who use OpenCode with such a server should switch it off in their configuration.
 - **Session id.** It is the `sessionID` that every event carries.
 - **Usage.** Tokens are `input + output + reasoning + cache.read + cache.write` of each `step_finish` event, added up. The cost is the sum of their `cost`.
@@ -180,14 +196,18 @@ opencode run --format json [--session <session id>]
 
 ### What is not certain yet
 
-The recorded output in the tests is written from OpenCode's documentation, not captured from a real run. The smoke checks confirm:
+The tests replay the event streams of the Windows smoke run of issue #150 (OpenCode v2.2.5, `internal/adapters/opencode/testdata/smoke`). That run confirmed:
 
-1. `opencode run` without a message argument reads the prompt from standard input (O1).
-2. `--format json` prints one JSON event per line. Each event carries `sessionID`, `step_finish` events carry `part.tokens` and `part.cost`, and `text` events carry `part.text` (O1).
-3. `OPENCODE_CONFIG` is merged with the global configuration, and the `mcp` and `permission` keys work as written (O1, O2).
-4. The bash permission patterns `git push *`, `gh *` and `az *` match as globs, and a denied command is refused without a prompt (O2).
-5. `--session <id>` continues the session (O4).
-6. The exit code of a run that fails, for example without credentials (O1 and the notes).
+- the brief from standard input, and the run ending on its own (O1);
+- the JSON events with `sessionID` on each, `part.tokens` and `part.cost` on `step_finish`, and `part.text` on `text` (O1);
+- `--session <id>` continuing the session (O4).
+
+It ran on the shared service, so these are not confirmed yet. They need O1 to O6 run again with `--standalone`:
+
+1. `OPENCODE_CONFIG` reaches the private server, and the `mcp` and `permission` keys work as written (O1, O2, O5).
+2. The bash permission patterns `git push *`, `gh *` and `az *` match as globs, and a denied command is refused without a prompt (O2).
+3. A stop ends the private server and the agent's commands (O6). OpenCode 2.2.5 cancels a session only on SIGINT; the Job Object kill does not depend on that.
+4. The exit code of a run that fails, for example without credentials (O1 and the notes).
 
 ## Manual smoke runs
 
@@ -435,10 +455,8 @@ anthill runner-smoke --runner codex "Create a file hello.txt containing hi, comm
 Expected:
 
 - The run ends with exit code 0, and no approval prompt appears.
-- `git log -1 --format=%s` in the worktree shows the agent's commit.
-- The agent reports a commit hash from `git ls-remote`, so the sandbox has network access.
-
-On Windows, also note whether Codex reports that the sandbox is not enforced.
+- macOS or Linux: `git log -1 --format=%s` in the worktree shows the agent's commit, and the agent reports a commit hash from `git ls-remote`, so the sandbox has network access. If either fails, record it: it is the same limit as on Windows.
+- Windows, the known limits: the commit fails with `Unable to create '…/.git/worktrees/<name>/index.lock': Permission denied` (openai/codex#32880), and `git ls-remote` fails with `schannel: AcquireCredentialsHandle failed: SEC_E_NO_CREDENTIALS` (openai/codex#50582). Record both. Anything else, such as an approval prompt or the file not being created, is a failure.
 
 #### X3: a stray git push fails for lack of credentials
 
@@ -448,7 +466,10 @@ First give the throwaway repository a remote that needs credentials, such as a p
 anthill runner-smoke --runner codex "Run 'git push origin HEAD' and report its output exactly."
 ```
 
-Expected: the push fails, either because the sandbox blocks the network for git or because there are no credentials (`could not read Username` or `terminal prompts disabled`). Nothing reaches the remote. Codex has no hooks, so the message does not name the push tool.
+Expected: the push fails and nothing reaches the remote. Codex has no hooks, so the message does not name the push tool.
+
+- macOS or Linux: it fails for lack of credentials (`could not read Username` or `terminal prompts disabled`).
+- Windows, the known limit: git's default Schannel TLS fails first, with `SEC_E_NO_CREDENTIALS` (openai/codex#50582). Record it. To also check the credentials, run the push once more with git's own TLS, which the sandbox does not break: `Run 'git -c http.sslBackend=openssl push origin HEAD' and report its output exactly.` It must fail for lack of credentials.
 
 #### X4: resume
 
@@ -498,6 +519,8 @@ Expected:
 
 Use a fresh throwaway repository, made as in "Before you start" (for example `/tmp/smoke-opencode`).
 
+These checks need OpenCode 2.0.0 or later. If OpenCode's background service runs (`opencode serve --service` in the process list), leave it running: the checks show that runs do not use it.
+
 #### O1: a run starts, calls a tool, and ends on its own
 
 ```bash
@@ -522,7 +545,7 @@ Also run it once logged out of the model provider, and note the exit code.
 anthill runner-smoke --runner opencode "Run the shell command 'gh pr create --fill' and then 'git push origin HEAD'. Report each command's output exactly."
 ```
 
-Expected: both commands are refused by OpenCode's permission rules without a prompt, and the agent reports the refusals. The refusal does not name an ant tool; that is expected.
+Expected: both commands are refused by OpenCode's permission rules without a prompt, and the agent reports the refusals. The refusal does not name an ant tool; that is expected. If `gh` runs and answers from GitHub, the run's configuration did not apply: record it as a failure.
 
 #### O3: a stray git push behind cd still fails
 
@@ -552,15 +575,19 @@ Expected: `smoke: the tool result carries 1 notice(s)`, and the agent quotes `Th
 #### O6: stop leaves no process behind
 
 ```bash
-anthill runner-smoke --runner opencode --stop-after 15s "Run 'sleep 300' in the shell and wait for it."
+anthill runner-smoke --runner opencode --stop-after 30s \
+  "Run exactly this command in the shell, in the foreground, not in the background: ping -n 300 127.0.0.1. Wait for it to finish."
 ```
+
+On macOS and Linux, use `ping -c 300 127.0.0.1`.
 
 Expected:
 
 - `exit code -1, crashed true` within about 10 seconds of the stop.
+- During the run, the agent's commands run under the run's own server: `opencode run --standalone --format json` → `opencode serve --stdio --port 0` → the shell → `ping`. They do not run under `opencode serve --service`.
 - No process is left:
-  - macOS or Linux: `ps -ef | grep -E 'opencode|sleep 300' | grep -v grep` prints nothing.
-  - Windows: `Get-Process | Where-Object { $_.ProcessName -match 'opencode|bun|node' }` shows none from the run.
+  - macOS or Linux: `ps -ef | grep -E 'opencode (run|serve --stdio)|ping' | grep -v grep` prints nothing.
+  - Windows: list the processes before, during and after the run, as in C7, with `opencode|bash|anthill|ping` as the pattern. After it, none from the run is left. A background service started before the run, `opencode serve --service`, may still be listed, with nothing under it.
 
 #### Results
 

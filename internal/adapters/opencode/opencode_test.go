@@ -102,7 +102,7 @@ func (f *fake) spec(t *testing.T) ports.RunSpec {
 		Budget:     time.Hour,
 		MCPCommand: []string{"/opt/anthill/bin/anthill", "mcp", "--ant", "ant_tok3n"},
 		ToolToken:  "ant_tok3n",
-		Env:        append(os.Environ(), fakeOpenCodeVar+"="+f.dir, "OPENCODE_CONFIG=/home/ann/my-opencode.json"),
+		Env:        append(os.Environ(), fakeOpenCodeVar+"="+f.dir, "OPENCODE_CONFIG=/home/ann/my-opencode.json", "PWD=/home/ann/daemon"),
 	}
 }
 
@@ -154,7 +154,10 @@ func TestStart(t *testing.T) {
 	}
 	var args []string
 	f.read(t, "args.json", &args)
-	if !slices.Equal(args, []string{"run", "--format", "json"}) {
+	// Task 13.9: --standalone keeps the run off OpenCode's shared
+	// background service, which ignored the run's configuration and
+	// outlived the stop (testdata/smoke/o1.events.jsonl, o6.events.jsonl).
+	if !slices.Equal(args, []string{"run", "--standalone", "--format", "json"}) {
 		t.Errorf("args = %q", args)
 	}
 
@@ -171,6 +174,17 @@ func TestStart(t *testing.T) {
 	}
 	if configPath == "" || configPath == "/home/ann/my-opencode.json" {
 		t.Errorf("OPENCODE_CONFIG = %q, want the run's own", configPath)
+	}
+	// Task 13.9: opencode run takes its project directory from PWD, so
+	// PWD is the worktree, not the daemon's.
+	var pwd []string
+	for _, kv := range env {
+		if v, ok := strings.CutPrefix(kv, "PWD="); ok {
+			pwd = append(pwd, v)
+		}
+	}
+	if !slices.Equal(pwd, []string{spec.Worktree}) {
+		t.Errorf("PWD = %q, want only the worktree %q", pwd, spec.Worktree)
 	}
 	if _, err := os.Stat(configPath); !os.IsNotExist(err) {
 		t.Errorf("the run's configuration %s is still there after Wait: %v", configPath, err)
@@ -223,7 +237,7 @@ func TestResume(t *testing.T) {
 	run.Wait()
 	var args []string
 	f.read(t, "args.json", &args)
-	if !slices.Equal(args, []string{"run", "--format", "json", "--session", recordedSession}) {
+	if !slices.Equal(args, []string{"run", "--standalone", "--format", "json", "--session", recordedSession}) {
 		t.Errorf("args = %q", args)
 	}
 	if u := run.Usage(); u.Tokens == nil || *u.Tokens != 90+30+11000 || u.CostUSD == nil || *u.CostUSD != 0.002 {
