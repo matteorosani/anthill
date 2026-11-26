@@ -1,0 +1,5 @@
+{"type":"thread.started","thread_id":"01a1b0ff-35a1-7e62-9766-4d197f51d5b8"}
+{"type":"turn.started"}
+{"type":"item.completed","item":{"id":"item_0","type":"agent_message","text":"I’ll run the command in the foreground and wait for it to finish."}}
+{"type":"item.started","item":{"id":"item_1","type":"command_execution","command":"\"C:\\\\Windows\\\\System32\\\\WindowsPowerShell\\\\v1.0\\\\powershell.exe\" -Command 'ping -n 300 127.0.0.1'","aggregated_output":"","exit_code":null,"status":"in_progress"}}
+^C

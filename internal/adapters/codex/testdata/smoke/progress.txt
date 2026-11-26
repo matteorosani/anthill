@@ -1,0 +1,14 @@
+== working in /tmp/anthill-smoke-vz8K4Y/wt
+== x1: started 14:13:05
+== x1: ended 14:13:19, exit 0
+== x2: started 14:13:19
+== x2: ended 14:13:53, exit 0
+== x3: started 14:13:54
+== x3: ended 14:14:08, exit 0
+== x4: started 14:14:08
+== x4: ended 14:14:18, exit 0
+== x5: started 14:14:18
+== x5: ended 14:14:34, exit 0
+== x6: started 14:14:36
+== x6: ended 14:15:07
+== done. Zip this folder and send it back: /c/Users/a.russo/Downloads/anthill-smoke-kit/smoke-codex-20261106-141302
