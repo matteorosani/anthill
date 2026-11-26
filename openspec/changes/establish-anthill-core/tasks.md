@@ -92,6 +92,7 @@ Terms follow `openspec/glossary.md`. Every group lands its own tests and docs. U
 - [x] 11.3 Implement the CLI skeleton with `cobra` as a thin client, with `anthill daemon` and `anthill status`, and verify an end-to-end test that `status` reports uptime from a running daemon
 - [x] 11.4 Implement the `Notifier` port with desktop notifications (`beeep`) and a per-kind switch, and verify with a fake notifier that each notification kind of queen-console is raised and can be turned off
 - [x] 11.5 Wire the composition root and run loop of `anthill daemon`: the SQLite store, the configured provider adapters, git, the executor and runners, the poll scheduler with ingestion, eligibility re-evaluation after every poll with the "new proposal" notification, claim renewals, the ant supervisor, the conversation, the change reactor, shepherd triggers after each PR poll, and the console, and verify an end-to-end test on fake adapters that an opted-in item is proposed and, once accepted, gets an ant and a run
+- [x] 11.6 On daemon stop, log no error caused by the stop itself; let go of active runs, leaving them to restart reconciliation, and stop shepherd review and fix agents, recording their rounds' end and releasing their claims; and wait for that background work before closing the store (issue #193). Verify that a stop with a run ending during it logs no ERROR line and never uses a closed store
 
 ## 12. Ant tools
 
