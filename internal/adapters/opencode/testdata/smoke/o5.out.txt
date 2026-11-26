@@ -1,0 +1,5 @@
+smoke: run started with opencode in C:\Users\m.rosani\AppData\Local\Temp\anthill-smoke-pM5izH\repo
+smoke: session id: ses_e4eecc367ffeYTzmeSmcAQaxsX
+smoke: run ended: exit code 0, crashed false
+smoke: session id: ses_e4eecc367ffeYTzmeSmcAQaxsX
+smoke: usage: 7512 tokens, 0.0000 USD
