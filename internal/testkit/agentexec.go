@@ -50,8 +50,8 @@ type AgentExecutorOptions struct {
 // execution as Executor does, which it embeds: a test reads them, and
 // ends held ones, through it. It reports the session id of each
 // execution: the resumed one, or session-<id> for a new session. Stop
-// kills the process. Close kills what is left and waits for every
-// process.
+// kills the process. Close kills what is left, waits for every process
+// and ends every execution.
 type AgentExecutor struct {
 	*Executor
 	opts AgentExecutorOptions
@@ -187,13 +187,6 @@ func (a *AgentExecutor) spawn(f *FakeExecution, script AgentScript) error {
 		defer a.wg.Done()
 		err := p.cmd.Wait()
 		close(p.exited)
-		a.mu.Lock()
-		closed := a.closed
-		a.mu.Unlock()
-		if closed {
-			// Close abandoned it: nobody watches it any more.
-			return
-		}
 		exit := ports.Exit{}
 		var exitErr *exec.ExitError
 		if errors.As(err, &exitErr) {
@@ -229,11 +222,13 @@ func (a *AgentExecutor) kill(id ports.ExecID) {
 	}
 }
 
-// Close kills every fake agent still running and waits until every
-// process has exited, as when the daemon's own process ends. It ends no
-// execution: what was active stays active, with nobody to report its
-// end, so a daemon started again over the same store finds the runs the
-// restart interrupted. Later executions start no process.
+// Close kills every fake agent still running, waits until every process
+// has exited, and ends every execution still active as killed
+// (StoppedExit), as when the agents die after the daemon's own process.
+// Each end is reported as usual, so a daemon that still read the events
+// would record it; a daemon that stopped has let go of them first, and a
+// daemon started again over the same store finds the runs the restart
+// interrupted. Later executions start no process.
 func (a *AgentExecutor) Close() {
 	a.mu.Lock()
 	a.closed = true
@@ -246,4 +241,7 @@ func (a *AgentExecutor) Close() {
 		a.kill(id)
 	}
 	a.wg.Wait()
+	for _, f := range a.Executions() {
+		f.End(ports.ExecExited, StoppedExit)
+	}
 }
