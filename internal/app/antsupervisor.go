@@ -211,6 +211,9 @@ type AntSupervisor struct {
 	items map[domain.Ref]*sync.Mutex
 
 	wg sync.WaitGroup
+	// detached is closed by Detach, when the daemon stops.
+	detached   chan struct{}
+	detachOnce sync.Once
 }
 
 // NewAntSupervisor returns the supervisor.
@@ -224,6 +227,7 @@ func NewAntSupervisor(deps AntSupervisorDeps, opts AntSupervisorOptions) *AntSup
 		runs:     map[domain.Ref]*activeRun{},
 		locks:    map[ports.AntID]*sync.Mutex{},
 		items:    map[domain.Ref]*sync.Mutex{},
+		detached: make(chan struct{}),
 	}
 	handle(s, s.startRun)
 	handle(s, s.openPR)
@@ -503,11 +507,11 @@ func (s *AntSupervisor) notifyAnt(ctx context.Context, kind domain.NotificationK
 	if s.deps.Notifier == nil {
 		return
 	}
-	s.report(s.deps.Notifier.Notify(ctx, ports.Notification{Kind: kind, Title: title, Body: item.String() + ": " + body, Ref: &item}))
+	s.reportUnlessDone(ctx, s.deps.Notifier.Notify(ctx, ports.Notification{Kind: kind, Title: title, Body: item.String() + ": " + body, Ref: &item}))
 }
 
 // Wait returns once the events of every run started so far are handled,
-// such as when the daemon shuts down after ending its runs.
+// or, after Detach, once the work in progress has returned.
 func (s *AntSupervisor) Wait() {
 	s.wg.Wait()
 }
