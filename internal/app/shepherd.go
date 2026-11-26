@@ -49,12 +49,13 @@ var (
 )
 
 // ShepherdStore is the part of the local store the shepherd uses: its
-// rounds and their requests, and the session index to find the ant of an
-// ant PR.
+// rounds and their requests, the pushes of its fix passes, and the
+// session index to find the ant of an ant PR.
 type ShepherdStore interface {
 	ports.SessionIndex
 	ports.RunLog
 	ports.RoundRequests
+	ports.FixPushes
 }
 
 // ShepherdDeps are the ports and services the shepherd uses.

@@ -24,6 +24,7 @@ type StateStore interface {
 	HeldClaims
 	RunStarts
 	RoundRequests
+	FixPushes
 }
 
 // AntID identifies one ant. An item can have several ants over time, such
@@ -172,7 +173,11 @@ type RoundRecord struct {
 	Requested bool
 	StartedAt time.Time
 	EndedAt   time.Time
-	Usage     Usage
+	// Posted reports that the round posted its summary comment, which
+	// records it on the PR for every instance. A round that ended without
+	// posting it, such as after its agent crashed, did not review Head.
+	Posted bool
+	Usage  Usage
 }
 
 // RunLog records runs and shepherd rounds.
@@ -440,4 +445,16 @@ type RoundRequests interface {
 	// a requested round marks every pending request of r.PR as served by
 	// it, and returns the round's ID.
 	BeginRound(ctx context.Context, r RoundRecord) (RoundID, error)
+}
+
+// FixPushes records the head commits that this instance's fix passes
+// pushed to a PR, so that such a push starts no round while reads of the
+// PR do not show the status comment that records it yet (spec
+// pr-shepherd, "Automatic fixes").
+type FixPushes interface {
+	// RecordFixPush stores that a fix pass pushed head to pr. A head
+	// already stored for pr is ignored.
+	RecordFixPush(ctx context.Context, pr domain.Ref, head string, at time.Time) error
+	// FixPushes lists the heads stored for pr, oldest first.
+	FixPushes(ctx context.Context, pr domain.Ref) ([]string, error)
 }

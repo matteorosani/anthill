@@ -52,6 +52,7 @@ func Run(t *testing.T, open Open) {
 		{"HeldClaims", testHeldClaims},
 		{"RunStarts", testRunStarts},
 		{"RoundRequests", testRoundRequests},
+		{"FixPushes", testFixPushes},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -255,16 +256,25 @@ func testRunLog(t *testing.T, s ports.StateStore) {
 
 	round := ports.RoundRecord{PR: PR(7), Head: "abc", Requested: true, StartedAt: T0.Add(time.Hour)}
 	round.ID = must(s.StartRound(ctx, round))
-	round.EndedAt, round.Usage = T0.Add(70*time.Minute), ports.Usage{CostUSD: &cost}
+	equal(t, "Rounds before the end", must(s.Rounds(ctx, PR(7))), []ports.RoundRecord{round})
+	round.EndedAt, round.Posted, round.Usage = T0.Add(70*time.Minute), true, ports.Usage{CostUSD: &cost}
 	check(t, s.EndRound(ctx, round))
 	equal(t, "Rounds", must(s.Rounds(ctx, PR(7))), []ports.RoundRecord{round})
-	equal(t, "Rounds of another PR", must(s.Rounds(ctx, PR(8))), []ports.RoundRecord(nil))
+	equal(t, "Rounds of another PR", must(s.Rounds(ctx, PR(9))), []ports.RoundRecord(nil))
 	notFound(t, "EndRound of a missing round", s.EndRound(ctx, ports.RoundRecord{ID: 99}))
+
+	// A round that ended without posting its summary is stored as not
+	// posted (issue #192).
+	failed := ports.RoundRecord{PR: PR(8), Head: "abc", StartedAt: T0.Add(2 * time.Hour)}
+	failed.ID = must(s.StartRound(ctx, failed))
+	failed.EndedAt = T0.Add(130 * time.Minute)
+	check(t, s.EndRound(ctx, failed))
+	equal(t, "Rounds of a round not posted", must(s.Rounds(ctx, PR(8))), []ports.RoundRecord{failed})
 
 	runs, rounds, err := s.Usage(ctx, T0, T0.Add(24*time.Hour))
 	check(t, err)
 	equal(t, "Usage runs", runs, []ports.RunRecord{run})
-	equal(t, "Usage rounds", rounds, []ports.RoundRecord{round})
+	equal(t, "Usage rounds", rounds, []ports.RoundRecord{round, failed})
 }
 
 func testPollState(t *testing.T, s ports.StateStore) {
@@ -521,4 +531,15 @@ func testRoundRequests(t *testing.T, s ports.StateStore) {
 	equal(t, "requests after the next round", must(s.RoundRequests(ctx, PR(34))), []ports.RoundRequest(nil))
 	check(t, s.RequestRound(ctx, third))
 	equal(t, "a dropped request requested again", must(s.RoundRequests(ctx, PR(34))), []ports.RoundRequest(nil))
+}
+
+func testFixPushes(t *testing.T, s ports.StateStore) {
+	ctx := context.Background()
+	equal(t, "no fix pushes", must(s.FixPushes(ctx, PR(34))), []string(nil))
+	check(t, s.RecordFixPush(ctx, PR(34), "fix1", T0))
+	check(t, s.RecordFixPush(ctx, PR(35), "fix1", T0))
+	check(t, s.RecordFixPush(ctx, PR(34), "fix2", T0.Add(time.Minute)))
+	check(t, s.RecordFixPush(ctx, PR(34), "fix1", T0.Add(time.Hour)))
+	equal(t, "fix pushes", must(s.FixPushes(ctx, PR(34))), []string{"fix1", "fix2"})
+	equal(t, "other PR's fix pushes", must(s.FixPushes(ctx, PR(35))), []string{"fix1"})
 }

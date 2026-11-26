@@ -21,8 +21,9 @@ import (
 // round has ended. The shepherd records the end and asks the playbook
 // again.
 type RoundRunner interface {
-	// Run returns once the round has ended. A round that fails still
-	// returns the usage its agent reported.
+	// Run returns once the round has ended. A nil error means the round
+	// posted its summary comment, its last write. A round that fails
+	// still returns the usage its agent reported.
 	Run(ctx context.Context, r RoundStart) (RoundResult, error)
 }
 
@@ -106,9 +107,13 @@ func (s *Shepherd) startRound(ctx context.Context, t *prTurn, d domain.StartRoun
 func (s *Shepherd) runRound(ctx context.Context, start RoundStart, held ports.HeldClaim) error {
 	pr := start.Round.PR
 	res, runErr := s.deps.Rounds.Run(ctx, start)
+	rec := start.Round
+	// A round that returns no error has posted its summary comment.
+	rec.Posted = runErr == nil
 	// StopPR ends a round when its PR was merged or closed (spec
 	// pr-shepherd, "PR closure is human"). That is not a fault, and what
 	// follows must outlive the round's context.
+	roundCtx := ctx
 	if ctx.Err() != nil {
 		runErr = nil
 	}
@@ -116,10 +121,17 @@ func (s *Shepherd) runRound(ctx context.Context, start RoundStart, held ports.He
 	if runErr != nil {
 		runErr = fmt.Errorf("round %d on %s: %w", start.Round.ID, pr, runErr)
 	}
-	rec := start.Round
 	rec.EndedAt = s.clock.Now()
 	if err := s.deps.RoundEnds.EndRound(ctx, rec, res.Usage); err != nil {
 		runErr = errors.Join(runErr, fmt.Errorf("recording the end of round %d: %w", rec.ID, err))
+	}
+	if runErr == nil && rec.Posted {
+		// Decide once the summary is visible, so that the decisions after
+		// the round see it (issue #192). The PR stays active meanwhile, so
+		// a trigger leaves it alone.
+		if err := s.awaitSummary(roundCtx, rec); err != nil && roundCtx.Err() == nil {
+			runErr = fmt.Errorf("after round %d on %s: %w", rec.ID, pr, err)
+		}
 	}
 	defer s.lockPR(pr)()
 	s.setActive(pr, false)
@@ -154,7 +166,9 @@ func (s *Shepherd) postRoundLimit(ctx context.Context, t *prTurn, d domain.PostR
 	if err != nil {
 		return false, fmt.Errorf("posting the round limit comment on %s: %w", t.pr.Ref, err)
 	}
-	return true, nil
+	// Decide again only once the comment is visible; otherwise the next
+	// trigger does (issue #192).
+	return s.awaitMarker(ctx, t.pr.Ref, RoundLimitMarkerID)
 }
 
 // snapshot builds what the playbook decides a PR from (design D22).
@@ -194,6 +208,9 @@ func (s *Shepherd) snapshot(ctx context.Context, pr domain.PullRequest, ws ToolW
 	}
 	if !antPR {
 		if err := s.autofixSnapshot(pr, writers, &snap); err != nil {
+			return domain.PRSnapshot{}, err
+		}
+		if err := s.fixPushes(ctx, pr.Ref, &snap); err != nil {
 			return domain.PRSnapshot{}, err
 		}
 	}
@@ -264,7 +281,9 @@ func ackedElsewhere(pr domain.PullRequest, commentID, self string, writers func(
 
 // rounds lists the PR's rounds, oldest first: those whose summary
 // comment, by an author with write access, is on the PR, whichever
-// instance ran them, then this instance's rounds in progress. Each done
+// instance ran them, then this instance's rounds that the PR does not
+// show yet (pendingRounds): those in progress, and those that posted
+// their summary while reads of the PR still lag behind. Each done
 // round has its findings, placed in their review threads, and is handed
 // when a comment by an author with write access says so
 // (domain.HandedOf).
@@ -298,12 +317,11 @@ func (s *Shepherd) rounds(ctx context.Context, pr domain.PullRequest, writers fu
 	if err != nil {
 		return nil, fmt.Errorf("reading the rounds of %s: %w", pr.Ref, err)
 	}
-	for _, r := range local {
-		if r.EndedAt.IsZero() {
-			out = append(out, domain.PRRound{Head: r.Head, Requested: r.Requested})
-		}
+	own, err := ownSummaries(pr, s.deps.Instance(pr.Ref.Repo), writers)
+	if err != nil {
+		return nil, err
 	}
-	return out, nil
+	return append(out, pendingRounds(local, own)...), nil
 }
 
 // prComments lists the PR's comments and the comments of its review

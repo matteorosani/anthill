@@ -130,7 +130,9 @@ func (s *Shepherd) postAutofixUnavailable(ctx context.Context, t *prTurn, d doma
 	if err != nil {
 		return false, fmt.Errorf("posting that auto-fix is not possible on %s: %w", t.pr.Ref, err)
 	}
-	return true, nil
+	// Decide again only once the comment is visible; otherwise the next
+	// trigger does (issue #192).
+	return s.awaitMarker(ctx, t.pr.Ref, AutofixUnavailableMarkerID(d.Reason))
 }
 
 // reclassify marks needs-developer each finding of rounds whose thread

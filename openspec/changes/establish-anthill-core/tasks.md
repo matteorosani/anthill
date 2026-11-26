@@ -152,6 +152,7 @@ Terms follow `openspec/glossary.md`. Every group lands its own tests and docs. U
 - [x] 16.6 Implement the auto-fix fallbacks (no verification command, fork not pushable, failed verification, PR branch moved) as all or nothing, and verify each fallback scenario
 - [x] 16.7 Handle PR merge or close: stop shepherd activity, release claims, make the ant `done`, clean up the worktree, and verify the "PR merged by developer" test
 - [x] 16.8 Add the shepherd decisions to the default playbook: a pure function from a PR snapshot (head commit, rounds done, requested rounds, scope, opt-in labels, open findings) to one decision (start an automatic or requested round, post the round limit comment, hand findings to the owning ant, start a fix pass, nothing) that follows pr-shepherd, and verify with table tests one case per round and auto-fix scenario, and that after each decision's effect the playbook never returns the same decision again
+- [x] 16.9 Keep a lagging read of the provider's comments from repeating a shepherd decision (issue #192): store whether each round posted its summary and the heads this instance's fix passes pushed, re-read the PR for at most the claim re-read delay until the comment of a round, a fix pass, the round limit or auto-fix unavailable is visible, and count the stored rounds and fix pushes when it is not; verify with read lag that each head gets exactly one round, a fix push starts no round, and the round limit and auto-fix unavailable comments are posted once
 
 ## 17. Queen console
 

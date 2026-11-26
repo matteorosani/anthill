@@ -160,14 +160,14 @@ func TestIntegrationRaceForAPullRequest(t *testing.T) {
 	// Each instance's first poll finds the PR and claims it. The clock
 	// stands still, so neither sees the other's claim before posting its
 	// own; only once both claims exist does it move through the re-read
-	// delay.
+	// delay. The lag stays on to the end, so the winner's reads do not
+	// show its round's summary right after the round either (issue #192).
 	w.gh.ReadLag(raceLag)
 	for _, in := range ins {
 		in.queueAgents(review)
 		in.start()
 	}
 	w.eventually("both review claims", func() bool { return len(markedComments(w, pr, domain.CommentClaim)) == 2 }, ins[0], ins[1])
-	w.gh.ReadLag(0)
 	w.advanceUntil("the round result", domain.DefaultClaimRereadDelay, func() bool {
 		return len(rounds(w, pr)) == 1 && noHeldClaims(ins[0]) && noHeldClaims(ins[1])
 	}, ins[0], ins[1])
