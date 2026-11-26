@@ -127,8 +127,10 @@ Anthill needs Codex 0.122.0 or later, the first version with `default_tools_appr
 
 - **The brief.** The final `-` makes Codex read the prompt from standard input. Anthill writes the brief there and closes it, so the brief is never on the command line.
 - **`--sandbox workspace-write`.** This is the most restrictive headless sandbox that still lets the agent edit files and run commands in its worktree (design, Risks). On Windows, Codex enforces it only with a Windows sandbox level set in the developer's configuration (`windows.sandbox`, `elevated` or `unelevated`). Without one, `workspace-write` silently becomes read-only ([Windows](https://developers.openai.com/codex/windows); `effective_sandbox_mode` in [`config_toml.rs`](https://github.com/openai/codex/blob/rust-v0.163.0/codex-rs/config/src/config_toml.rs) at 0.163.0), and the agent can edit nothing. Anthill does not set the level: `elevated` needs a one-time setup as administrator, and the choice is the developer's.
-- **`--add-dir <git directory>`.** A worktree's commits go to the clone's shared git directory (`git rev-parse --git-common-dir`), which lies outside the worktree. Without this flag, every `git commit` fails in the sandbox.
+- **`--add-dir <git directory>`.** A worktree's commits go to the clone's shared git directory (`git rev-parse --git-common-dir`), which lies outside the worktree, so Anthill makes it writable.
+- **Known limit: no commits in a linked worktree on Windows** (issue #149, X2). In `workspace-write`, Codex keeps `<writable root>/.git` read-only, and when `.git` is a `gitdir:` file, as in a linked worktree, "the resolved Git directory path is also protected as read-only" ([security](https://developers.openai.com/codex/agent-approvals-security)). The ant's worktree is such a worktree, so its own git directory, `<repo>/.git/worktrees/<name>`, stays read-only. On Windows, Codex enforces this with a deny rule that `--add-dir` does not lift: `git commit` fails with `Unable to create '…/.git/worktrees/<name>/index.lock': Permission denied`. This is the open issue [openai/codex#32880](https://github.com/openai/codex/issues/32880); see also [#18918](https://github.com/openai/codex/issues/18918). Anthill keeps the sandbox rather than run Codex without it (design, Risks), so until that issue is fixed, Codex ants on Windows cannot commit, and their `push` has nothing to push. The documentation describes the same protection on every platform, and the Linux report [#14338](https://github.com/openai/codex/issues/14338) says `--add-dir` does not lift it there either; the X2 check on macOS or Linux shows whether commits work there.
 - **`sandbox_workspace_write.network_access=true`.** Builds and tests need to fetch dependencies.
+- **Known limit: Schannel TLS fails in the Windows sandbox** (issue #149, X2 and X3). The network is open, but Codex runs the agent's commands under dedicated local sandbox accounts with no user profile loaded, so every program that uses Windows' own TLS (Schannel) fails with `SEC_E_NO_CREDENTIALS`. That includes git for Windows with its default `schannel` backend, curl, PowerShell's web commands and dotnet. Programs with their own TLS, such as Node and Python, work. These are the open issues [openai/codex#50582](https://github.com/openai/codex/issues/50582), [#46726](https://github.com/openai/codex/issues/46726), [#17459](https://github.com/openai/codex/issues/17459) and [#55492](https://github.com/openai/codex/issues/55492), the last reported on 0.163.0. Anthill does not work around it.
 - **`approval_policy="never"`.** Nobody answers a headless run.
 - **`default_tools_approval_mode="approve"`** (issue #149). Under `approval_policy="never"`, Codex refuses an MCP tool call that needs approval, with `MCP tool call requires approval, but approval policy is never`. In `workspace-write`, a tool needs approval unless it is marked read-only and not destructive, and the ant tools carry no such marks ([`mcp_tool_call.rs`](https://github.com/openai/codex/blob/rust-v0.163.0/codex-rs/core/src/mcp_tool_call.rs) and [`mcp/mod.rs`](https://github.com/openai/codex/blob/rust-v0.163.0/codex-rs/codex-mcp/src/mcp/mod.rs) at 0.163.0). So in the smoke run the agent could call no ant tool. `mcp_servers.<id>.default_tools_approval_mode` sets the "default approval behavior for MCP tools on this server", and `approve` runs them without asking ([configuration reference](https://developers.openai.com/codex/config-reference), [MCP](https://developers.openai.com/codex/mcp)). It applies to the ant tools server only. The other ways out were rejected: marking the ant tools read-only would be false for tools such as `push`, and `danger-full-access` or `--dangerously-bypass-approvals-and-sandbox` would also drop the sandbox.
 - **`mcp_servers={}`, then `mcp_servers.anthill`.** The first override drops the developer's own MCP servers. A server holding a token would give the agent provider access, which design D4 rules out. The next two overrides add only the ant tools server. Values are TOML, and Anthill writes them as JSON strings and arrays, which are valid TOML.
@@ -143,15 +145,20 @@ Anthill needs Codex 0.122.0 or later, the first version with `default_tools_appr
 
 ### What is not certain yet
 
-The recorded output in the tests is written from Codex's documentation, not captured from a real run. The smoke checks confirm:
+The tests replay the event streams of the Windows smoke run of issue #149 (codex-cli 0.163.0, `internal/adapters/codex/testdata/smoke`). That run confirmed:
 
-1. The global `exec` options go before `resume <id>`, and `-` reads the prompt from standard input for `resume` too (X1, X4).
-2. `--add-dir` makes the git directory writable, so `git commit` works in a linked worktree (X2).
-3. `-c 'mcp_servers={}'` clears the developer's MCP servers, and the later `mcp_servers.anthill.*` overrides still add the ant tools server (X1, X5).
-4. The JSON event names and fields: `thread.started.thread_id`, `turn.completed.usage` and the `agent_message` item's `text` (X1).
-5. `-c sandbox_workspace_write.network_access=true` and `-c approval_policy="never"` are accepted with `exec` (X2).
-6. The `[otel]` exporter format, and whether the exporter reads `OTEL_EXPORTER_OTLP_HEADERS` and `OTEL_RESOURCE_ATTRIBUTES`. This needs an OTLP endpoint and is not part of the smoke checks below; check it when the telemetry export of task group 18 can be switched on.
-7. On Windows, whether the `workspace-write` sandbox is enforced at all (X2).
+- the global `exec` options before `resume <id>`, and `-` reading the prompt from standard input, for `resume` too (X1, X4);
+- the JSON event names and fields: `thread.started.thread_id`, `turn.completed.usage` and the `agent_message` item's `text` (X1);
+- `-c sandbox_workspace_write.network_access=true` and `-c approval_policy="never"` accepted with `exec`, with no prompt (X2);
+- the two known limits above on Windows (X2, X3);
+- a stop leaving no process behind (X6).
+
+Still to confirm:
+
+1. With `default_tools_approval_mode="approve"`, the agent calls the ant tools without approval, and a notice comes with the tool result (X1, X5, on Windows).
+2. `-c 'mcp_servers={}'` clears the developer's MCP servers, and the later `mcp_servers.anthill.*` overrides still add the ant tools server (X1).
+3. On macOS and Linux: whether `git commit` works in a linked worktree, and whether the network works (X2).
+4. The `[otel]` exporter format, and whether the exporter reads `OTEL_EXPORTER_OTLP_HEADERS` and `OTEL_RESOURCE_ATTRIBUTES`. This needs an OTLP endpoint and is not part of the smoke checks below; check it when the telemetry export of task group 18 can be switched on.
 
 ## OpenCode
 
@@ -448,10 +455,8 @@ anthill runner-smoke --runner codex "Create a file hello.txt containing hi, comm
 Expected:
 
 - The run ends with exit code 0, and no approval prompt appears.
-- `git log -1 --format=%s` in the worktree shows the agent's commit.
-- The agent reports a commit hash from `git ls-remote`, so the sandbox has network access.
-
-On Windows, also note whether Codex reports that the sandbox is not enforced.
+- macOS or Linux: `git log -1 --format=%s` in the worktree shows the agent's commit, and the agent reports a commit hash from `git ls-remote`, so the sandbox has network access. If either fails, record it: it is the same limit as on Windows.
+- Windows, the known limits: the commit fails with `Unable to create '…/.git/worktrees/<name>/index.lock': Permission denied` (openai/codex#32880), and `git ls-remote` fails with `schannel: AcquireCredentialsHandle failed: SEC_E_NO_CREDENTIALS` (openai/codex#50582). Record both. Anything else, such as an approval prompt or the file not being created, is a failure.
 
 #### X3: a stray git push fails for lack of credentials
 
@@ -461,7 +466,10 @@ First give the throwaway repository a remote that needs credentials, such as a p
 anthill runner-smoke --runner codex "Run 'git push origin HEAD' and report its output exactly."
 ```
 
-Expected: the push fails, either because the sandbox blocks the network for git or because there are no credentials (`could not read Username` or `terminal prompts disabled`). Nothing reaches the remote. Codex has no hooks, so the message does not name the push tool.
+Expected: the push fails and nothing reaches the remote. Codex has no hooks, so the message does not name the push tool.
+
+- macOS or Linux: it fails for lack of credentials (`could not read Username` or `terminal prompts disabled`).
+- Windows, the known limit: git's default Schannel TLS fails first, with `SEC_E_NO_CREDENTIALS` (openai/codex#50582). Record it. To also check the credentials, run the push once more with git's own TLS, which the sandbox does not break: `Run 'git -c http.sslBackend=openssl push origin HEAD' and report its output exactly.` It must fail for lack of credentials.
 
 #### X4: resume
 
