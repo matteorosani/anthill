@@ -20,9 +20,27 @@ import (
 //   - the agent's last message is kept for the summary of a run that
 //     exits without finishing;
 //   - exited and ended at the deadline end the run: see exited.
+//
+// After Detach it handles no more events: see Detach. It hands the rest
+// to dropEvents, so that the executor is never blocked on them.
 func (s *AntSupervisor) watch(ctx context.Context, r *activeRun, events <-chan ports.ExecEvent) {
 	defer s.wg.Done()
-	for ev := range events {
+	for {
+		var ev ports.ExecEvent
+		select {
+		case <-s.detached:
+			go dropEvents(events)
+			return
+		case e, ok := <-events:
+			if !ok {
+				return
+			}
+			if s.isDetached() {
+				go dropEvents(events)
+				return
+			}
+			ev = e
+		}
 		switch ev.Kind {
 		case ports.ExecStarted:
 			s.report(s.started(ctx, r))
