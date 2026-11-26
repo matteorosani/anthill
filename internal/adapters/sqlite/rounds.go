@@ -80,3 +80,31 @@ func (s *Store) BeginRound(ctx context.Context, r ports.RoundRecord) (ports.Roun
 	}
 	return id, nil
 }
+
+// RecordFixPush stores a head a fix pass pushed, unless it is stored.
+func (s *Store) RecordFixPush(ctx context.Context, pr domain.Ref, head string, at time.Time) error {
+	_, err := s.db.ExecContext(ctx, `INSERT INTO fix_pushes (pr_key, head, at)
+		VALUES (?, ?, ?) ON CONFLICT (pr_key, head) DO NOTHING`, refKey(pr), head, at.UnixNano())
+	if err != nil {
+		return fmt.Errorf("record the fix push %s on %s: %w", head, pr.Full(), err)
+	}
+	return nil
+}
+
+// FixPushes lists the heads fix passes pushed to a PR.
+func (s *Store) FixPushes(ctx context.Context, pr domain.Ref) ([]string, error) {
+	rows, err := s.db.QueryContext(ctx, `SELECT head FROM fix_pushes WHERE pr_key = ? ORDER BY at, rowid`, refKey(pr))
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+	var out []string
+	for rows.Next() {
+		var head string
+		if err := rows.Scan(&head); err != nil {
+			return nil, err
+		}
+		out = append(out, head)
+	}
+	return out, rows.Err()
+}

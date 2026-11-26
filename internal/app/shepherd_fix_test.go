@@ -62,6 +62,9 @@ type verifiedFixes struct {
 	host   ports.CodeHostPort
 	mu     sync.Mutex
 	starts []app.FixStart
+	// hidden makes a pass push without posting its status comment, as if
+	// no read of the PR showed it yet.
+	hidden bool
 }
 
 const fixedHead = "fix1"
@@ -69,8 +72,11 @@ const fixedHead = "fix1"
 func (f *verifiedFixes) Run(ctx context.Context, s app.FixStart) (app.FixOutcome, error) {
 	f.mu.Lock()
 	f.starts = append(f.starts, s)
+	hidden := f.hidden
 	f.mu.Unlock()
-	if _, err := f.host.AddComment(ctx, s.PR.Ref, domain.AnthillComment{
+	if hidden {
+		// No status comment.
+	} else if _, err := f.host.AddComment(ctx, s.PR.Ref, domain.AnthillComment{
 		Role: domain.RoleShepherd, Body: "Pushed fixes.",
 		Marker: domain.Marker{Version: domain.MarkerVersion, ID: app.AutofixMarkerPrefix + fixedHead, Instance: s.Instance, Kind: domain.CommentStatus, Ref: s.PR.Ref.String()},
 	}); err != nil {

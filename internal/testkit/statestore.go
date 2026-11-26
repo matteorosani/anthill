@@ -30,6 +30,12 @@ type StateStore struct {
 	hidden     map[domain.Ref]ports.HiddenProposal
 	claims     map[claimKey]ports.HeldClaim
 	requests   []roundRequest
+	fixPushes  []fixPush
+}
+
+type fixPush struct {
+	pr   domain.Ref
+	head string
 }
 
 type roundRequest struct {
@@ -235,7 +241,7 @@ func (s *StateStore) EndRound(_ context.Context, r ports.RoundRecord) error {
 	if i < 0 || i >= len(s.rounds) {
 		return fmt.Errorf("round %d: %w", r.ID, ports.ErrNotFound)
 	}
-	s.rounds[i].EndedAt, s.rounds[i].Usage = r.EndedAt, cloneUsage(r.Usage)
+	s.rounds[i].EndedAt, s.rounds[i].Posted, s.rounds[i].Usage = r.EndedAt, r.Posted, cloneUsage(r.Usage)
 	return nil
 }
 
@@ -656,4 +662,28 @@ func (s *StateStore) BeginRound(_ context.Context, r ports.RoundRecord) (ports.R
 		}
 	}
 	return r.ID, nil
+}
+
+// RecordFixPush stores a head a fix pass pushed, unless it is stored.
+func (s *StateStore) RecordFixPush(_ context.Context, pr domain.Ref, head string, _ time.Time) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	p := fixPush{pr: pr, head: head}
+	if !slices.Contains(s.fixPushes, p) {
+		s.fixPushes = append(s.fixPushes, p)
+	}
+	return nil
+}
+
+// FixPushes lists the heads fix passes pushed to a PR.
+func (s *StateStore) FixPushes(_ context.Context, pr domain.Ref) ([]string, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	var out []string
+	for _, p := range s.fixPushes {
+		if p.pr == pr {
+			out = append(out, p.head)
+		}
+	}
+	return out, nil
 }

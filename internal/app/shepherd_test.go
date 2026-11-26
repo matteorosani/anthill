@@ -27,18 +27,21 @@ type fakeRounds struct {
 	mu     sync.Mutex
 	starts []app.RoundStart
 	result func(app.RoundStart) (app.RoundResult, error)
+	// hidden makes a round end without posting its summary, as if no
+	// read of the PR showed it yet.
+	hidden bool
 }
 
 func (f *fakeRounds) Run(ctx context.Context, r app.RoundStart) (app.RoundResult, error) {
 	f.mu.Lock()
 	f.starts = append(f.starts, r)
-	result := f.result
+	result, hidden := f.result, f.hidden
 	f.mu.Unlock()
 	res, err := app.RoundResult{}, error(nil)
 	if result != nil {
 		res, err = result(r)
 	}
-	if err != nil {
+	if err != nil || hidden {
 		return res, err
 	}
 	_, perr := f.host.AddComment(ctx, r.Round.PR, domain.AnthillComment{

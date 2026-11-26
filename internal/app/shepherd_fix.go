@@ -48,13 +48,25 @@ func (s *Shepherd) startFixPass(ctx context.Context, t *prTurn, d domain.StartFi
 // review claim.
 func (s *Shepherd) runFixPass(ctx context.Context, start FixStart, held ports.HeldClaim) error {
 	pr := start.PR.Ref
-	_, runErr := s.deps.Fixes.Run(ctx, start)
+	out, runErr := s.deps.Fixes.Run(ctx, start)
+	passCtx := ctx
 	// StopPR ends a pass when its PR was merged or closed (spec
 	// pr-shepherd, "PR closure is human").
 	if ctx.Err() != nil {
 		runErr = nil
 	}
 	ctx = context.WithoutCancel(ctx)
+	if out.Pushed != "" {
+		// The pushed head starts no round, even while reads of the PR do
+		// not show the pass's status comment yet (issue #192).
+		if err := s.store.RecordFixPush(ctx, pr, out.Pushed, s.clock.Now()); err != nil {
+			runErr = errors.Join(runErr, fmt.Errorf("recording the fix push %s on %s: %w", out.Pushed, pr, err))
+		} else if runErr == nil {
+			if _, err := s.awaitMarker(passCtx, pr, AutofixMarkerPrefix+out.Pushed); err != nil && passCtx.Err() == nil {
+				runErr = fmt.Errorf("after the fix pass on %s: %w", pr, err)
+			}
+		}
+	}
 	defer s.lockPR(pr)()
 	s.setActive(pr, false)
 	if runErr != nil {

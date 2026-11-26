@@ -339,9 +339,9 @@ func startRound(ctx context.Context, db execer, r ports.RoundRecord) (ports.Roun
 		return 0, err
 	}
 	res, err := db.ExecContext(ctx, `INSERT INTO rounds
-		(pr_key, pr, head, requested, started_at, ended_at, tokens, cost_usd)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-		refKey(r.PR), pr, r.Head, r.Requested, r.StartedAt.UnixNano(), unixNano(r.EndedAt),
+		(pr_key, pr, head, requested, started_at, ended_at, posted, tokens, cost_usd)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		refKey(r.PR), pr, r.Head, r.Requested, r.StartedAt.UnixNano(), unixNano(r.EndedAt), r.Posted,
 		nullInt(r.Usage.Tokens), nullFloat(r.Usage.CostUSD))
 	if err != nil {
 		return 0, fmt.Errorf("start round on %s: %w", r.PR.Full(), err)
@@ -352,8 +352,8 @@ func startRound(ctx context.Context, db execer, r ports.RoundRecord) (ports.Roun
 
 // EndRound stores the end of a round.
 func (s *Store) EndRound(ctx context.Context, r ports.RoundRecord) error {
-	res, err := s.db.ExecContext(ctx, "UPDATE rounds SET ended_at = ?, tokens = ?, cost_usd = ? WHERE id = ?",
-		unixNano(r.EndedAt), nullInt(r.Usage.Tokens), nullFloat(r.Usage.CostUSD), r.ID)
+	res, err := s.db.ExecContext(ctx, "UPDATE rounds SET ended_at = ?, posted = ?, tokens = ?, cost_usd = ? WHERE id = ?",
+		unixNano(r.EndedAt), r.Posted, nullInt(r.Usage.Tokens), nullFloat(r.Usage.CostUSD), r.ID)
 	if err != nil {
 		return err
 	}
@@ -366,7 +366,7 @@ func (s *Store) Rounds(ctx context.Context, pr domain.Ref) ([]ports.RoundRecord,
 }
 
 func (s *Store) rounds(ctx context.Context, where string, args ...any) ([]ports.RoundRecord, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT id, pr, head, requested, started_at, ended_at, tokens, cost_usd
+	rows, err := s.db.QueryContext(ctx, `SELECT id, pr, head, requested, started_at, ended_at, posted, tokens, cost_usd
 		FROM rounds `+where, args...)
 	if err != nil {
 		return nil, err
@@ -381,7 +381,7 @@ func (s *Store) rounds(ctx context.Context, where string, args ...any) ([]ports.
 			ended, tokens sql.NullInt64
 			cost          sql.NullFloat64
 		)
-		if err := rows.Scan(&r.ID, &pr, &r.Head, &r.Requested, &started, &ended, &tokens, &cost); err != nil {
+		if err := rows.Scan(&r.ID, &pr, &r.Head, &r.Requested, &started, &ended, &r.Posted, &tokens, &cost); err != nil {
 			return nil, err
 		}
 		if err := fromJSON(pr, &r.PR); err != nil {
