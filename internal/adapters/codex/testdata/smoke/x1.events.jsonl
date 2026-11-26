@@ -1,0 +1,7 @@
+{"type":"thread.started","thread_id":"01a1b0fd-d26e-7fd0-8988-276bf1449a75"}
+{"type":"turn.started"}
+{"type":"item.completed","item":{"id":"item_0","type":"agent_message","text":"I’ll call smoke_ping once and return its word.\n"}}
+{"type":"item.started","item":{"id":"item_1","type":"mcp_tool_call","server":"anthill","tool":"smoke_ping","arguments":{},"result":null,"error":null,"status":"in_progress"}}
+{"type":"item.completed","item":{"id":"item_1","type":"mcp_tool_call","server":"anthill","tool":"smoke_ping","arguments":{},"result":null,"error":{"message":"MCP tool call requires approval, but approval policy is never"},"status":"failed"}}
+{"type":"item.completed","item":{"id":"item_2","type":"agent_message","text":"smoke_ping returned no word: the call required approval, but approval policy is set to never."}}
+{"type":"turn.completed","usage":{"input_tokens":37010,"cached_input_tokens":26624,"cache_write_input_tokens":0,"output_tokens":114,"reasoning_output_tokens":0}}

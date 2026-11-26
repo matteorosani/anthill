@@ -1,0 +1,5 @@
+smoke: run started with codex in C:\a\anthill-smoke-vz8K4Y\wt
+smoke: session id: 01a1b0fd-d26e-7fd0-8988-276bf1449a75
+smoke: run ended: exit code 0, crashed false
+smoke: session id: 01a1b0fd-d26e-7fd0-8988-276bf1449a75
+smoke: usage: 57032 tokens, unknown USD
