@@ -121,6 +121,8 @@ type Shepherd struct {
 	// cancels ends the work in progress on a PR when it is merged or
 	// closed (StopPR).
 	cancels map[domain.Ref]context.CancelFunc
+	// detached is set by Detach, when the daemon stops.
+	detached bool
 
 	wg sync.WaitGroup
 }
@@ -288,6 +290,11 @@ func (s *Shepherd) decide(ctx context.Context, pr domain.Ref, held *ports.HeldCl
 			}
 		}
 	}()
+	if s.isDetached() {
+		// The daemon is stopping: nothing new starts, and the claim of
+		// a round or fix pass that ended is released above.
+		return nil
+	}
 	ws, err := s.deps.Route(ctx, pr)
 	if err != nil {
 		return fmt.Errorf("finding the repository of %s: %w", pr, err)
